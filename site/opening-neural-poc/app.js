@@ -4,9 +4,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const MATE_SCORE_CP = 100000;
 const DISPLAY_DEFAULT_FLOOR_MASS = 0.01;
 const MATE_BRANCH_MIN_PROBABILITY = 0.01;
-const LEVEL_NUMBER = 1;
+const FIRST_LEVEL_NUMBER = 1;
+const FREE_SURVIVAL_TARGETS = [5, 7, 10, 13, 15];
 const STARTING_LIVES = 3;
-const FREE_SURVIVAL_TURNS = 5;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 const SURVIVAL_LIMIT_CP = -100;
@@ -37,6 +37,7 @@ const elements = {
   newGameButton: document.querySelector('#newGameButton'),
   challengeModeButton: document.querySelector('#challengeModeButton'),
   explorationModeButton: document.querySelector('#explorationModeButton'),
+  gameLevelLabel: document.querySelector('#gameLevelLabel'),
   lifeRow: document.querySelector('#lifeRow'),
   gameTitle: document.querySelector('#gameTitle'),
   gamePhase: document.querySelector('#gamePhase'),
@@ -101,6 +102,7 @@ const state = {
   currentPreviewNode: null,
   viewMode: 'human',
   playMode: 'challenge',
+  campaignLevel: FIRST_LEVEL_NUMBER,
   lineFilter: 'all',
   temperatureCp: 95,
   floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
@@ -118,6 +120,29 @@ function createSvgElement(tag, attributes = {}) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getLevelObjective(level) {
+  const target = FREE_SURVIVAL_TARGETS[level - 1];
+  if (Number.isFinite(target)) {
+    return { type: 'survival', target };
+  }
+  return { type: 'mate', target: Number.POSITIVE_INFINITY };
+}
+
+function isMateObjective(game) {
+  return game?.objective?.type === 'mate';
+}
+
+function formatLevelObjective(level) {
+  const objective = getLevelObjective(level);
+  return objective.type === 'mate'
+    ? "mater l'adversaire"
+    : `tenir ${objective.target} réponses libres`;
+}
+
+function formatSurvivalTarget(game) {
+  return isMateObjective(game) ? "jusqu'au mat" : `${game.objective.target}`;
 }
 
 function hashString(value) {
@@ -1596,7 +1621,11 @@ function shouldRenderGameDetails() {
 }
 
 function setPlayMode(mode) {
-  state.playMode = mode === 'exploration' ? 'exploration' : 'challenge';
+  const nextMode = mode === 'exploration' ? 'exploration' : 'challenge';
+  if (state.playMode !== nextMode && nextMode === 'challenge') {
+    state.campaignLevel = FIRST_LEVEL_NUMBER;
+  }
+  state.playMode = nextMode;
   elements.challengeModeButton.classList.toggle('is-active', state.playMode === 'challenge');
   elements.explorationModeButton.classList.toggle('is-active', state.playMode === 'exploration');
   startNewGame();
@@ -1606,18 +1635,23 @@ function fenPositionKey(fen) {
   return fen.split(/\s+/).slice(0, 4).join(' ');
 }
 
-function createInitialGameState() {
+function createInitialGameState(level = state.campaignLevel) {
   const exploration = state.playMode === 'exploration';
+  const objective = getLevelObjective(exploration ? FIRST_LEVEL_NUMBER : level);
   return {
     active: true,
     mode: state.playMode,
-    level: LEVEL_NUMBER,
+    level: exploration ? FIRST_LEVEL_NUMBER : level,
+    objective,
+    nextLevel: null,
+    finalVictory: false,
     chess: new Chess(),
     currentNodeId: 'root',
     phase: 'opening',
     status: 'playing',
     lives: STARTING_LIVES,
-    freeRemaining: exploration ? Number.POSITIVE_INFINITY : FREE_SURVIVAL_TURNS,
+    freeRemaining:
+      exploration || objective.type === 'mate' ? Number.POSITIVE_INFINITY : objective.target,
     openingBlackMoves: 0,
     currentEvalCp: getNode('root')?.evaluation?.cpWhite ?? 0,
     currentPv: '',
@@ -1626,7 +1660,7 @@ function createInitialGameState() {
     selectedSquare: null,
     message: exploration
       ? "Mode exploration: teste les lignes ou sors du livre sans perdre de vie."
-      : "À toi de jouer: clique une pièce blanche ou joue le coup attendu.",
+      : `Niveau ${level}: ${formatLevelObjective(level)} après l'ouverture.`,
     lastMove: null,
     moveLog: [],
     freeReviewMoves: [],
@@ -1990,9 +2024,12 @@ function clearGameCinematic() {
   }
 }
 
-function startNewGame() {
+function startNewGame(level = state.campaignLevel) {
   clearGameCinematic();
-  state.game = createInitialGameState();
+  if (state.playMode === 'challenge') {
+    state.campaignLevel = Math.max(FIRST_LEVEL_NUMBER, level);
+  }
+  state.game = createInitialGameState(state.campaignLevel);
   state.highlightedEdges.clear();
   state.highlightedNodes = new Set(['root']);
   state.selectedNodeId = 'root';
@@ -2002,7 +2039,7 @@ function startNewGame() {
   elements.selectedPathLabel.textContent =
     state.playMode === 'exploration'
       ? 'Exploration: livre italien actif'
-      : 'Niveau 1: livre italien actif';
+      : `Niveau ${state.game.level}: ${formatLevelObjective(state.game.level)}`;
   renderGraph();
   ensureStockfishReady(false).catch((error) => {
     if (!state.game || state.game.status !== 'playing') {
@@ -2011,6 +2048,66 @@ function startNewGame() {
     state.game.message = `Stockfish indisponible pour l'instant: ${error.message}`;
     renderGamePanel();
   });
+}
+
+function handleNewGameAction() {
+  const game = state.game;
+  if (
+    game?.mode === 'challenge' &&
+    game.status === 'won' &&
+    !game.finalVictory &&
+    Number.isFinite(game.nextLevel)
+  ) {
+    startNewGame(game.nextLevel);
+    return;
+  }
+
+  if (game?.mode === 'challenge' && game.status === 'won' && game.finalVictory) {
+    state.campaignLevel = FIRST_LEVEL_NUMBER;
+  }
+  startNewGame();
+}
+
+function finishCampaignByMate(message = null) {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  game.finalVictory = true;
+  game.nextLevel = null;
+  finishGame(
+    'won',
+    message ?? `Échec et mat: campagne terminée au niveau ${game.level}.`
+  );
+}
+
+function finishSurvivalLevel() {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const nextLevel = game.level + 1;
+  game.nextLevel = nextLevel;
+  finishGame(
+    'won',
+    `Niveau ${game.level} validé: tu as survécu à ${game.objective.target} réponses libres. Prochain objectif: ${formatLevelObjective(nextLevel)}.`
+  );
+}
+
+function finishTerminalPosition(message = 'La partie est terminée.') {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  if (game.chess.isCheckmate()) {
+    if (game.chess.turn() === 'b') {
+      finishCampaignByMate(`Échec et mat: campagne terminée au niveau ${game.level}.`);
+    } else {
+      finishGame('lost', message);
+    }
+    return;
+  }
+  finishGame('won', message);
 }
 
 async function submitHumanMove(rawInput = elements.moveInput.value) {
@@ -2073,6 +2170,10 @@ async function submitOpeningMove(input) {
 
   state.game.expectedOpeningArrows = [];
   applyGameEdge(result.edge);
+  if (!isExplorationMode() && state.game.chess.isCheckmate()) {
+    finishCampaignByMate();
+    return;
+  }
   state.game.message = isExplorationMode()
     ? `Ligne suivie: ${result.edge.san}.`
     : `Bien: ${result.edge.san} reste dans l'ouverture.`;
@@ -2144,6 +2245,11 @@ async function submitFreeMove(input) {
     evaluation
   });
 
+  if (!isExplorationMode() && state.game.chess.isCheckmate()) {
+    finishCampaignByMate(`Échec et mat: campagne terminée au niveau ${state.game.level}.`);
+    return;
+  }
+
   state.game.message = isExplorationMode()
     ? `Position explorée à ${formatEval(evaluation.cpWhite)}. Stockfish répond.`
     : `Coup accepté (${formatEval(evaluation.cpWhite)}). Stockfish répond.`;
@@ -2198,7 +2304,7 @@ async function playStockfishBlackMove() {
   const beforeFen = game.chess.fen();
   const beforeEvalCp = evaluation.cpWhite;
   if (!evaluation.bestMove) {
-    finishGame(game.chess.isCheckmate() ? 'lost' : 'won', 'La partie est terminée.');
+    finishTerminalPosition('La partie est terminée.');
     return;
   }
 
@@ -2220,7 +2326,7 @@ async function playStockfishBlackMove() {
     beforeEvalCp,
     evaluation: afterEvaluation
   });
-  if (!isExplorationMode()) {
+  if (!isExplorationMode() && Number.isFinite(game.freeRemaining)) {
     game.freeRemaining = Math.max(0, game.freeRemaining - 1);
   }
 
@@ -2239,13 +2345,15 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  if (!isExplorationMode() && game.freeRemaining <= 0) {
-    finishGame('won', `Niveau ${LEVEL_NUMBER} validé: tu as survécu aux 5 réponses libres.`);
+  if (!isExplorationMode() && !isMateObjective(game) && game.freeRemaining <= 0) {
+    finishSurvivalLevel();
     return;
   }
 
   game.message = isExplorationMode()
     ? `Réponse Stockfish: ${move.san}. Exploration libre, seuil indicatif: -1.00.`
+    : isMateObjective(game)
+    ? `Réponse Stockfish: ${move.san}. Objectif final: trouve le mat sans passer sous -1.00.`
     : `Réponse Stockfish: ${move.san}. Il reste ${game.freeRemaining} coups libres à tenir.`;
 }
 
@@ -2419,7 +2527,9 @@ function renderGameDetails() {
     reviewEntry
       ? 'Revue libre'
       : game.status === 'won'
-      ? 'Niveau réussi'
+      ? game.finalVictory
+        ? 'Campagne terminée'
+        : 'Niveau réussi'
       : game.status === 'lost'
         ? 'Partie perdue'
         : game.chess.turn() === 'w'
@@ -2432,7 +2542,9 @@ function renderGameDetails() {
       ? "Reste dans les coups d'ouverture attendus."
       : isExplorationMode()
         ? 'Exploration libre: teste la position contre Stockfish.'
-        : `Survie Stockfish: ${game.freeRemaining}/${FREE_SURVIVAL_TURNS} réponses noires restantes.`;
+        : isMateObjective(game)
+          ? "Objectif final: mater sans passer sous -1.00."
+          : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} réponses noires restantes.`;
   elements.nodeEval.textContent = reviewEntry ? formatEval(reviewEntry.afterEvalCp) : formatEval(game.currentEvalCp);
   elements.nodeFuture.textContent =
     reviewEntry
@@ -2460,16 +2572,23 @@ function renderGamePanel(phaseLabel = null) {
 
   const reviewEntry = getActiveFreeReviewEntry();
   const phase = phaseLabel ?? formatGamePhase(game);
+  elements.gameLevelLabel.textContent = isExplorationMode()
+    ? 'Exploration'
+    : `Niveau ${game.level}`;
   elements.gameTitle.textContent =
     game.status === 'won'
-      ? 'Niveau réussi'
+      ? game.finalVictory
+        ? 'Campagne terminée'
+        : 'Niveau réussi'
       : game.status === 'lost'
         ? 'Fin de partie'
         : isExplorationMode()
           ? 'Mode exploration'
           : game.phase === 'opening'
             ? "Livre d'ouverture"
-            : 'Survie contre Stockfish';
+            : isMateObjective(game)
+              ? 'Objectif mat'
+              : 'Survie contre Stockfish';
   elements.gamePhase.textContent = phase;
   elements.gameFreeRemaining.textContent = formatFreeRemaining(game);
   elements.gameEval.textContent = formatEval(reviewEntry?.afterEvalCp ?? game.currentEvalCp);
@@ -2483,7 +2602,11 @@ function renderGamePanel(phaseLabel = null) {
       ? isExplorationMode()
         ? 'Réinitialiser'
         : 'Recommencer'
-      : 'Nouvelle partie';
+      : game.status === 'won' && !game.finalVictory && !isExplorationMode()
+        ? 'Niveau suivant'
+        : game.status === 'lost' && !isExplorationMode()
+          ? 'Réessayer'
+          : 'Nouvelle partie';
 
   elements.lifeRow.replaceChildren();
   if (isExplorationMode()) {
@@ -2522,7 +2645,12 @@ function formatFreeRemaining(game) {
   if (game.mode === 'exploration') {
     return 'libre';
   }
-  return game.phase === 'free' ? `${game.freeRemaining}/${FREE_SURVIVAL_TURNS}` : 'bientôt';
+  if (game.phase !== 'free') {
+    return isMateObjective(game) ? "objectif mat" : `objectif ${formatSurvivalTarget(game)}`;
+  }
+  return isMateObjective(game)
+    ? "jusqu'au mat"
+    : `${game.freeRemaining}/${game.objective.target}`;
 }
 
 function renderExpectedMoveList() {
@@ -2571,7 +2699,9 @@ function renderExpectedMoveList() {
   free.className = 'expected-pill is-free';
   free.textContent = isExplorationMode()
     ? 'Coup libre: seuil indicatif -1.00'
-    : 'Coup libre: reste >= -1.00';
+    : isMateObjective(game)
+      ? 'Objectif mat: reste >= -1.00'
+      : 'Coup libre: reste >= -1.00';
   elements.expectedMoveList.append(free);
   for (const san of game.chess.moves().slice(0, 6)) {
     const button = document.createElement('button');
@@ -2766,7 +2896,9 @@ function renderGameChoices() {
   const free = document.createElement('p');
   free.textContent = isExplorationMode()
     ? 'Exploration libre: joue n’importe quel coup légal, le seuil -1.00 sert seulement de repère.'
-    : 'Coup libre: joue un coup légal qui garde l’évaluation à -1.00 ou mieux.';
+    : isMateObjective(game)
+      ? "Objectif mat: joue un coup légal qui garde l'évaluation à -1.00 ou mieux jusqu'au mat."
+      : 'Coup libre: joue un coup légal qui garde l’évaluation à -1.00 ou mieux.';
   elements.choiceList.append(free);
   for (const san of game.chess.moves().slice(0, 10)) {
     const row = document.createElement('button');
@@ -2902,7 +3034,7 @@ function bindEvents() {
   elements.viewModeButton.addEventListener('click', toggleViewMode);
   elements.challengeModeButton.addEventListener('click', () => setPlayMode('challenge'));
   elements.explorationModeButton.addEventListener('click', () => setPlayMode('exploration'));
-  elements.newGameButton.addEventListener('click', startNewGame);
+  elements.newGameButton.addEventListener('click', handleNewGameAction);
   elements.moveForm.addEventListener('submit', (event) => {
     event.preventDefault();
     submitHumanMove();
