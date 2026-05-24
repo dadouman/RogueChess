@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>POC Solo - Graphe neuronal d'ouverture</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="is-human-view">
+    <div class="poc-shell">
+      <aside class="poc-sidebar" aria-label="Paramètres du graphe">
+        <div class="brand-block">
+          <span class="kicker">Mode solo POC</span>
+          <h1>Survie italienne</h1>
+          <p id="summaryText">Chargement du livre d'ouverture...</p>
+        </div>
+
+        <section class="game-card" aria-label="État du niveau solo">
+          <div class="game-card-header">
+            <div>
+              <span class="kicker">Niveau 1</span>
+              <strong id="gameTitle">Rester dans le livre</strong>
+            </div>
+            <div class="game-card-actions">
+              <button id="viewModeButton" type="button">Vue cerveau</button>
+              <button id="newGameButton" type="button">Nouvelle partie</button>
+            </div>
+          </div>
+
+          <div class="mode-choice" aria-label="Mode de jeu">
+            <button id="challengeModeButton" class="is-active" type="button">Défi</button>
+            <button id="explorationModeButton" type="button">Exploration</button>
+          </div>
+
+          <div id="lifeRow" class="life-row" aria-label="Vies restantes"></div>
+
+          <dl class="game-stat-grid">
+            <div>
+              <dt>Phase</dt>
+              <dd id="gamePhase">-</dd>
+            </div>
+            <div>
+              <dt>Survie</dt>
+              <dd id="gameFreeRemaining">-</dd>
+            </div>
+            <div>
+              <dt>Éval</dt>
+              <dd id="gameEval">-</dd>
+            </div>
+            <div>
+              <dt>Trait</dt>
+              <dd id="gameTurn">-</dd>
+            </div>
+          </dl>
+
+          <form id="moveForm" class="move-form">
+            <label for="moveInput">Coup blanc</label>
+            <div>
+              <input id="moveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
+              <button id="playMoveButton" type="submit">Jouer</button>
+            </div>
+          </form>
+
+          <p id="gameMessage" class="game-message">Prépare le livre d'ouverture...</p>
+          <div id="expectedMoveList" class="expected-move-list" aria-label="Coups blancs attendus"></div>
+          <div id="opponentGraphMini" class="opponent-graph-mini" aria-label="Plan succinct de l'adversaire"></div>
+          <ol id="moveLogList" class="move-log" aria-label="Coups joués"></ol>
+          <div id="freeReviewPanel" class="free-review-panel" aria-label="Revue des coups libres" hidden></div>
+        </section>
+
+        <section class="control-section">
+          <label for="lineFilter">Ligne PGN</label>
+          <select id="lineFilter"></select>
+        </section>
+
+        <section class="control-section">
+          <div class="control-header">
+            <label for="temperatureRange">Tolérance aux erreurs</label>
+            <strong id="temperatureValue"></strong>
+          </div>
+          <input id="temperatureRange" type="range" min="35" max="260" step="5" value="95" />
+        </section>
+
+        <section class="control-section">
+          <div class="control-header">
+            <label for="floorRange">Chance minimale</label>
+            <strong id="floorValue"></strong>
+          </div>
+          <input id="floorRange" type="range" min="0" max="35" step="1" value="12" />
+        </section>
+
+        <section class="action-grid" aria-label="Actions">
+          <button id="bestPathButton" type="button">Meilleur chemin</button>
+          <button id="randomPathButton" type="button">Simuler un choix</button>
+          <button id="resetButton" type="button">Réinitialiser</button>
+        </section>
+
+        <dl class="stat-list">
+          <div>
+            <dt>Noeuds</dt>
+            <dd id="nodesCount">-</dd>
+          </div>
+          <div>
+            <dt>Arcs</dt>
+            <dd id="edgesCount">-</dd>
+          </div>
+          <div>
+            <dt>Branches</dt>
+            <dd id="branchingCount">-</dd>
+          </div>
+          <div>
+            <dt>Stockfish</dt>
+            <dd id="engineDepth">-</dd>
+          </div>
+        </dl>
+      </aside>
+
+      <main class="graph-stage" aria-label="Visualisation du graphe">
+        <div class="stage-toolbar">
+          <div>
+            <span class="kicker">Probabilités dynamiques</span>
+            <strong id="selectedPathLabel">Aucun chemin sélectionné</strong>
+          </div>
+          <p>
+            Les arcs comparent chaque suite future à la moyenne des choix frères. Le meilleur choix domine, les autres gardent une chance.
+          </p>
+        </div>
+        <svg id="graphSvg" role="img" aria-label="Graphe des coups d'ouverture"></svg>
+        <div id="graphTooltip" class="graph-tooltip" hidden></div>
+      </main>
+
+      <aside class="detail-panel" aria-label="Détail du coup sélectionné">
+        <div class="detail-heading">
+          <span class="kicker">Position</span>
+          <h2 id="nodeTitle">Départ</h2>
+          <p id="nodeSubtitle">Sélectionne un point du graphe.</p>
+        </div>
+
+        <div class="board-shell">
+          <button id="boardZoomButton" class="board-zoom-button" type="button">Agrandir</button>
+          <div id="boardPreview" class="board-preview" aria-label="Échiquier de la position"></div>
+        </div>
+
+        <dl class="eval-grid">
+          <div>
+            <dt>Évaluation</dt>
+            <dd id="nodeEval">-</dd>
+          </div>
+          <div>
+            <dt>Moyenne future</dt>
+            <dd id="nodeFuture">-</dd>
+          </div>
+          <div>
+            <dt>Trait</dt>
+            <dd id="nodeTurn">-</dd>
+          </div>
+        </dl>
+
+        <section id="segmentExplorer" class="segment-explorer" hidden>
+          <div class="segment-header">
+            <div>
+              <span class="kicker">Segment compressé</span>
+              <strong id="segmentProgress">-</strong>
+            </div>
+            <div class="segment-controls">
+              <button id="segmentToggleButton" type="button" aria-label="Afficher tous les coups">Tous</button>
+              <button id="segmentPrevButton" type="button" aria-label="Coup précédent">‹</button>
+              <button id="segmentNextButton" type="button" aria-label="Coup suivant">›</button>
+            </div>
+          </div>
+          <div id="segmentStepList" class="segment-step-list" aria-label="Coups du segment"></div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Choix suivants</h3>
+          <div id="choiceList" class="choice-list"></div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Explication</h3>
+          <p id="nodeComment">Aucune note pour cette position.</p>
+        </section>
+
+        <section class="detail-section">
+          <h3>Sources</h3>
+          <p id="nodeSources">-</p>
+        </section>
+      </aside>
+    </div>
+
+    <div id="boardZoomLayer" class="board-zoom-layer" hidden>
+      <div class="board-zoom-panel" aria-label="Échiquier agrandi">
+        <div class="board-zoom-topbar">
+          <strong id="boardZoomTitle">Échiquier</strong>
+          <button id="boardZoomCloseButton" type="button">Réduire</button>
+        </div>
+        <div id="boardZoomPreview" class="board-preview board-preview-large" aria-label="Échiquier agrandi"></div>
+      </div>
+    </div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
