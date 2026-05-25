@@ -148,7 +148,7 @@ function formatLevelObjective(level) {
   const objective = getLevelObjective(level);
   return objective.type === 'mate'
     ? "mater l'adversaire"
-    : `tenir ${objective.target} réponses libres`;
+    : `tenir ${objective.target} coups complets libres`;
 }
 
 function formatSurvivalTarget(game) {
@@ -2089,6 +2089,7 @@ function createInitialGameState(level = state.campaignLevel) {
     lives: STARTING_LIVES,
     freeRemaining:
       exploration || objective.type === 'mate' ? Number.POSITIVE_INFINITY : objective.target,
+    freeRoundPending: false,
     openingBlackMoves: 0,
     currentEvalCp: rootEvaluation.cpWhite ?? 0,
     currentPv: rootEvaluation.pv ?? '',
@@ -2646,7 +2647,7 @@ function finishSurvivalLevel() {
   game.nextLevel = nextLevel;
   finishGame(
     'won',
-    `Niveau ${game.level} validé: tu as survécu à ${game.objective.target} réponses libres. Prochain objectif: ${formatLevelObjective(nextLevel)}.`
+    `Niveau ${game.level} validé: tu as survécu à ${game.objective.target} coups complets libres. Prochain objectif: ${formatLevelObjective(nextLevel)}.`
   );
 }
 
@@ -2809,6 +2810,7 @@ async function submitFreeMove(input) {
   state.game.message = isExplorationMode()
     ? `Position explorée à ${formatEval(evaluation.cpWhite)}. Stockfish répond.`
     : `Coup accepté (${formatEval(evaluation.cpWhite)}). Stockfish répond.`;
+  state.game.freeRoundPending = !isExplorationMode();
   renderGamePanel();
   await advanceOpponentTurn();
 }
@@ -2882,9 +2884,10 @@ async function playStockfishBlackMove() {
     beforeEvalCp,
     evaluation: afterEvaluation
   });
-  if (!isExplorationMode() && Number.isFinite(game.freeRemaining)) {
+  if (!isExplorationMode() && game.freeRoundPending && Number.isFinite(game.freeRemaining)) {
     game.freeRemaining = Math.max(0, game.freeRemaining - 1);
   }
+  game.freeRoundPending = false;
 
   if (!isExplorationMode() && game.chess.isCheckmate()) {
     finishGame('lost', 'Échec et mat: la survie s’arrête ici.', game.chess.fen(), afterEvaluation);
@@ -2910,7 +2913,7 @@ async function playStockfishBlackMove() {
     ? `Réponse Stockfish: ${move.san}. Exploration libre, seuil indicatif: -1.00.`
     : isMateObjective(game)
     ? `Réponse Stockfish: ${move.san}. Objectif final: trouve le mat sans passer sous -1.00.`
-    : `Réponse Stockfish: ${move.san}. Il reste ${game.freeRemaining} coups libres à tenir.`;
+    : `Réponse Stockfish: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
 }
 
 function enterFreePhase(message) {
@@ -3103,7 +3106,7 @@ function renderGameDetails() {
         ? 'Exploration libre: teste la position contre Stockfish.'
         : isMateObjective(game)
           ? "Objectif final: mater sans passer sous -1.00."
-          : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} réponses noires restantes.`;
+          : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
   elements.nodeEval.textContent = reviewEntry ? formatEval(reviewEntry.afterEvalCp) : formatEval(game.currentEvalCp);
   elements.nodeFuture.textContent =
     reviewEntry
