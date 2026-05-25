@@ -1699,6 +1699,7 @@ function createInitialGameState(level = state.campaignLevel) {
     failureEvaluation: null,
     defeatComment: '',
     expectedOpeningArrows: [],
+    defeatLineRecorded: false,
     cinematic: null,
     cinematicTimer: null
   };
@@ -1964,6 +1965,11 @@ function buildReviewMoveAnalysis(entry) {
       entry.color === 'w'
         ? "Coup du livre blanc: la partie reste dans l'arbre d'ouverture attendu."
         : "Réponse du livre adverse: l'adversaire suit encore une branche préparée.";
+  } else if (entry.phase === 'engine-line') {
+    verdict =
+      entry.color === 'w'
+        ? 'Suite Stockfish côté blanc: la ligne forcée montre pourquoi la position reste difficile à sauver.'
+        : 'Suite Stockfish côté noir: la punition se précise dans la variante calculée.';
   } else if (entry.color === 'w') {
     if (delta >= 45) {
       verdict = 'Très bon coup libre: tu améliores nettement la position.';
@@ -1987,13 +1993,15 @@ function buildReviewMoveAnalysis(entry) {
   }
 
   const thresholdText =
-    entry.color === 'w' && entry.afterEvalCp < SURVIVAL_LIMIT_CP
+    entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < SURVIVAL_LIMIT_CP
       ? ` Le coup passe sous le seuil ${formatEval(SURVIVAL_LIMIT_CP)}.`
       : '';
   const statusText = entry.status === 'returned'
     ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
     : entry.status === 'losing'
       ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
+      : entry.status === 'evaluating'
+        ? ' Évaluation détaillée en cours: le score affiché est provisoire.'
       : '';
   const pvText =
     entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
@@ -2030,6 +2038,90 @@ function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation
     game.freeReview.index = entry.index;
   }
   return entry;
+}
+
+function appendDefeatLineReview(fen, evaluation) {
+  const game = state.game;
+  if (!game || game.defeatLineRecorded || !evaluation?.pvUci?.length) {
+    return;
+  }
+
+  game.defeatLineRecorded = true;
+  const chess = new Chess(fen);
+  let beforeEvalCp = evaluation.cpWhite;
+  const addedEntries = [];
+
+  for (const uci of evaluation.pvUci.slice(0, 7)) {
+    const beforeFen = chess.fen();
+    const move = playUciOnChess(chess, uci);
+    if (!move) {
+      break;
+    }
+
+    const terminal = terminalEvaluation(chess.fen());
+    const provisionalEvaluation = terminal ?? {
+      cpWhite: beforeEvalCp,
+      depth: evaluation.depth,
+      pv: '',
+      pvUci: [],
+      source: 'stockfish-line'
+    };
+    const entry = recordFreeReviewMove({
+      move,
+      label: 'Suite Stockfish',
+      phase: 'engine-line',
+      beforeFen,
+      beforeEvalCp,
+      evaluation: provisionalEvaluation,
+      status: terminal ? 'engine-line' : 'evaluating'
+    });
+
+    if (entry) {
+      entry.analysis = buildReviewMoveAnalysis(entry);
+      addedEntries.push(entry);
+      beforeEvalCp = entry.afterEvalCp;
+    }
+  }
+
+  if (addedEntries.length) {
+    hydrateDefeatLineEvaluations(game, addedEntries, evaluation.cpWhite);
+  }
+}
+
+async function hydrateDefeatLineEvaluations(game, entries, initialCpWhite) {
+  try {
+    const evaluator = await ensureStockfishReady(false);
+    let beforeEvalCp = initialCpWhite;
+    for (const entry of entries) {
+      if (state.game !== game || game.status === 'playing') {
+        return;
+      }
+      entry.beforeEvalCp = beforeEvalCp;
+      const evaluation = await evaluator.evaluate(entry.afterFen);
+      entry.afterEvalCp = evaluation.cpWhite;
+      entry.depth = evaluation.depth;
+      entry.pv = evaluation.pv;
+      entry.pvUci = evaluation.pvUci;
+      entry.status = 'engine-line';
+      entry.analysis = buildReviewMoveAnalysis(entry);
+      beforeEvalCp = entry.afterEvalCp;
+      if (game.freeReview.active) {
+        renderGameDetails();
+      } else {
+        renderFreeReviewPanel();
+      }
+    }
+  } catch (error) {
+    for (const entry of entries) {
+      if (entry.status === 'evaluating') {
+        entry.status = 'engine-line';
+        entry.analysis = `${entry.analysis} Évaluation détaillée indisponible: ${error.message}`;
+      }
+    }
+    if (state.game === game && game.status !== 'playing') {
+      renderFreeReviewPanel();
+    }
+  }
 }
 
 function hasPostGameFreeReview() {
@@ -2452,6 +2544,9 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     game.message = `${game.message} Les flèches indiquent les coups d'ouverture attendus.`;
   }
   const startsCinematic = result === 'lost' && failureFen && failureEvaluation?.pvUci?.length;
+  if (startsCinematic) {
+    appendDefeatLineReview(failureFen, failureEvaluation);
+  }
   if (game.freeReviewMoves.length) {
     game.freeReview.index = game.freeReviewMoves.length - 1;
     game.freeReview.active = !startsCinematic;
@@ -2613,7 +2708,9 @@ function renderGameDetails() {
       ? 'Livre d’ouverture + évaluation pré-calculée'
       : reviewEntry.phase === 'start'
         ? 'Position initiale'
-        : `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
+        : reviewEntry.phase === 'engine-line'
+          ? `Suite Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
+          : `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
     : formatSourceList(currentNode?.sources ?? []);
   state.currentPreviewNode = boardNode;
 
