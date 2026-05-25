@@ -14,6 +14,7 @@ const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 const SURVIVAL_LIMIT_CP = -100;
 const STOCKFISH_DEPTH = 8;
+const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
   p: 100,
   n: 320,
@@ -447,6 +448,9 @@ function parsePgnGame(block, index) {
     eco: headers.ECO ?? '',
     result: headers.Result ?? '*',
     site: headers.Site ?? '',
+    fen: headers.FEN ?? '',
+    setup: headers.SetUp ?? '',
+    chapterName: headers.ChapterName ?? '',
     moves
   };
 }
@@ -463,14 +467,21 @@ function makeLineEventsUnique(lines) {
   return lines;
 }
 
-function createImportedRootNode() {
-  const chess = new Chess();
+function normalizeStartFen(fen) {
+  if (!fen) {
+    return STANDARD_START_FEN;
+  }
+  return new Chess(fen).fen();
+}
+
+function createImportedRootNode(fen = STANDARD_START_FEN) {
+  const chess = new Chess(fen);
   return {
     id: 'root',
     fen: chess.fen(),
     ply: 0,
-    moveNumber: 1,
-    sideToMove: 'w',
+    moveNumber: Number(chess.fen().split(/\s+/)[5] ?? 1),
+    sideToMove: chess.turn(),
     label: 'Départ',
     san: '',
     rawSan: '',
@@ -526,18 +537,45 @@ function addUnique(target, values) {
 }
 
 function buildGraphFromPgnLines(lines) {
-  const nodes = [createImportedRootNode()];
-  const nodeByFen = new Map([[nodes[0].fen, nodes[0]]]);
-  const edgeByKey = new Map();
   const warnings = [];
+  const playableLines = [];
+  let rootFen = null;
 
   for (const line of lines) {
+    let startFen;
+    try {
+      startFen = normalizeStartFen(line.fen);
+    } catch (error) {
+      warnings.push(`${line.event}: FEN ignoré (${error.message})`);
+      continue;
+    }
+
+    if (!rootFen) {
+      rootFen = startFen;
+    }
+
+    if (startFen !== rootFen) {
+      warnings.push(`${line.event}: position de départ différente ignorée.`);
+      continue;
+    }
+
+    playableLines.push({
+      ...line,
+      startFen
+    });
+  }
+
+  const nodes = [createImportedRootNode(rootFen ?? STANDARD_START_FEN)];
+  const nodeByFen = new Map([[nodes[0].fen, nodes[0]]]);
+  const edgeByKey = new Map();
+
+  for (const line of playableLines) {
     if (!line.moves.length) {
       warnings.push(`${line.event}: aucune suite de coups exploitable.`);
       continue;
     }
 
-    const chess = new Chess();
+    const chess = new Chess(line.startFen);
     let parent = nodes[0];
     addUnique(parent.sources, [line.event]);
 
@@ -2112,8 +2150,9 @@ function createInitialReviewEntry(chess, evaluation) {
 function createInitialGameState(level = state.campaignLevel) {
   const exploration = state.playMode === 'exploration';
   const objective = getLevelObjective(exploration ? FIRST_LEVEL_NUMBER : level);
-  const chess = new Chess();
-  const rootEvaluation = getNode('root')?.evaluation ?? { cpWhite: 0 };
+  const rootNode = getNode('root');
+  const chess = new Chess(rootNode?.fen ?? STANDARD_START_FEN);
+  const rootEvaluation = rootNode?.evaluation ?? { cpWhite: 0 };
   return {
     active: true,
     mode: state.playMode,
