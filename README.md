@@ -21,7 +21,7 @@ Le dossier `dist/` peut être déployé tel quel sur Cloudflare Pages, Vercel, N
 ## Déploiement conseillé
 
 - Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
+- Deploy command: `npm run deploy`
 - Path: `/`
 - Entry point: `/opening-neural-poc/`
 
