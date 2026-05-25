@@ -117,6 +117,7 @@ const state = {
   stockfish: null,
   defaultData: null,
   isImportingPgn: false,
+  bookLotteryStats: new Map(),
   game: null
 };
 
@@ -688,6 +689,7 @@ function assignGraphProbabilities(graph) {
       item.edge.endsInMate = isMateNode(nodesById.get(item.edge.to));
     });
     applyMinimumProbabilities(scored);
+    normalizeScoredProbabilities(scored);
   }
 }
 
@@ -965,6 +967,23 @@ function isMateNode(node) {
   return Boolean(node?.terminal && Math.abs(node.evaluation?.cpWhite ?? 0) >= MATE_SCORE_CP - 1000);
 }
 
+function branchEventuallyEndsInMate(edge) {
+  let current = getNode(edge?.to);
+  let guard = 0;
+  while (current && guard < 80) {
+    if (isMateNode(current)) {
+      return true;
+    }
+    if (current.outgoing.length !== 1) {
+      return false;
+    }
+    const nextEdge = getEdge(current.outgoing[0]);
+    current = nextEdge ? getNode(nextEdge.to) : null;
+    guard += 1;
+  }
+  return false;
+}
+
 function applyMinimumProbabilities(scored) {
   const reserved = scored.map((item) => (item.edge.endsInMate ? MATE_BRANCH_MIN_PROBABILITY : 0));
   const reservedTotal = reserved.reduce((sum, value) => sum + value, 0);
@@ -995,6 +1014,25 @@ function applyMinimumProbabilities(scored) {
       ? Math.max(0, item.edge.probability - reserve)
       : item.edge.probability;
     item.edge.probability = reserve + free * scale;
+  });
+}
+
+function normalizeScoredProbabilities(scored) {
+  if (!scored.length) {
+    return;
+  }
+
+  const total = scored.reduce((sum, item) => sum + Math.max(0, item.edge.probability ?? 0), 0);
+  if (total <= 0) {
+    const equal = 1 / scored.length;
+    scored.forEach((item) => {
+      item.edge.probability = equal;
+    });
+    return;
+  }
+
+  scored.forEach((item) => {
+    item.edge.probability = Math.max(0, item.edge.probability ?? 0) / total;
   });
 }
 
@@ -1036,6 +1074,7 @@ function recomputeViewProbabilities(view) {
       item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
     });
     applyMinimumProbabilities(scored);
+    normalizeScoredProbabilities(scored);
   }
 }
 
@@ -2152,6 +2191,60 @@ function isEdgeLegalInGame(edge) {
   return Boolean(playUciOnChess(chess, edge.uci));
 }
 
+function buildLiveBookEdgesForNode(nodeId, color = null, { legalInCurrentGame = false } = {}) {
+  const node = getNode(nodeId);
+  if (!node) {
+    return [];
+  }
+
+  const outgoing = getRawOutgoingEdges(nodeId, color).filter(
+    (edge) => !legalInCurrentGame || isEdgeLegalInGame(edge)
+  );
+  if (!outgoing.length) {
+    return [];
+  }
+
+  if (outgoing.length === 1) {
+    const edge = { ...outgoing[0] };
+    edge.probability = 1;
+    edge.deltaCp = 0;
+    edge.pathMeanCp = getBranchValue(edge);
+    edge.isBest = true;
+    edge.endsInMate = branchEventuallyEndsInMate(edge);
+    return [edge];
+  }
+
+  const temperature = Math.max(1, state.temperatureCp || PROBABILITY_TEMPERATURE_CP);
+  const floorMass = clamp(state.floorMass ?? DISPLAY_DEFAULT_FLOOR_MASS, 0, 0.95);
+  const scored = outgoing.map((rawEdge) => {
+    const edge = { ...rawEdge };
+    const pathMean = getBranchValue(edge);
+    return {
+      edge,
+      pathMean,
+      score: scoreForSide(pathMean, node.sideToMove)
+    };
+  });
+  const average = scored.reduce((sum, item) => sum + item.score, 0) / scored.length;
+  const bestScore = Math.max(...scored.map((item) => item.score));
+  const rawWeights = scored.map((item) =>
+    Math.exp(clamp(item.score - average, -800, 800) / temperature)
+  );
+  const rawTotal = rawWeights.reduce((sum, value) => sum + value, 0);
+
+  scored.forEach((item, index) => {
+    const softmax = rawTotal > 0 ? rawWeights[index] / rawTotal : 1 / scored.length;
+    item.edge.probability = floorMass / scored.length + (1 - floorMass) * softmax;
+    item.edge.deltaCp = Math.round(item.score - average);
+    item.edge.pathMeanCp = Math.round(item.pathMean);
+    item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
+    item.edge.endsInMate = branchEventuallyEndsInMate(item.edge);
+  });
+  applyMinimumProbabilities(scored);
+  normalizeScoredProbabilities(scored);
+  return scored.map((item) => item.edge);
+}
+
 function getExpectedWhiteBookEdges() {
   if (!state.game || state.game.phase !== 'opening') {
     return [];
@@ -2171,7 +2264,7 @@ function getBlackBookEdges() {
   if (!state.game || state.game.phase !== 'opening') {
     return [];
   }
-  return getRawOutgoingEdges(state.game.currentNodeId, 'b').filter(isEdgeLegalInGame);
+  return buildLiveBookEdgesForNode(state.game.currentNodeId, 'b', { legalInCurrentGame: true });
 }
 
 function normalizeSanForCompare(san) {
@@ -2269,31 +2362,112 @@ function buildOpeningMismatchMessage(move) {
   return `Ce coup sort du livre attendu.${expectedText} Retour utilisé, rejoue un coup d'ouverture.`;
 }
 
-function pickWeightedRawEdge(edges) {
-  if (!edges.length) {
-    return null;
+function normalizeWeightedCandidates(candidates) {
+  if (!candidates.length) {
+    return [];
   }
-  const total = edges.reduce((sum, edge) => sum + Math.max(0, edge.probability ?? 0), 0);
+
+  const total = candidates.reduce(
+    (sum, candidate) => sum + Math.max(0, candidate.probability ?? 0),
+    0
+  );
   if (total <= 0) {
-    return edges[Math.floor(Math.random() * edges.length)];
+    const equal = 1 / candidates.length;
+    return candidates.map((candidate) => ({ ...candidate, probability: equal }));
   }
-  let roll = Math.random() * total;
-  for (const edge of edges) {
-    roll -= Math.max(0, edge.probability ?? 0);
-    if (roll <= 0) {
-      return edge;
-    }
-  }
-  return edges[edges.length - 1];
+
+  return candidates.map((candidate) => ({
+    ...candidate,
+    probability: Math.max(0, candidate.probability ?? 0) / total
+  }));
 }
 
-function shouldOpponentLeaveBook() {
-  if (!state.game) {
-    return false;
+function pickWeightedCandidate(candidates, lotteryKey = null) {
+  const normalized = normalizeWeightedCandidates(candidates);
+  if (!normalized.length) {
+    return null;
   }
-  return (
-    state.game.chess.history().length >= OPENING_FREE_BREAK_PLY &&
-    Math.random() < OPENING_FREE_BREAK_PROBABILITY
+
+  let weighted = normalized.map((candidate) => ({
+    ...candidate,
+    lotteryWeight: candidate.probability
+  }));
+
+  if (lotteryKey) {
+    const stats = state.bookLotteryStats.get(lotteryKey) ?? {
+      total: 0,
+      counts: new Map()
+    };
+    weighted = normalized.map((candidate) => {
+      const count = stats.counts.get(candidate.id) ?? 0;
+      const expectedAfterPick = (stats.total + 1) * candidate.probability;
+      const deficit = Math.max(0, expectedAfterPick - count);
+      return {
+        ...candidate,
+        lotteryWeight: candidate.probability * 0.35 + deficit
+      };
+    });
+  }
+
+  const total = weighted.reduce((sum, candidate) => sum + candidate.lotteryWeight, 0);
+  let roll = Math.random() * total;
+  let selected = weighted[weighted.length - 1];
+  for (const candidate of weighted) {
+    roll -= candidate.lotteryWeight;
+    if (roll <= 0) {
+      selected = candidate;
+      break;
+    }
+  }
+
+  if (lotteryKey) {
+    const stats = state.bookLotteryStats.get(lotteryKey) ?? {
+      total: 0,
+      counts: new Map()
+    };
+    stats.total += 1;
+    stats.counts.set(selected.id, (stats.counts.get(selected.id) ?? 0) + 1);
+    state.bookLotteryStats.set(lotteryKey, stats);
+  }
+
+  return selected;
+}
+
+function canOpponentLeaveBookAtPly(ply) {
+  return ply >= OPENING_FREE_BREAK_PLY;
+}
+
+function buildOpponentBookCandidates(bookEdges, ply = state.game?.chess.history().length ?? 0) {
+  if (!bookEdges.length) {
+    return [];
+  }
+
+  const canLeave = canOpponentLeaveBookAtPly(ply);
+  const bookMass = canLeave ? 1 - OPENING_FREE_BREAK_PROBABILITY : 1;
+  return normalizeWeightedCandidates([
+    ...bookEdges.map((edge) => ({
+      id: `book:${edge.id}`,
+      type: 'book',
+      edge: { ...edge, probability: edge.probability * bookMass },
+      probability: edge.probability * bookMass
+    })),
+    ...(canLeave
+      ? [
+          {
+            id: 'free:stockfish',
+            type: 'free',
+            label: 'Sortie libre',
+            probability: OPENING_FREE_BREAK_PROBABILITY
+          }
+        ]
+      : [])
+  ]).map((candidate) =>
+    candidate.edge
+      ? {
+          ...candidate,
+          edge: { ...candidate.edge, probability: candidate.probability }
+        }
+      : candidate
   );
 }
 
@@ -2823,8 +2997,15 @@ async function advanceOpponentTurn() {
 
   if (game.phase === 'opening') {
     const blackBookEdges = getBlackBookEdges();
-    if (blackBookEdges.length && !shouldOpponentLeaveBook()) {
-      const edge = pickWeightedRawEdge(blackBookEdges);
+    const decision = blackBookEdges.length
+      ? pickWeightedCandidate(
+          buildOpponentBookCandidates(blackBookEdges),
+          `opponent:${game.currentNodeId}`
+        )
+      : null;
+
+    if (decision?.type === 'book') {
+      const edge = decision.edge;
       applyGameEdge(edge);
       game.openingBlackMoves += 1;
       game.message = `Les Noirs suivent le livre: ${edge.san} (${formatPercent(edge.probability)}).`;
@@ -2839,7 +3020,7 @@ async function advanceOpponentTurn() {
     }
 
     enterFreePhase(
-      blackBookEdges.length
+      decision?.type === 'free'
         ? "Les Noirs cassent le livre et passent aux coups Stockfish."
         : "La branche d'ouverture est terminée: les Noirs passent à Stockfish."
     );
@@ -3296,21 +3477,22 @@ function renderOpponentGraphMini() {
 
   let rows = [];
   if (game.phase === 'opening' && game.chess.turn() === 'b') {
-    rows = getBlackBookEdges().map((edge) => ({
-      label: edge.san,
-      value: formatPercent(edge.probability)
+    rows = buildOpponentBookCandidates(getBlackBookEdges()).map((candidate) => ({
+      label: candidate.type === 'free' ? candidate.label : candidate.edge.san,
+      value: formatPercent(candidate.probability)
     }));
   } else if (game.phase === 'opening') {
     rows = getExpectedWhiteBookEdges()
       .flatMap((whiteEdge) => {
-        const child = getNode(whiteEdge.to);
-        return (child?.outgoing ?? [])
-          .map(getEdge)
-          .filter((edge) => edge?.color === 'b')
-          .map((edge) => ({
-            label: `${whiteEdge.san} → ${edge.san}`,
-            value: formatPercent(edge.probability)
-          }));
+        const childEdges = buildLiveBookEdgesForNode(whiteEdge.to, 'b');
+        const childPly = game.chess.history().length + 1;
+        return buildOpponentBookCandidates(childEdges, childPly).map((candidate) => ({
+          label:
+            candidate.type === 'free'
+              ? `${whiteEdge.san} → Stockfish`
+              : `${whiteEdge.san} → ${candidate.edge.san}`,
+          value: formatPercent(candidate.probability)
+        }));
       })
       .slice(0, 4);
   } else {
@@ -3320,13 +3502,6 @@ function renderOpponentGraphMini() {
         value: `d${STOCKFISH_DEPTH}`
       }
     ];
-  }
-
-  if (
-    game.phase === 'opening' &&
-    game.chess.history().length >= OPENING_FREE_BREAK_PLY
-  ) {
-    rows.push({ label: 'Sortie libre', value: formatPercent(OPENING_FREE_BREAK_PROBABILITY) });
   }
 
   if (!rows.length) {
@@ -3492,14 +3667,10 @@ function pickWeightedViewEdge(viewNode, view) {
   if (!outgoing.length) {
     return null;
   }
-  let roll = Math.random();
-  for (const edge of outgoing) {
-    roll -= edge.probability;
-    if (roll <= 0) {
-      return edge;
-    }
-  }
-  return outgoing[outgoing.length - 1];
+  const selected = pickWeightedCandidate(
+    outgoing.map((edge) => ({ id: edge.id, type: 'edge', edge, probability: edge.probability }))
+  );
+  return selected?.edge ?? null;
 }
 
 function buildPath(mode) {
@@ -3558,6 +3729,7 @@ function setGraphData(data, selectedPathLabel = 'Aucun chemin sélectionné') {
   state.nodesByPositionKey = new Map(
     state.data.nodes.map((node) => [fenPositionKey(node.fen), node])
   );
+  state.bookLotteryStats.clear();
   state.lineFilter = 'all';
   state.highlightedEdges.clear();
   state.highlightedNodes = new Set(['root']);
@@ -3684,12 +3856,14 @@ function populateControls() {
 function bindEvents() {
   elements.temperatureRange.addEventListener('input', () => {
     state.temperatureCp = Number(elements.temperatureRange.value);
+    state.bookLotteryStats.clear();
     elements.temperatureValue.textContent = `${state.temperatureCp} cp`;
     renderGraph();
   });
 
   elements.floorRange.addEventListener('input', () => {
     state.floorMass = Number(elements.floorRange.value) / 100;
+    state.bookLotteryStats.clear();
     elements.floorValue.textContent = `${elements.floorRange.value}%`;
     renderGraph();
   });

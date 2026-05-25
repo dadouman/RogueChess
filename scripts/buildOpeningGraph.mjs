@@ -544,7 +544,23 @@ function assignProbabilities(graph) {
       item.edge.pathMeanCp = Math.round(item.pathMeanCp);
       item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
     });
+    normalizeProbabilities(scored);
   }
+}
+
+function normalizeProbabilities(scored) {
+  const total = scored.reduce((sum, item) => sum + Math.max(0, item.edge.probability ?? 0), 0);
+  if (total <= 0) {
+    const equal = 1 / scored.length;
+    scored.forEach((item) => {
+      item.edge.probability = equal;
+    });
+    return;
+  }
+
+  scored.forEach((item) => {
+    item.edge.probability = Math.max(0, item.edge.probability ?? 0) / total;
+  });
 }
 
 function summarize(graph, lines, depth, pgnPath) {
