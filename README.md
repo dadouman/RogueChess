@@ -21,7 +21,8 @@ Le dossier `dist/` peut être déployé tel quel sur Cloudflare Pages, Vercel, N
 ## Déploiement conseillé
 
 - Build command: `npm run build`
-- Output directory: `dist`
+- Deploy command: `npx wrangler deploy`
+- Path: `/`
 - Entry point: `/opening-neural-poc/`
 
 Le POC embarque `chess.js`, Stockfish Lite WASM, le graphe d'ouverture généré et les pièces Merida nécessaires à l'échiquier.

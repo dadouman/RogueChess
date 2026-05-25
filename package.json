@@ -5,14 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-static.mjs",
-    "dev": "npx vite --host 127.0.0.1 --port 5173 site",
+    "dev": "npx http-server site -a 127.0.0.1 -p 5173 -c-1",
     "poc:opening-graph": "node scripts/buildOpeningGraph.mjs"
   },
   "dependencies": {
     "chess.js": "^1.4.0",
     "stockfish": "^18.0.7"
-  },
-  "devDependencies": {
-    "vite": "^8.0.10"
   }
 }
