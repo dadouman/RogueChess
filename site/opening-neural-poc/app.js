@@ -4,8 +4,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const MATE_SCORE_CP = 100000;
 const DISPLAY_DEFAULT_FLOOR_MASS = 0.01;
 const MATE_BRANCH_MIN_PROBABILITY = 0.01;
+const PROBABILITY_TEMPERATURE_CP = 95;
+const PROBABILITY_FLOOR_MASS = 0.01;
 const FIRST_LEVEL_NUMBER = 1;
 const FREE_SURVIVAL_TARGETS = [5, 7, 10, 13, 15];
+const IMPORT_STOCKFISH_DEPTH = 5;
 const STARTING_LIVES = 3;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
@@ -29,6 +32,11 @@ const PIECE_LABELS = {
 const elements = {
   summaryText: document.querySelector('#summaryText'),
   lineFilter: document.querySelector('#lineFilter'),
+  pgnFileInput: document.querySelector('#pgnFileInput'),
+  pgnTextInput: document.querySelector('#pgnTextInput'),
+  buildPgnButton: document.querySelector('#buildPgnButton'),
+  defaultPgnButton: document.querySelector('#defaultPgnButton'),
+  pgnImportStatus: document.querySelector('#pgnImportStatus'),
   temperatureRange: document.querySelector('#temperatureRange'),
   temperatureValue: document.querySelector('#temperatureValue'),
   floorRange: document.querySelector('#floorRange'),
@@ -107,6 +115,8 @@ const state = {
   temperatureCp: 95,
   floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
   stockfish: null,
+  defaultData: null,
+  isImportingPgn: false,
   game: null
 };
 
@@ -315,6 +325,406 @@ function getNode(id) {
 
 function getEdge(id) {
   return state.edgesById.get(id);
+}
+
+const RESULT_TOKENS = new Set(['1-0', '0-1', '1/2-1/2', '*']);
+
+function normalizePgnText(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function splitPgnGames(pgn) {
+  const normalized = String(pgn ?? '').replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [];
+  }
+  const games = normalized
+    .split(/\n\s*\n(?=\[Event\s)/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  return games.length ? games : [normalized];
+}
+
+function parsePgnHeaders(block) {
+  const headers = {};
+  for (const match of block.matchAll(/^\[(\w+)\s+"((?:\\"|[^"])*)"\]$/gm)) {
+    headers[match[1]] = match[2].replace(/\\"/g, '"');
+  }
+  return headers;
+}
+
+function stripPgnHeaders(block) {
+  return block
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('['))
+    .join(' ')
+    .trim();
+}
+
+function stripSanAnnotation(san) {
+  return san
+    .replace(/[!?]+$/g, '')
+    .replace(/^[.]+/g, '')
+    .trim();
+}
+
+function isMoveNumberToken(token) {
+  return /^\d+\.(?:\.\.)?$/.test(token) || /^\d+\.\.\.$/.test(token);
+}
+
+function stripInlineMoveNumber(token) {
+  return token.replace(/^\d+\.(?:\.\.)?/, '').trim();
+}
+
+function tokenizePgnMovetext(movetext) {
+  const tokens = [];
+  const tokenPattern = /\{[^}]*\}|\(|\)|[^\s{}()]+/g;
+  let variationDepth = 0;
+
+  for (const match of movetext.matchAll(tokenPattern)) {
+    const token = match[0];
+    if (token === '(') {
+      variationDepth += 1;
+      continue;
+    }
+    if (token === ')') {
+      variationDepth = Math.max(0, variationDepth - 1);
+      continue;
+    }
+    if (variationDepth > 0) {
+      continue;
+    }
+    tokens.push(token);
+  }
+
+  return tokens;
+}
+
+function parsePgnGame(block, index) {
+  const headers = parsePgnHeaders(block);
+  const movetext = stripPgnHeaders(block);
+  const tokens = tokenizePgnMovetext(movetext);
+  const moves = [];
+  let pendingComment = '';
+
+  for (const rawToken of tokens) {
+    if (rawToken.startsWith('{')) {
+      const comment = normalizePgnText(rawToken.slice(1, -1));
+      if (moves.length) {
+        const last = moves[moves.length - 1];
+        last.comment = normalizePgnText([last.comment, comment].filter(Boolean).join(' '));
+      } else {
+        pendingComment = normalizePgnText([pendingComment, comment].filter(Boolean).join(' '));
+      }
+      continue;
+    }
+
+    const token = stripInlineMoveNumber(rawToken);
+    if (
+      !token ||
+      isMoveNumberToken(rawToken) ||
+      RESULT_TOKENS.has(token) ||
+      /^\$\d+$/.test(token) ||
+      /^;/.test(token)
+    ) {
+      continue;
+    }
+
+    moves.push({
+      rawSan: token,
+      san: stripSanAnnotation(token),
+      annotation: token.match(/[!?]+$/)?.[0] ?? '',
+      comment: pendingComment
+    });
+    pendingComment = '';
+  }
+
+  return {
+    id: `line_${String(index + 1).padStart(2, '0')}`,
+    event: headers.Event ?? `Ligne ${index + 1}`,
+    opening: headers.Opening ?? '',
+    eco: headers.ECO ?? '',
+    result: headers.Result ?? '*',
+    site: headers.Site ?? '',
+    moves
+  };
+}
+
+function makeLineEventsUnique(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    const seen = counts.get(line.event) ?? 0;
+    counts.set(line.event, seen + 1);
+    if (seen > 0) {
+      line.event = `${line.event} (${seen + 1})`;
+    }
+  }
+  return lines;
+}
+
+function createImportedRootNode() {
+  const chess = new Chess();
+  return {
+    id: 'root',
+    fen: chess.fen(),
+    ply: 0,
+    moveNumber: 1,
+    sideToMove: 'w',
+    label: 'Départ',
+    san: '',
+    rawSan: '',
+    uci: '',
+    from: '',
+    to: '',
+    color: '',
+    comments: [],
+    sources: [],
+    incoming: [],
+    outgoing: [],
+    terminal: false,
+    legalMoves: chess.moves().length,
+    evaluation: null,
+    futureMeanCp: null
+  };
+}
+
+function createImportedMoveNode(id, chess, move, parsedMove, line) {
+  return {
+    id,
+    fen: chess.fen(),
+    ply: chess.history().length,
+    moveNumber: Math.ceil(chess.history().length / 2),
+    sideToMove: chess.turn(),
+    label: move.san,
+    san: move.san,
+    rawSan: parsedMove.rawSan,
+    annotation: parsedMove.annotation,
+    uci: moveToUci(move),
+    from: move.from,
+    to: move.to,
+    color: move.color,
+    comments: parsedMove.comment ? [parsedMove.comment] : [],
+    sources: [line.event],
+    opening: line.opening,
+    eco: line.eco,
+    incoming: [],
+    outgoing: [],
+    terminal: false,
+    legalMoves: chess.moves().length,
+    evaluation: null,
+    futureMeanCp: null
+  };
+}
+
+function addUnique(target, values) {
+  for (const value of values) {
+    if (value && !target.includes(value)) {
+      target.push(value);
+    }
+  }
+}
+
+function buildGraphFromPgnLines(lines) {
+  const nodes = [createImportedRootNode()];
+  const nodeByFen = new Map([[nodes[0].fen, nodes[0]]]);
+  const edgeByKey = new Map();
+  const warnings = [];
+
+  for (const line of lines) {
+    if (!line.moves.length) {
+      warnings.push(`${line.event}: aucune suite de coups exploitable.`);
+      continue;
+    }
+
+    const chess = new Chess();
+    let parent = nodes[0];
+    addUnique(parent.sources, [line.event]);
+
+    for (const parsedMove of line.moves) {
+      let move;
+      try {
+        move = chess.move(parsedMove.san);
+      } catch (error) {
+        warnings.push(`${line.event}: coup ignoré "${parsedMove.rawSan}" (${error.message})`);
+        break;
+      }
+
+      const fen = chess.fen();
+      let child = nodeByFen.get(fen);
+      if (!child) {
+        child = createImportedMoveNode(`n${nodes.length}`, chess, move, parsedMove, line);
+        nodes.push(child);
+        nodeByFen.set(fen, child);
+      } else {
+        addUnique(child.sources, [line.event]);
+        addUnique(child.comments, parsedMove.comment ? [parsedMove.comment] : []);
+      }
+
+      const edgeKey = `${parent.id}|${child.id}|${move.san}`;
+      let edge = edgeByKey.get(edgeKey);
+      if (!edge) {
+        edge = {
+          id: `e${edgeByKey.size + 1}`,
+          from: parent.id,
+          to: child.id,
+          san: move.san,
+          rawSan: parsedMove.rawSan,
+          annotation: parsedMove.annotation,
+          uci: moveToUci(move),
+          color: move.color,
+          comments: parsedMove.comment ? [parsedMove.comment] : [],
+          sources: [line.event],
+          probability: 1,
+          deltaCp: 0,
+          pathMeanCp: null,
+          isBest: false
+        };
+        edgeByKey.set(edgeKey, edge);
+        parent.outgoing.push(edge.id);
+        child.incoming.push(edge.id);
+      } else {
+        addUnique(edge.sources, [line.event]);
+        addUnique(edge.comments, parsedMove.comment ? [parsedMove.comment] : []);
+      }
+
+      parent = child;
+    }
+  }
+
+  const edges = [...edgeByKey.values()];
+  const edgeMap = new Map(edges.map((edge) => [edge.id, edge]));
+  for (const node of nodes) {
+    const chess = new Chess(node.fen);
+    node.terminal = chess.isGameOver();
+    node.legalMoves = chess.moves().length;
+    node.outgoing = node.outgoing.filter((edgeId) => edgeMap.has(edgeId));
+    node.incoming = node.incoming.filter((edgeId) => edgeMap.has(edgeId));
+  }
+
+  return { nodes, edges, warnings };
+}
+
+function computeGraphFutureMeans(graph) {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
+  const memo = new Map();
+
+  function visit(nodeId, stack = new Set()) {
+    if (memo.has(nodeId)) {
+      return memo.get(nodeId);
+    }
+    if (stack.has(nodeId)) {
+      const node = nodesById.get(nodeId);
+      return node?.evaluation?.cpWhite ?? 0;
+    }
+
+    const node = nodesById.get(nodeId);
+    if (!node) {
+      return 0;
+    }
+
+    stack.add(nodeId);
+    const childMeans = node.outgoing
+      .map((edgeId) => edgesById.get(edgeId))
+      .filter(Boolean)
+      .map((edge) => visit(edge.to, stack));
+    stack.delete(nodeId);
+
+    const ownCp = node.evaluation?.cpWhite ?? 0;
+    const mean = childMeans.length
+      ? (ownCp + childMeans.reduce((sum, value) => sum + value, 0)) / (childMeans.length + 1)
+      : ownCp;
+
+    node.futureMeanCp = Math.round(mean);
+    memo.set(nodeId, node.futureMeanCp);
+    return node.futureMeanCp;
+  }
+
+  for (const node of graph.nodes) {
+    visit(node.id);
+  }
+}
+
+function assignGraphProbabilities(graph) {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
+
+  for (const node of graph.nodes) {
+    const outgoing = node.outgoing.map((edgeId) => edgesById.get(edgeId)).filter(Boolean);
+    if (!outgoing.length) {
+      continue;
+    }
+    if (outgoing.length === 1) {
+      outgoing[0].probability = 1;
+      outgoing[0].deltaCp = 0;
+      outgoing[0].pathMeanCp = nodesById.get(outgoing[0].to)?.futureMeanCp ?? null;
+      outgoing[0].isBest = true;
+      continue;
+    }
+
+    const scored = outgoing.map((edge) => {
+      const child = nodesById.get(edge.to);
+      const pathMeanCp = child?.futureMeanCp ?? child?.evaluation?.cpWhite ?? 0;
+      return {
+        edge,
+        pathMeanCp,
+        score: scoreForSide(pathMeanCp, node.sideToMove)
+      };
+    });
+    const average = scored.reduce((sum, item) => sum + item.score, 0) / scored.length;
+    const bestScore = Math.max(...scored.map((item) => item.score));
+    const rawWeights = scored.map((item) =>
+      Math.exp(clamp(item.score - average, -800, 800) / PROBABILITY_TEMPERATURE_CP)
+    );
+    const rawTotal = rawWeights.reduce((sum, value) => sum + value, 0);
+
+    scored.forEach((item, index) => {
+      const softmax = rawWeights[index] / rawTotal;
+      item.edge.probability =
+        PROBABILITY_FLOOR_MASS / scored.length + (1 - PROBABILITY_FLOOR_MASS) * softmax;
+      item.edge.deltaCp = Math.round(item.score - average);
+      item.edge.pathMeanCp = Math.round(item.pathMeanCp);
+      item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
+      item.edge.endsInMate = isMateNode(nodesById.get(item.edge.to));
+    });
+    applyMinimumProbabilities(scored);
+  }
+}
+
+function summarizeImportedGraph(graph, lines, depth, sourceName) {
+  const evaluatedNodes = graph.nodes.filter((node) => node.evaluation).length;
+  const branchingNodes = graph.nodes.filter((node) => node.outgoing.length > 1).length;
+  const maxPly = Math.max(0, ...graph.nodes.map((node) => node.ply));
+  return {
+    title: sourceName,
+    generatedAt: new Date().toISOString(),
+    pgnPath: sourceName,
+    sourceLines: lines.length,
+    nodes: graph.nodes.length,
+    edges: graph.edges.length,
+    evaluatedNodes,
+    branchingNodes,
+    maxPly,
+    stockfish: {
+      engine: 'Stockfish 18 Lite WASM',
+      depth
+    },
+    probabilityModel: {
+      description:
+        'Graphe généré dans le navigateur depuis un PGN importé, évalué par Stockfish puis pondéré par moyenne future.',
+      temperatureCp: PROBABILITY_TEMPERATURE_CP,
+      floorMass: PROBABILITY_FLOOR_MASS,
+      perspective: 'Blanc maximise les centipawns, Noir les minimise.'
+    }
+  };
+}
+
+function yieldToBrowser() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function cloneGraphData(data) {
+  return JSON.parse(JSON.stringify(data));
 }
 
 function parseWhiteCentipawn(line, fen) {
@@ -3137,10 +3547,108 @@ function resetHighlight() {
   renderGraph();
 }
 
+function setGraphData(data, selectedPathLabel = 'Aucun chemin sélectionné') {
+  state.data = data;
+  state.nodesById = new Map(state.data.nodes.map((node) => [node.id, node]));
+  state.edgesById = new Map(state.data.edges.map((edge) => [edge.id, edge]));
+  state.nodesByFen = new Map(state.data.nodes.map((node) => [node.fen, node]));
+  state.nodesByPositionKey = new Map(
+    state.data.nodes.map((node) => [fenPositionKey(node.fen), node])
+  );
+  state.lineFilter = 'all';
+  state.highlightedEdges.clear();
+  state.highlightedNodes = new Set(['root']);
+  state.selectedNodeId = 'root';
+  state.selectedSegment = null;
+  state.segmentStepIndex = 0;
+  state.segmentExpanded = false;
+  elements.selectedPathLabel.textContent = selectedPathLabel;
+  populateControls();
+  startNewGame(FIRST_LEVEL_NUMBER);
+  elements.selectedPathLabel.textContent = selectedPathLabel;
+}
+
+function setImportBusy(isBusy, statusText = '') {
+  state.isImportingPgn = isBusy;
+  elements.buildPgnButton.disabled = isBusy;
+  elements.defaultPgnButton.disabled = isBusy || !state.defaultData;
+  elements.pgnFileInput.disabled = isBusy;
+  elements.pgnTextInput.disabled = isBusy;
+  if (statusText) {
+    elements.pgnImportStatus.textContent = statusText;
+  }
+}
+
+async function buildGraphDataFromPgn(pgn, sourceName = 'PGN importé') {
+  const blocks = splitPgnGames(pgn);
+  const lines = makeLineEventsUnique(blocks.map(parsePgnGame)).filter((line) => line.moves.length);
+  if (!lines.length) {
+    throw new Error('Aucune ligne PGN jouable trouvée.');
+  }
+
+  const graph = buildGraphFromPgnLines(lines);
+  if (graph.nodes.length <= 1 || !graph.edges.length) {
+    throw new Error('Le PGN ne contient pas de coups légaux exploitables.');
+  }
+
+  const evaluator = await ensureStockfishReady(false);
+  for (const [index, node] of graph.nodes.entries()) {
+    elements.pgnImportStatus.textContent = `Éval ${index + 1}/${graph.nodes.length}`;
+    node.evaluation = await evaluator.evaluate(node.fen, IMPORT_STOCKFISH_DEPTH);
+    if (index % 4 === 0) {
+      await yieldToBrowser();
+    }
+  }
+
+  computeGraphFutureMeans(graph);
+  assignGraphProbabilities(graph);
+
+  return {
+    summary: summarizeImportedGraph(graph, lines, IMPORT_STOCKFISH_DEPTH, sourceName),
+    lines: lines.map(({ moves, ...line }) => ({
+      ...line,
+      plies: moves.length
+    })),
+    nodes: graph.nodes,
+    edges: graph.edges,
+    warnings: graph.warnings
+  };
+}
+
+async function importPgnFromInput() {
+  const pgn = elements.pgnTextInput.value.trim();
+  if (!pgn) {
+    elements.pgnImportStatus.textContent = 'PGN vide';
+    return;
+  }
+
+  setImportBusy(true, 'Lecture PGN');
+  try {
+    const data = await buildGraphDataFromPgn(pgn, 'PGN importé');
+    setGraphData(data, 'PGN importé: graphe prêt');
+    elements.pgnImportStatus.textContent = `Prêt d${IMPORT_STOCKFISH_DEPTH}`;
+  } catch (error) {
+    elements.pgnImportStatus.textContent = 'Erreur PGN';
+    elements.summaryText.textContent = error.message;
+  } finally {
+    setImportBusy(false);
+  }
+}
+
+async function restoreDefaultGraph() {
+  if (!state.defaultData) {
+    return;
+  }
+  setImportBusy(true, 'Livre italien');
+  setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
+  elements.pgnImportStatus.textContent = 'Livre actif';
+  setImportBusy(false);
+}
+
 function populateControls() {
   const summary = state.data.summary;
-  const model = summary.probabilityModel;
-  state.temperatureCp = model.temperatureCp;
+  const model = summary.probabilityModel ?? {};
+  state.temperatureCp = model.temperatureCp ?? PROBABILITY_TEMPERATURE_CP;
   state.floorMass = DISPLAY_DEFAULT_FLOOR_MASS;
 
   elements.temperatureRange.value = String(state.temperatureCp);
@@ -3186,6 +3694,21 @@ function bindEvents() {
   elements.lineFilter.addEventListener('change', () => {
     state.lineFilter = elements.lineFilter.value;
     renderGraph();
+  });
+
+  elements.pgnFileInput.addEventListener('change', async () => {
+    const file = elements.pgnFileInput.files?.[0];
+    if (!file) {
+      return;
+    }
+    elements.pgnImportStatus.textContent = 'Fichier chargé';
+    elements.pgnTextInput.value = await file.text();
+  });
+  elements.buildPgnButton.addEventListener('click', () => {
+    importPgnFromInput();
+  });
+  elements.defaultPgnButton.addEventListener('click', () => {
+    restoreDefaultGraph();
   });
 
   elements.bestPathButton.addEventListener('click', () => buildPath('best'));
@@ -3236,17 +3759,11 @@ async function init() {
   if (!response.ok) {
     throw new Error(`Impossible de charger opening-graph.json (${response.status})`);
   }
-  state.data = await response.json();
-  state.nodesById = new Map(state.data.nodes.map((node) => [node.id, node]));
-  state.edgesById = new Map(state.data.edges.map((edge) => [edge.id, edge]));
-  state.nodesByFen = new Map(state.data.nodes.map((node) => [node.fen, node]));
-  state.nodesByPositionKey = new Map(
-    state.data.nodes.map((node) => [fenPositionKey(node.fen), node])
-  );
-  populateControls();
+  state.defaultData = await response.json();
   bindEvents();
   setViewMode('human');
-  startNewGame();
+  setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
+  elements.pgnImportStatus.textContent = 'Livre actif';
 }
 
 init().catch((error) => {

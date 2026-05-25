@@ -1,6 +1,7 @@
 # RogueChess
 
 Prototype web statique du mode solo d'ouverture italienne.
+Le site peut aussi importer un PGN depuis le navigateur pour générer un nouveau graphe jouable sans backend.
 
 ## Lancer en local
 

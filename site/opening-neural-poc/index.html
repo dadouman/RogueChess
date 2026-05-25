@@ -73,6 +73,19 @@
           <select id="lineFilter"></select>
         </section>
 
+        <section class="control-section pgn-import-section">
+          <div class="control-header">
+            <label for="pgnTextInput">Importer PGN</label>
+            <strong id="pgnImportStatus">Livre actif</strong>
+          </div>
+          <input id="pgnFileInput" type="file" accept=".pgn,text/plain" />
+          <textarea id="pgnTextInput" rows="5" spellcheck="false" placeholder="[Event &quot;Mon répertoire&quot;]&#10;1. e4 e5 2. Nf3 Nc6"></textarea>
+          <div class="import-actions">
+            <button id="buildPgnButton" type="button">Construire</button>
+            <button id="defaultPgnButton" type="button">Livre italien</button>
+          </div>
+        </section>
+
         <section class="control-section">
           <div class="control-header">
             <label for="temperatureRange">Tolérance aux erreurs</label>

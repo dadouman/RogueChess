@@ -44,12 +44,15 @@ body {
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
 }
 
 button,
-select {
+select,
+textarea,
+input[type="file"] {
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: #202823;
@@ -76,6 +79,24 @@ select {
   width: 100%;
   min-height: 40px;
   padding: 0 10px;
+}
+
+textarea {
+  width: 100%;
+  min-height: 112px;
+  padding: 10px;
+  resize: vertical;
+  color: var(--soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+input[type="file"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 input[type="range"] {
@@ -260,6 +281,20 @@ p {
 .control-header strong {
   color: var(--soft);
   font-variant-numeric: tabular-nums;
+}
+
+.pgn-import-section {
+  gap: 10px;
+}
+
+.import-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.import-actions button {
+  min-width: 0;
 }
 
 .action-grid {
