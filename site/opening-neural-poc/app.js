@@ -1307,11 +1307,13 @@ function renderBoard(node, container = elements.boardPreview) {
 
 function getOpeningBoardArrows() {
   const game = state.game;
+  const reviewEntry = getActiveFreeReviewEntry();
   if (
     !game ||
     game.status !== 'lost' ||
     game.phase !== 'opening' ||
-    !game.expectedOpeningArrows.length
+    !game.expectedOpeningArrows.length ||
+    (reviewEntry && reviewEntry.afterFen !== game.chess.fen())
   ) {
     return [];
   }
@@ -1635,9 +1637,34 @@ function fenPositionKey(fen) {
   return fen.split(/\s+/).slice(0, 4).join(' ');
 }
 
+function createInitialReviewEntry(chess, evaluation) {
+  const cpWhite = evaluation?.cpWhite ?? 0;
+  return {
+    index: 0,
+    text: 'Départ',
+    san: 'Départ',
+    uci: '',
+    color: chess.turn(),
+    label: 'Position initiale',
+    phase: 'start',
+    beforeFen: chess.fen(),
+    afterFen: chess.fen(),
+    from: '',
+    to: '',
+    beforeEvalCp: cpWhite,
+    afterEvalCp: cpWhite,
+    depth: evaluation?.depth ?? 0,
+    pv: evaluation?.pv ?? '',
+    status: 'start',
+    analysis: `Position initiale. Éval ${formatEval(cpWhite)}. La revue permet de rejouer mentalement toute la partie, livre et survie compris.`
+  };
+}
+
 function createInitialGameState(level = state.campaignLevel) {
   const exploration = state.playMode === 'exploration';
   const objective = getLevelObjective(exploration ? FIRST_LEVEL_NUMBER : level);
+  const chess = new Chess();
+  const rootEvaluation = getNode('root')?.evaluation ?? { cpWhite: 0 };
   return {
     active: true,
     mode: state.playMode,
@@ -1645,7 +1672,7 @@ function createInitialGameState(level = state.campaignLevel) {
     objective,
     nextLevel: null,
     finalVictory: false,
-    chess: new Chess(),
+    chess,
     currentNodeId: 'root',
     phase: 'opening',
     status: 'playing',
@@ -1653,9 +1680,9 @@ function createInitialGameState(level = state.campaignLevel) {
     freeRemaining:
       exploration || objective.type === 'mate' ? Number.POSITIVE_INFINITY : objective.target,
     openingBlackMoves: 0,
-    currentEvalCp: getNode('root')?.evaluation?.cpWhite ?? 0,
-    currentPv: '',
-    currentDepth: 0,
+    currentEvalCp: rootEvaluation.cpWhite ?? 0,
+    currentPv: rootEvaluation.pv ?? '',
+    currentDepth: rootEvaluation.depth ?? 0,
     locked: false,
     selectedSquare: null,
     message: exploration
@@ -1663,7 +1690,7 @@ function createInitialGameState(level = state.campaignLevel) {
       : `Niveau ${level}: ${formatLevelObjective(level)} après l'ouverture.`,
     lastMove: null,
     moveLog: [],
-    freeReviewMoves: [],
+    freeReviewMoves: [createInitialReviewEntry(chess, rootEvaluation)],
     freeReview: {
       active: false,
       index: -1
@@ -1859,6 +1886,8 @@ function shouldOpponentLeaveBook() {
 }
 
 function applyGameEdge(edge) {
+  const beforeFen = state.game.chess.fen();
+  const beforeEvalCp = state.game.currentEvalCp;
   const move = playUciOnChess(state.game.chess, edge.uci);
   if (!move) {
     return null;
@@ -1866,10 +1895,24 @@ function applyGameEdge(edge) {
   state.game.lastMove = move;
   state.game.currentNodeId = edge.to;
   const node = getNode(edge.to);
-  state.game.currentEvalCp = node?.evaluation?.cpWhite ?? state.game.currentEvalCp;
-  state.game.currentPv = node?.evaluation?.pv ?? '';
-  state.game.currentDepth = node?.evaluation?.depth ?? state.game.currentDepth;
+  const evaluation = node?.evaluation ?? {
+    cpWhite: state.game.currentEvalCp,
+    depth: state.game.currentDepth,
+    pv: state.game.currentPv
+  };
+  state.game.currentEvalCp = evaluation.cpWhite ?? state.game.currentEvalCp;
+  state.game.currentPv = evaluation.pv ?? '';
+  state.game.currentDepth = evaluation.depth ?? state.game.currentDepth;
   appendGameMove(move, edge.color === 'b' ? 'Livre adverse' : 'Livre blanc');
+  recordFreeReviewMove({
+    move,
+    label: edge.color === 'b' ? 'Livre adverse' : 'Livre blanc',
+    phase: 'opening',
+    beforeFen,
+    beforeEvalCp,
+    evaluation,
+    status: 'book'
+  });
   return move;
 }
 
@@ -1908,11 +1951,20 @@ function formatEvalDelta(deltaCp) {
   return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
 }
 
-function buildFreeMoveAnalysis(entry) {
+function buildReviewMoveAnalysis(entry) {
+  if (entry.phase === 'start') {
+    return entry.analysis;
+  }
+
   const delta = entry.afterEvalCp - entry.beforeEvalCp;
   const evalText = `Éval ${formatEval(entry.beforeEvalCp)} → ${formatEval(entry.afterEvalCp)} (${formatEvalDelta(delta)}).`;
   let verdict;
-  if (entry.color === 'w') {
+  if (entry.phase === 'opening') {
+    verdict =
+      entry.color === 'w'
+        ? "Coup du livre blanc: la partie reste dans l'arbre d'ouverture attendu."
+        : "Réponse du livre adverse: l'adversaire suit encore une branche préparée.";
+  } else if (entry.color === 'w') {
     if (delta >= 45) {
       verdict = 'Très bon coup libre: tu améliores nettement la position.';
     } else if (delta >= 12) {
@@ -1943,11 +1995,12 @@ function buildFreeMoveAnalysis(entry) {
     : entry.status === 'losing'
       ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
       : '';
-  const pvText = entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
+  const pvText =
+    entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
   return `${verdict} ${evalText}${thresholdText}${statusText}${pvText}`;
 }
 
-function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation, status = 'played' }) {
+function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation, phase = 'free', status = 'played' }) {
   const game = state.game;
   if (!game || !move || !Number.isFinite(beforeEvalCp) || !evaluation) {
     return null;
@@ -1960,6 +2013,7 @@ function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation
     uci: moveToUci(move),
     color: move.color,
     label,
+    phase,
     beforeFen,
     afterFen: move.after ?? game.chess.fen(),
     from: move.from,
@@ -1970,7 +2024,7 @@ function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation
     pv: evaluation.pv,
     status
   };
-  entry.analysis = buildFreeMoveAnalysis(entry);
+  entry.analysis = buildReviewMoveAnalysis(entry);
   game.freeReviewMoves.push(entry);
   if (game.status !== 'playing') {
     game.freeReview.index = entry.index;
@@ -2525,7 +2579,7 @@ function renderGameDetails() {
   const phaseLabel = formatGamePhase(game);
   elements.nodeTitle.textContent =
     reviewEntry
-      ? 'Revue libre'
+      ? 'Revue de partie'
       : game.status === 'won'
       ? game.finalVictory
         ? 'Campagne terminée'
@@ -2554,7 +2608,13 @@ function renderGameDetails() {
       : formatEval(currentNode?.futureMeanCp);
   elements.nodeTurn.textContent = sideLabel(reviewEntry ? boardNode.sideToMove : game.chess.turn());
   elements.nodeComment.textContent = reviewEntry ? reviewEntry.analysis : game.message;
-  elements.nodeSources.textContent = reviewEntry ? `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}` : formatSourceList(currentNode?.sources ?? []);
+  elements.nodeSources.textContent = reviewEntry
+    ? reviewEntry.phase === 'opening'
+      ? 'Livre d’ouverture + évaluation pré-calculée'
+      : reviewEntry.phase === 'start'
+        ? 'Position initiale'
+        : `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
+    : formatSourceList(currentNode?.sources ?? []);
   state.currentPreviewNode = boardNode;
 
   renderBoard(boardNode);
@@ -2794,7 +2854,7 @@ function renderFreeReviewPanel() {
   header.className = 'free-review-header';
   header.innerHTML = `
     <div>
-      <span class="kicker">Analyse libre</span>
+      <span class="kicker">Revue de partie</span>
       <strong>${escapeHtml(activeEntry.text)}</strong>
     </div>
     <em>${activeEntry.index + 1}/${game.freeReviewMoves.length}</em>
@@ -2805,14 +2865,14 @@ function renderFreeReviewPanel() {
   const prevButton = document.createElement('button');
   prevButton.type = 'button';
   prevButton.textContent = '‹';
-  prevButton.setAttribute('aria-label', 'Coup libre précédent');
+  prevButton.setAttribute('aria-label', 'Position précédente');
   prevButton.disabled = activeEntry.index <= 0;
   prevButton.addEventListener('click', () => setFreeReviewIndex(activeEntry.index - 1));
 
   const nextButton = document.createElement('button');
   nextButton.type = 'button';
   nextButton.textContent = '›';
-  nextButton.setAttribute('aria-label', 'Coup libre suivant');
+  nextButton.setAttribute('aria-label', 'Position suivante');
   nextButton.disabled = activeEntry.index >= game.freeReviewMoves.length - 1;
   nextButton.addEventListener('click', () => setFreeReviewIndex(activeEntry.index + 1));
 
@@ -2858,7 +2918,10 @@ function renderGameChoices() {
 
   if (game.status !== 'playing') {
     const summary = document.createElement('p');
-    summary.textContent = game.message;
+    summary.textContent =
+      game.freeReviewMoves.length > 1
+        ? `${game.message} Utilise la revue de partie pour revenir sur chaque position jouée.`
+        : game.message;
     elements.choiceList.append(summary);
     return;
   }
