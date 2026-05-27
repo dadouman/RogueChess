@@ -852,10 +852,18 @@ span.expected-pill {
   background: rgba(155, 229, 111, 0.2);
 }
 
-.free-review-analysis {
-  color: var(--soft);
-  font-size: 11px;
-  line-height: 1.38;
+.analysis-section {
+  gap: 7px;
+}
+
+.analysis-source {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.analysis-source[hidden] {
+  display: none;
 }
 
 .free-review-list {

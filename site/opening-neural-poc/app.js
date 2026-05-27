@@ -1993,6 +1993,13 @@ function selectNode(nodeId, options = {}) {
   renderGraph();
 }
 
+function setInfoAnalysis(text, source = '') {
+  elements.nodeComment.textContent = text || 'Aucune analyse pour cette position.';
+  const sourceText = source && source !== '-' ? `Source: ${source}` : '';
+  elements.nodeSources.textContent = sourceText;
+  elements.nodeSources.hidden = !sourceText;
+}
+
 function renderDetails() {
   if (shouldRenderGameDetails()) {
     renderGameDetails();
@@ -2019,13 +2026,14 @@ function renderDetails() {
   elements.nodeEval.textContent = formatEval(previewNode?.evaluation?.cpWhite);
   elements.nodeFuture.textContent = formatEval(previewNode?.futureMeanCp);
   elements.nodeTurn.textContent = sideLabel(previewNode?.sideToMove);
-  elements.nodeComment.textContent =
+  setInfoAnalysis(
     previewNode?.comments?.[0] ??
     selectedSegment?.comments[0] ??
     node.comments[0] ??
     incomingEdge?.comments[0] ??
-    'Aucune note pour cette position.';
-  elements.nodeSources.textContent = formatSourceList(selectedSegment?.sources ?? node.sources);
+    'Aucune note pour cette position.',
+    formatSourceList(selectedSegment?.sources ?? node.sources)
+  );
   state.currentPreviewNode = previewNode ?? node;
 
   renderBoard(state.currentPreviewNode);
@@ -4398,6 +4406,46 @@ function makeGameBoardNode() {
   };
 }
 
+function formatGamePanelMessage(game, reviewEntry = null) {
+  if (reviewEntry) {
+    return isPostGameReviewPlayable()
+      ? `Variante depuis ${reviewEntry.text}: joue un coup légal.`
+      : `Revue de partie: ${reviewEntry.text}. Utilise les flèches pour naviguer.`;
+  }
+
+  if (game.status === 'lost') {
+    return "Partie terminée. L'analyse détaillée est dans Infos position.";
+  }
+
+  if (game.status === 'won') {
+    return game.finalVictory
+      ? "Campagne terminée. L'analyse détaillée est dans Infos position."
+      : "Niveau réussi. L'analyse détaillée est dans Infos position.";
+  }
+
+  return game.message;
+}
+
+function getGameInfoAnalysis(game, currentNode = null) {
+  if (game.status !== 'playing') {
+    return game.message;
+  }
+
+  if (currentNode?.comments?.[0]) {
+    return currentNode.comments[0];
+  }
+
+  if (game.phase === 'opening') {
+    return "Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.";
+  }
+
+  if (isExplorationMode()) {
+    return "Position libre: teste une idée, Stockfish répondra sans pénalité.";
+  }
+
+  return `Position de survie: garde l'évaluation à ${formatEval(SURVIVAL_LIMIT_CP)} ou mieux.`;
+}
+
 function renderGameDetails() {
   const game = state.game;
   if (!game) {
@@ -4438,16 +4486,18 @@ function renderGameDetails() {
       ? formatFreeRemaining(game)
       : formatEval(currentNode?.futureMeanCp);
   elements.nodeTurn.textContent = sideLabel(reviewEntry ? boardNode.sideToMove : game.chess.turn());
-  elements.nodeComment.textContent = reviewEntry ? reviewEntry.analysis : game.message;
-  elements.nodeSources.textContent = reviewEntry
-    ? reviewEntry.phase === 'opening'
-      ? 'Livre d’ouverture + évaluation pré-calculée'
-      : reviewEntry.phase === 'start'
-        ? 'Position initiale'
-        : reviewEntry.phase === 'engine-line'
-          ? `Suite Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
-          : `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
-    : formatSourceList(currentNode?.sources ?? []);
+  setInfoAnalysis(
+    reviewEntry ? reviewEntry.analysis : getGameInfoAnalysis(game, currentNode),
+    reviewEntry
+      ? reviewEntry.phase === 'opening'
+        ? 'Livre d’ouverture + évaluation pré-calculée'
+        : reviewEntry.phase === 'start'
+          ? 'Position initiale'
+          : reviewEntry.phase === 'engine-line'
+            ? `Suite Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
+            : `Stockfish d${reviewEntry.depth || STOCKFISH_DEPTH}`
+      : formatSourceList(currentNode?.sources ?? [])
+  );
   state.currentPreviewNode = boardNode;
 
   renderBoard(boardNode);
@@ -4486,7 +4536,7 @@ function renderGamePanel(phaseLabel = null) {
   elements.gameFreeRemaining.textContent = formatFreeRemaining(game);
   elements.gameEval.textContent = formatEval(reviewEntry?.afterEvalCp ?? game.currentEvalCp);
   elements.gameTurn.textContent = sideLabel(reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn());
-  elements.gameMessage.textContent = reviewEntry ? reviewEntry.analysis : game.message;
+  elements.gameMessage.textContent = formatGamePanelMessage(game, reviewEntry);
   const reviewPlayable = isPostGameReviewPlayable();
   elements.playMoveButton.disabled =
     game.locked || !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === 'w'));
@@ -4799,10 +4849,6 @@ function renderFreeReviewPanel() {
   });
   actions.append(analysisButton);
 
-  const summary = document.createElement('p');
-  summary.className = 'free-review-analysis';
-  summary.textContent = activeEntry.analysis;
-
   const list = document.createElement('div');
   list.className = 'free-review-list';
   for (const entry of game.freeReviewMoves) {
@@ -4821,7 +4867,7 @@ function renderFreeReviewPanel() {
   if (childEntries.length) {
     elements.freeReviewPanel.append(branches);
   }
-  elements.freeReviewPanel.append(actions, summary, list);
+  elements.freeReviewPanel.append(actions, list);
 }
 
 function renderGameChoices() {
@@ -4835,8 +4881,7 @@ function renderGameChoices() {
     const reviewEntry = getActiveFreeReviewEntry();
     const chess = new Chess(reviewEntry.afterFen);
     const intro = document.createElement('p');
-    intro.textContent =
-      `Analyse depuis ${reviewEntry.text}: joue un coup légal pour créer une variante.`;
+    intro.textContent = `Créer une variante depuis ${reviewEntry.text}.`;
     elements.choiceList.append(intro);
     for (const san of chess.moves().slice(0, 10)) {
       const row = document.createElement('button');
