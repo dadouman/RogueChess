@@ -670,69 +670,120 @@ function stripInlineMoveNumber(token) {
 function tokenizePgnMovetext(movetext) {
   const tokens = [];
   const tokenPattern = /\{[^}]*\}|\(|\)|[^\s{}()]+/g;
-  let variationDepth = 0;
 
   for (const match of movetext.matchAll(tokenPattern)) {
-    const token = match[0];
-    if (token === '(') {
-      variationDepth += 1;
-      continue;
-    }
-    if (token === ')') {
-      variationDepth = Math.max(0, variationDepth - 1);
-      continue;
-    }
-    if (variationDepth > 0) {
-      continue;
-    }
-    tokens.push(token);
+    tokens.push(match[0]);
   }
 
   return tokens;
+}
+
+function cloneParsedMoves(moves) {
+  return moves.map((move) => ({ ...move }));
+}
+
+function shouldSkipPgnToken(rawToken, token) {
+  return (
+    !token ||
+    isMoveNumberToken(rawToken) ||
+    RESULT_TOKENS.has(token) ||
+    /^\$\d+$/.test(token) ||
+    /^;/.test(token)
+  );
+}
+
+function parsePgnMoveVariants(tokens) {
+  const variationLines = [];
+
+  function parseSequence(startIndex, baseMoves = []) {
+    let index = startIndex;
+    const moves = cloneParsedMoves(baseMoves);
+    let pendingComment = '';
+
+    while (index < tokens.length) {
+      const rawToken = tokens[index];
+
+      if (rawToken === ')') {
+        return { index: index + 1, moves };
+      }
+
+      if (rawToken === '(') {
+        const branchBase = cloneParsedMoves(moves.slice(0, Math.max(0, moves.length - 1)));
+        const branch = parseSequence(index + 1, branchBase);
+        if (branch.moves.length > branchBase.length) {
+          variationLines.push(branch.moves);
+        }
+        index = branch.index;
+        continue;
+      }
+
+      if (rawToken.startsWith('{')) {
+        const comment = normalizePgnText(rawToken.slice(1, -1));
+        if (moves.length > baseMoves.length) {
+          const last = moves[moves.length - 1];
+          last.comment = normalizePgnText([last.comment, comment].filter(Boolean).join(' '));
+        } else {
+          pendingComment = normalizePgnText([pendingComment, comment].filter(Boolean).join(' '));
+        }
+        index += 1;
+        continue;
+      }
+
+      const token = stripInlineMoveNumber(rawToken);
+      if (shouldSkipPgnToken(rawToken, token)) {
+        index += 1;
+        continue;
+      }
+
+      const san = stripSanAnnotation(token);
+      if (!san) {
+        index += 1;
+        continue;
+      }
+
+      moves.push({
+        rawSan: token,
+        san,
+        annotation: token.match(/[!?]+$/)?.[0] ?? '',
+        comment: pendingComment
+      });
+      pendingComment = '';
+      index += 1;
+    }
+
+    return { index, moves };
+  }
+
+  const mainLine = parseSequence(0, []).moves;
+  const seen = new Set();
+  return [mainLine, ...variationLines].filter((moves) => {
+    if (!moves.length) {
+      return false;
+    }
+    const key = moves.map((move) => move.rawSan).join(' ');
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function parsePgnGame(block, index) {
   const headers = parsePgnHeaders(block);
   const movetext = stripPgnHeaders(block);
   const tokens = tokenizePgnMovetext(movetext);
-  const moves = [];
-  let pendingComment = '';
+  const variants = parsePgnMoveVariants(tokens);
+  const baseEvent = headers.Event ?? `Ligne ${index + 1}`;
+  const baseId = `line_${String(index + 1).padStart(2, '0')}`;
 
-  for (const rawToken of tokens) {
-    if (rawToken.startsWith('{')) {
-      const comment = normalizePgnText(rawToken.slice(1, -1));
-      if (moves.length) {
-        const last = moves[moves.length - 1];
-        last.comment = normalizePgnText([last.comment, comment].filter(Boolean).join(' '));
-      } else {
-        pendingComment = normalizePgnText([pendingComment, comment].filter(Boolean).join(' '));
-      }
-      continue;
-    }
-
-    const token = stripInlineMoveNumber(rawToken);
-    if (
-      !token ||
-      isMoveNumberToken(rawToken) ||
-      RESULT_TOKENS.has(token) ||
-      /^\$\d+$/.test(token) ||
-      /^;/.test(token)
-    ) {
-      continue;
-    }
-
-    moves.push({
-      rawSan: token,
-      san: stripSanAnnotation(token),
-      annotation: token.match(/[!?]+$/)?.[0] ?? '',
-      comment: pendingComment
-    });
-    pendingComment = '';
-  }
-
-  return {
-    id: `line_${String(index + 1).padStart(2, '0')}`,
-    event: headers.Event ?? `Ligne ${index + 1}`,
+  return variants.map((moves, variantIndex) => ({
+    id: variants.length > 1
+      ? `${baseId}_${String(variantIndex + 1).padStart(2, '0')}`
+      : baseId,
+    event: variants.length > 1
+      ? `${baseEvent} · ${variantIndex === 0 ? 'ligne principale' : `variante ${variantIndex}`}`
+      : baseEvent,
     opening: headers.Opening ?? '',
     eco: headers.ECO ?? '',
     result: headers.Result ?? '*',
@@ -741,7 +792,7 @@ function parsePgnGame(block, index) {
     setup: headers.SetUp ?? '',
     chapterName: headers.ChapterName ?? '',
     moves
-  };
+  }));
 }
 
 function makeLineEventsUnique(lines) {
@@ -4432,7 +4483,9 @@ function setImportBusy(isBusy, statusText = '') {
 
 async function buildGraphDataFromPgn(pgn, sourceName = 'PGN importé') {
   const blocks = splitPgnGames(pgn);
-  const lines = makeLineEventsUnique(blocks.map(parsePgnGame)).filter((line) => line.moves.length);
+  const lines = makeLineEventsUnique(blocks.flatMap(parsePgnGame)).filter(
+    (line) => line.moves.length
+  );
   if (!lines.length) {
     throw new Error('Aucune ligne PGN jouable trouvée.');
   }
