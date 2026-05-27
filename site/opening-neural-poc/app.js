@@ -2851,6 +2851,8 @@ function createInitialGameState(level = state.campaignLevel) {
     finalVictory: false,
     chess,
     currentNodeId: 'root',
+    currentPathNodeIds: ['root'],
+    currentPathEdgeIds: [],
     phase: 'opening',
     status: 'playing',
     lives: STARTING_LIVES,
@@ -2910,6 +2912,72 @@ function getRawOutgoingEdges(nodeId, color = null) {
   return node.outgoing
     .map(getEdge)
     .filter((edge) => edge && (!color || edge.color === color));
+}
+
+function buildRawPathToNode(nodeId) {
+  if (!nodeId || (nodeId !== 'root' && !getNode(nodeId))) {
+    return { nodeIds: ['root'], edgeIds: [] };
+  }
+
+  const nodeIds = [];
+  const edgeIds = [];
+  let currentId = nodeId;
+  const visited = new Set();
+  let guard = 0;
+
+  while (currentId && currentId !== 'root' && guard < 180) {
+    if (visited.has(currentId)) {
+      break;
+    }
+    visited.add(currentId);
+    nodeIds.push(currentId);
+    const node = getNode(currentId);
+    const incomingEdge = node?.incoming.map(getEdge).find(Boolean);
+    if (!incomingEdge) {
+      break;
+    }
+    edgeIds.push(incomingEdge.id);
+    currentId = incomingEdge.from;
+    guard += 1;
+  }
+
+  nodeIds.push('root');
+  return {
+    nodeIds: nodeIds.reverse(),
+    edgeIds: edgeIds.reverse()
+  };
+}
+
+function setGameGraphPathToNode(nodeId) {
+  if (!state.game) {
+    return;
+  }
+  const path = buildRawPathToNode(nodeId);
+  state.game.currentPathNodeIds = path.nodeIds;
+  state.game.currentPathEdgeIds = path.edgeIds;
+}
+
+function appendGameGraphPathEdge(edge) {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+
+  if (!Array.isArray(game.currentPathNodeIds) || !Array.isArray(game.currentPathEdgeIds)) {
+    setGameGraphPathToNode(edge.from);
+  }
+
+  const lastNodeId = game.currentPathNodeIds[game.currentPathNodeIds.length - 1];
+  if (lastNodeId !== edge.from) {
+    setGameGraphPathToNode(edge.from);
+  }
+
+  if (game.currentPathEdgeIds[game.currentPathEdgeIds.length - 1] !== edge.id) {
+    game.currentPathEdgeIds.push(edge.id);
+  }
+  if (game.currentPathNodeIds[game.currentPathNodeIds.length - 1] !== edge.to) {
+    game.currentPathNodeIds.push(edge.to);
+  }
 }
 
 function isEdgeLegalInGame(edge) {
@@ -3192,6 +3260,7 @@ function applyGameEdge(edge) {
   }
   state.game.lastMove = move;
   state.game.currentNodeId = edge.to;
+  appendGameGraphPathEdge(edge);
   const node = getNode(edge.to);
   const evaluation = node?.evaluation ?? {
     cpWhite: state.game.currentEvalCp,
@@ -3219,6 +3288,7 @@ function applyFreeMove(move, label) {
   const node = getGameNodeByFen();
   if (node) {
     state.game.currentNodeId = node.id;
+    setGameGraphPathToNode(node.id);
   }
   appendGameMove(move, label);
 }
@@ -3631,6 +3701,7 @@ async function launchPostGameFreeAnalysis() {
   game.locked = false;
   game.chess = chess;
   game.currentNodeId = originNode?.id ?? game.currentNodeId ?? 'root';
+  setGameGraphPathToNode(game.currentNodeId);
   game.objective = getLevelObjective(FIRST_LEVEL_NUMBER);
   game.freeRemaining = Number.POSITIVE_INFINITY;
   game.freeRoundPending = false;
@@ -4110,6 +4181,7 @@ function enterFreePhase(message) {
   const node = getGameNodeByFen();
   if (node) {
     state.game.currentNodeId = node.id;
+    setGameGraphPathToNode(node.id);
   }
 }
 
@@ -4195,6 +4267,68 @@ function setGameLocked(isLocked) {
   renderGamePanel();
 }
 
+function getGameRawPathToCurrentNode() {
+  const game = state.game;
+  if (!game) {
+    return { nodeIds: ['root'], edgeIds: [] };
+  }
+
+  const currentId = game.currentNodeId ?? 'root';
+  const storedNodeIds = Array.isArray(game.currentPathNodeIds) ? game.currentPathNodeIds : [];
+  const storedEdgeIds = Array.isArray(game.currentPathEdgeIds) ? game.currentPathEdgeIds : [];
+  const endsAtCurrent = storedNodeIds[storedNodeIds.length - 1] === currentId;
+  const validStoredPath =
+    storedNodeIds.length > 0 &&
+    endsAtCurrent &&
+    storedNodeIds.every((nodeId) => nodeId === 'root' || getNode(nodeId)) &&
+    storedEdgeIds.every((edgeId) => getEdge(edgeId));
+
+  if (validStoredPath) {
+    return {
+      nodeIds: [...storedNodeIds],
+      edgeIds: [...storedEdgeIds]
+    };
+  }
+
+  return buildRawPathToNode(currentId);
+}
+
+function projectRawPathToView(view, rawPath) {
+  const rawEdgeIds = new Set(rawPath.edgeIds);
+  const rawNodeIds = new Set(rawPath.nodeIds);
+  const highlightedEdges = [];
+  const highlightedNodes = new Set(['root']);
+
+  for (const edge of view.edges) {
+    if (!edge.pathEdgeIds.some((edgeId) => rawEdgeIds.has(edgeId))) {
+      continue;
+    }
+    highlightedEdges.push(edge.id);
+    highlightedNodes.add(edge.from);
+    highlightedNodes.add(edge.to);
+  }
+
+  for (const nodeId of rawNodeIds) {
+    if (view.nodesById.has(nodeId)) {
+      highlightedNodes.add(nodeId);
+    }
+  }
+
+  return {
+    edgeIds: highlightedEdges,
+    nodeIds: [...highlightedNodes]
+  };
+}
+
+function findCurrentViewSegment(view, currentId, rawPath) {
+  const lastRawEdgeId = rawPath.edgeIds[rawPath.edgeIds.length - 1];
+  return (
+    view.edges.find((edge) => edge.pathEdgeIds.includes(lastRawEdgeId)) ??
+    view.edges.find((edge) => edge.pathNodeIds.includes(currentId)) ??
+    null
+  );
+}
+
 function syncGameGraphSelection(view) {
   const game = state.game;
   if (!game?.active || !view) {
@@ -4202,15 +4336,20 @@ function syncGameGraphSelection(view) {
   }
 
   const currentId = game.currentNodeId;
+  const rawPath = getGameRawPathToCurrentNode();
+  const highlightedPath = projectRawPathToView(view, rawPath);
+  state.highlightedEdges = new Set(highlightedPath.edgeIds);
+  state.highlightedNodes = new Set(highlightedPath.nodeIds);
+
   const directNode = view.nodesById.get(currentId);
-  const containingSegment = view.edges.find((edge) => edge.pathNodeIds.includes(currentId));
+  const containingSegment = findCurrentViewSegment(view, currentId, rawPath);
+  const currentNode = getNode(currentId);
+  const currentLabel = currentId === 'root' ? 'départ' : currentNode?.san ?? currentId;
   if (containingSegment) {
     state.selectedNodeId = containingSegment.to;
     state.selectedSegment = containingSegment;
-    state.segmentStepIndex = containingSegment.pathNodeIds.indexOf(currentId);
-    state.highlightedEdges = new Set([containingSegment.id]);
-    state.highlightedNodes = new Set([containingSegment.from, containingSegment.to]);
-    elements.selectedPathLabel.textContent = `Jeu: ${containingSegment.sequenceLabel}`;
+    state.segmentStepIndex = Math.max(0, containingSegment.pathNodeIds.indexOf(currentId));
+    elements.selectedPathLabel.textContent = `Jeu: ${rawPath.edgeIds.length} coups jusqu'à ${currentLabel}`;
     return;
   }
 
@@ -4218,8 +4357,6 @@ function syncGameGraphSelection(view) {
     state.selectedNodeId = currentId;
     state.selectedSegment = null;
     state.segmentStepIndex = 0;
-    state.highlightedNodes = new Set([currentId]);
-    state.highlightedEdges.clear();
     elements.selectedPathLabel.textContent =
       currentId === 'root' ? 'Jeu: départ' : `Jeu: ${directNode.raw.san}`;
   }
