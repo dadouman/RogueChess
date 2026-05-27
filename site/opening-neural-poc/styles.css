@@ -782,6 +782,55 @@ span.expected-pill {
   text-transform: uppercase;
 }
 
+.free-review-branches {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.free-review-branches > strong {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.free-review-branches button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+}
+
+.free-review-branches button.is-active {
+  border-color: rgba(255, 217, 102, 0.68);
+  background: rgba(255, 217, 102, 0.12);
+}
+
+.free-review-branches span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-review-branches em {
+  color: var(--gold);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .free-review-actions {
   display: grid;
   min-width: 0;

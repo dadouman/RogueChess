@@ -70,6 +70,7 @@ const elements = {
   gameEval: document.querySelector('#gameEval'),
   gameTurn: document.querySelector('#gameTurn'),
   moveForm: document.querySelector('#moveForm'),
+  moveInputLabel: document.querySelector('#moveInputLabel'),
   moveInput: document.querySelector('#moveInput'),
   playMoveButton: document.querySelector('#playMoveButton'),
   gameMessage: document.querySelector('#gameMessage'),
@@ -2172,6 +2173,7 @@ function renderBoard(node, container = elements.boardPreview) {
   const openingArrows = getOpeningBoardArrows();
   const selectedSquare = interactive ? state.game.selectedSquare : null;
   const legalTargets = selectedSquare ? getLegalTargetsFromSquare(selectedSquare) : new Set();
+  const playableColor = interactive ? getPlayableBoardColor() : null;
   const openingBookMode = interactive && isOpeningBookChoiceActive();
   const bookTargets =
     selectedSquare && openingBookMode ? getBookTargetsFromSquare(selectedSquare) : new Set();
@@ -2188,6 +2190,7 @@ function renderBoard(node, container = elements.boardPreview) {
           appendSquare(container, rankIndex, fileIndex, null, from, to, {
             interactive,
             selectedSquare,
+            playableColor,
             legalTargets,
             bookTargets,
             openingBookMode
@@ -2198,6 +2201,7 @@ function renderBoard(node, container = elements.boardPreview) {
         appendSquare(container, rankIndex, fileIndex, char, from, to, {
           interactive,
           selectedSquare,
+          playableColor,
           legalTargets,
           bookTargets,
           openingBookMode
@@ -2313,7 +2317,7 @@ function buildBoardArrowPath(start, end) {
 function appendSquare(container, rankIndex, fileIndex, piece, from, to, options = {}) {
   const squareName = `${'abcdefgh'[fileIndex]}${8 - rankIndex}`;
   const pieceColor = piece ? (piece === piece.toUpperCase() ? 'w' : 'b') : null;
-  const selectable = options.interactive && pieceColor === 'w';
+  const selectable = options.interactive && pieceColor === options.playableColor;
   const target = options.legalTargets?.has(squareName);
   const bookTarget = target && options.bookTargets?.has(squareName);
   const offbookTarget = target && options.openingBookMode && !bookTarget;
@@ -2362,17 +2366,40 @@ function isBoardInteractive(container) {
     container === elements.boardPreview &&
       shouldRenderGameDetails() &&
       state.game?.active &&
-      state.game.status === 'playing' &&
       !state.game.locked &&
-      state.game.chess.turn() === 'w'
+      getPlayableBoardColor()
   );
 }
 
+function getInteractiveChess() {
+  const reviewEntry = getActiveFreeReviewEntry();
+  if (isPostGameReviewPlayable() && reviewEntry) {
+    return new Chess(reviewEntry.afterFen);
+  }
+  return state.game?.chess ?? null;
+}
+
+function getPlayableBoardColor() {
+  const game = state.game;
+  if (!game) {
+    return null;
+  }
+  const reviewEntry = getActiveFreeReviewEntry();
+  if (isPostGameReviewPlayable() && reviewEntry) {
+    return reviewEntry.afterFen.split(/\s+/)[1] ?? 'w';
+  }
+  if (game.status === 'playing' && !game.locked && game.chess.turn() === 'w') {
+    return 'w';
+  }
+  return null;
+}
+
 function getLegalTargetsFromSquare(square) {
-  if (!state.game || !square) {
+  const chess = getInteractiveChess();
+  if (!chess || !square) {
     return new Set();
   }
-  return new Set(state.game.chess.moves({ square, verbose: true }).map((move) => move.to));
+  return new Set(chess.moves({ square, verbose: true }).map((move) => move.to));
 }
 
 function isOpeningBookChoiceActive() {
@@ -2403,19 +2430,21 @@ function getBoardSquareLabel(squareName, piece, isTarget) {
 
 function handleBoardSquareClick(squareName) {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
+  const chess = getInteractiveChess();
+  const playableColor = getPlayableBoardColor();
+  if (!game || !chess || game.locked || !playableColor) {
     return;
   }
 
-  const piece = game.chess.get(squareName);
+  const piece = chess.get(squareName);
   const selected = game.selectedSquare;
 
   if (!selected) {
-    if (piece?.color === 'w') {
+    if (piece?.color === playableColor) {
       selectBoardSquare(squareName);
       return;
     }
-    game.message = 'Sélectionne une pièce blanche pour jouer.';
+    game.message = `Sélectionne une pièce ${playableColor === 'w' ? 'blanche' : 'noire'} pour jouer.`;
     renderGameDetails();
     return;
   }
@@ -2427,7 +2456,7 @@ function handleBoardSquareClick(squareName) {
     return;
   }
 
-  const legalMoves = game.chess.moves({ square: selected, verbose: true });
+  const legalMoves = chess.moves({ square: selected, verbose: true });
   const move = legalMoves.find(
     (candidate) =>
       candidate.to === squareName &&
@@ -2440,7 +2469,7 @@ function handleBoardSquareClick(squareName) {
     return;
   }
 
-  if (piece?.color === 'w') {
+  if (piece?.color === playableColor) {
     selectBoardSquare(squareName);
     return;
   }
@@ -2451,7 +2480,8 @@ function handleBoardSquareClick(squareName) {
 
 function selectBoardSquare(squareName) {
   state.game.selectedSquare = squareName;
-  const legalMoves = state.game.chess.moves({ square: squareName, verbose: true });
+  const chess = getInteractiveChess();
+  const legalMoves = chess?.moves({ square: squareName, verbose: true }) ?? [];
   const bookTargets = getBookTargetsFromSquare(squareName);
   if (!legalMoves.length) {
     state.game.message = `La pièce en ${squareName} n'a pas de coup légal.`;
@@ -2795,6 +2825,8 @@ function createInitialReviewEntry(chess, evaluation) {
     to: '',
     beforeEvalCp: cpWhite,
     afterEvalCp: cpWhite,
+    parentIndex: null,
+    branchLabel: 'Partie',
     depth: evaluation?.depth ?? 0,
     pv: evaluation?.pv ?? '',
     pvUci: evaluation?.pvUci ?? [],
@@ -2838,7 +2870,8 @@ function createInitialGameState(level = state.campaignLevel) {
     freeReviewMoves: [createInitialReviewEntry(chess, rootEvaluation)],
     freeReview: {
       active: false,
-      index: -1
+      index: -1,
+      preferredChildByParent: {}
     },
     failureFen: null,
     failureEvaluation: null,
@@ -3286,12 +3319,126 @@ function buildReviewMoveAnalysis(entry) {
   return `${verdict} ${evalText}${thresholdText}${statusText}${humanEvalText}${pvText}`;
 }
 
-function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation, phase = 'free', status = 'played' }) {
+function ensureReviewTree(game = state.game) {
+  if (!game?.freeReviewMoves?.length) {
+    return;
+  }
+
+  if (!game.freeReview.preferredChildByParent) {
+    game.freeReview.preferredChildByParent = {};
+  }
+
+  game.freeReviewMoves.forEach((entry, index) => {
+    entry.index = index;
+    if (index === 0) {
+      entry.parentIndex = null;
+      entry.branchLabel = entry.branchLabel || 'Partie';
+      return;
+    }
+
+    if (
+      !Number.isFinite(entry.parentIndex) ||
+      entry.parentIndex < 0 ||
+      entry.parentIndex >= index
+    ) {
+      entry.parentIndex = index - 1;
+    }
+  });
+}
+
+function getReviewChildren(parentIndex) {
+  const game = state.game;
+  if (!game?.freeReviewMoves?.length || !Number.isFinite(parentIndex)) {
+    return [];
+  }
+  ensureReviewTree(game);
+  return game.freeReviewMoves.filter((entry) => entry.parentIndex === parentIndex);
+}
+
+function getReviewParent(entry) {
+  const game = state.game;
+  if (!game || !entry || !Number.isFinite(entry.parentIndex)) {
+    return null;
+  }
+  ensureReviewTree(game);
+  return game.freeReviewMoves[entry.parentIndex] ?? null;
+}
+
+function getPreferredReviewChild(entry) {
+  const game = state.game;
+  if (!game || !entry) {
+    return null;
+  }
+
+  const children = getReviewChildren(entry.index);
+  if (!children.length) {
+    return null;
+  }
+
+  const preferredIndex = game.freeReview.preferredChildByParent?.[entry.index];
+  return children.find((child) => child.index === preferredIndex) ?? children[0];
+}
+
+function rememberReviewChild(entry) {
+  const game = state.game;
+  if (!game || !entry || !Number.isFinite(entry.parentIndex)) {
+    return;
+  }
+
+  if (!game.freeReview.preferredChildByParent) {
+    game.freeReview.preferredChildByParent = {};
+  }
+  game.freeReview.preferredChildByParent[entry.parentIndex] = entry.index;
+}
+
+function getReviewPath(entry) {
+  const game = state.game;
+  if (!game || !entry) {
+    return [];
+  }
+
+  ensureReviewTree(game);
+  const path = [];
+  const seen = new Set();
+  let current = entry;
+  while (current && !seen.has(current.index)) {
+    path.unshift(current);
+    seen.add(current.index);
+    current = getReviewParent(current);
+  }
+  return path;
+}
+
+function inferReviewBranchLabel(parentIndex) {
+  const siblings = getReviewChildren(parentIndex);
+  if (!siblings.length) {
+    return '';
+  }
+  return `Variante ${siblings.length + 1}`;
+}
+
+function recordFreeReviewMove({
+  move,
+  label,
+  beforeFen,
+  beforeEvalCp,
+  evaluation,
+  phase = 'free',
+  status = 'played',
+  parentIndex = null,
+  branchLabel = ''
+}) {
   const game = state.game;
   if (!game || !move || !Number.isFinite(beforeEvalCp) || !evaluation) {
     return null;
   }
 
+  ensureReviewTree(game);
+  const safeParentIndex = Number.isFinite(parentIndex)
+    ? clamp(Math.round(parentIndex), 0, Math.max(0, game.freeReviewMoves.length - 1))
+    : game.freeReviewMoves.length
+      ? game.freeReviewMoves.length - 1
+      : null;
   const entry = {
     index: game.freeReviewMoves.length,
     text: getMoveText(move),
@@ -3306,6 +3453,8 @@ function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation
     to: move.to,
     beforeEvalCp,
     afterEvalCp: evaluation.cpWhite,
+    parentIndex: safeParentIndex,
+    branchLabel: branchLabel || inferReviewBranchLabel(safeParentIndex),
     depth: evaluation.depth,
     pv: evaluation.pv,
     pvUci: evaluation.pvUci ?? [],
@@ -3313,6 +3462,7 @@ function recordFreeReviewMove({ move, label, beforeFen, beforeEvalCp, evaluation
   };
   entry.analysis = buildReviewMoveAnalysis(entry);
   game.freeReviewMoves.push(entry);
+  rememberReviewChild(entry);
   if (game.status !== 'playing') {
     game.freeReview.index = entry.index;
   }
@@ -3411,11 +3561,24 @@ function hasPostGameFreeReview() {
   );
 }
 
+function isPostGameReviewPlayable() {
+  const game = state.game;
+  return Boolean(
+    game &&
+      game.status !== 'playing' &&
+      game.freeReview?.active &&
+      getActiveFreeReviewEntry() &&
+      !game.locked &&
+      !game.cinematic?.active
+  );
+}
+
 function getActiveFreeReviewEntry() {
   const game = state.game;
   if (!game?.freeReview?.active || !game.freeReviewMoves.length) {
     return null;
   }
+  ensureReviewTree(game);
   const index = clamp(game.freeReview.index, 0, game.freeReviewMoves.length - 1);
   return game.freeReviewMoves[index] ?? null;
 }
@@ -3426,8 +3589,11 @@ function setFreeReviewIndex(index) {
     return;
   }
   clearGameCinematic();
+  ensureReviewTree(game);
   game.freeReview.active = true;
   game.freeReview.index = clamp(index, 0, game.freeReviewMoves.length - 1);
+  game.selectedSquare = null;
+  rememberReviewChild(game.freeReviewMoves[game.freeReview.index]);
   renderGameDetails();
 }
 
@@ -3613,11 +3779,75 @@ function finishTerminalPosition(message = 'La partie est terminée.') {
   finishGame('won', message);
 }
 
-async function submitHumanMove(rawInput = elements.moveInput.value) {
+async function submitReviewVariationMove(rawInput = elements.moveInput.value) {
   const game = state.game;
-  if (!game || game.locked || game.status !== 'playing') {
+  const parentEntry = getActiveFreeReviewEntry();
+  if (!game || !parentEntry) {
     return;
   }
+
+  const input = String(rawInput ?? '').trim();
+  if (!input) {
+    game.message = 'Entre un coup légal pour créer une variante.';
+    renderGamePanel();
+    return;
+  }
+
+  const chess = new Chess(parentEntry.afterFen);
+  const beforeFen = chess.fen();
+  const move = tryMoveInput(chess, input);
+  if (!move) {
+    game.message = `Coup illégal depuis ${parentEntry.text}.`;
+    renderGameDetails();
+    return;
+  }
+
+  game.selectedSquare = null;
+  setGameLocked(true);
+  try {
+    const evaluator = await ensureStockfishReady(false);
+    const evaluation = await evaluator.evaluate(chess.fen());
+    const entry = recordFreeReviewMove({
+      move,
+      label: 'Analyse variante',
+      phase: 'analysis',
+      beforeFen,
+      beforeEvalCp: parentEntry.afterEvalCp,
+      evaluation,
+      parentIndex: parentEntry.index
+    });
+
+    if (entry) {
+      game.freeReview.active = true;
+      game.freeReview.index = entry.index;
+      game.message = `Variante créée depuis ${parentEntry.text}: ${move.san}.`;
+      renderGameDetails();
+    }
+  } catch (error) {
+    game.message = `Impossible de créer la variante: ${error.message}`;
+    renderGameDetails();
+  } finally {
+    setGameLocked(false);
+    renderGameDetails();
+  }
+}
+
+async function submitHumanMove(rawInput = elements.moveInput.value) {
+  const game = state.game;
+  if (!game || game.locked) {
+    return;
+  }
+
+  if (isPostGameReviewPlayable()) {
+    await submitReviewVariationMove(rawInput);
+    elements.moveInput.value = '';
+    return;
+  }
+
+  if (game.status !== 'playing') {
+    return;
+  }
+
   if (game.chess.turn() !== 'w') {
     game.message = 'Attends la réponse noire.';
     renderGamePanel();
@@ -4119,9 +4349,17 @@ function renderGamePanel(phaseLabel = null) {
   elements.gameEval.textContent = formatEval(reviewEntry?.afterEvalCp ?? game.currentEvalCp);
   elements.gameTurn.textContent = sideLabel(reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn());
   elements.gameMessage.textContent = reviewEntry ? reviewEntry.analysis : game.message;
+  const reviewPlayable = isPostGameReviewPlayable();
   elements.playMoveButton.disabled =
-    game.locked || game.status !== 'playing' || game.chess.turn() !== 'w';
+    game.locked || !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === 'w'));
   elements.moveInput.disabled = elements.playMoveButton.disabled;
+  const inputSide = reviewPlayable
+    ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1])
+    : 'Blancs';
+  elements.moveInputLabel.textContent = reviewPlayable ? `Coup des ${inputSide}` : 'Coup blanc';
+  elements.moveInput.placeholder = reviewPlayable
+    ? `${inputSide}: SAN ou UCI`
+    : 'ex. Nf3 ou g1f3';
   elements.newGameButton.textContent =
     game.status === 'playing'
       ? isExplorationMode()
@@ -4181,6 +4419,24 @@ function formatFreeRemaining(game) {
 function renderExpectedMoveList() {
   const game = state.game;
   elements.expectedMoveList.replaceChildren();
+  if (isPostGameReviewPlayable()) {
+    const reviewEntry = getActiveFreeReviewEntry();
+    const chess = new Chess(reviewEntry.afterFen);
+    const free = document.createElement('span');
+    free.className = 'expected-pill is-free';
+    free.textContent = `Analyse ${sideLabel(chess.turn())}`;
+    elements.expectedMoveList.append(free);
+    for (const san of chess.moves().slice(0, 6)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'expected-pill';
+      button.textContent = san;
+      button.addEventListener('click', () => submitHumanMove(san));
+      elements.expectedMoveList.append(button);
+    }
+    return;
+  }
+
   if (!game || game.status !== 'playing') {
     return;
   }
@@ -4291,7 +4547,18 @@ function renderOpponentGraphMini() {
 
 function renderMoveLog() {
   elements.moveLogList.replaceChildren();
-  const moves = state.game?.moveLog ?? [];
+  const reviewEntry = getActiveFreeReviewEntry();
+  const moves = reviewEntry
+    ? getReviewPath(reviewEntry)
+        .filter((entry) => entry.phase !== 'start')
+        .slice(-8)
+        .reverse()
+        .map((entry) => ({
+          text: entry.text,
+          label: entry.branchLabel ? `${entry.label} · ${entry.branchLabel}` : entry.label,
+          color: entry.color
+        }))
+    : state.game?.moveLog ?? [];
   for (const item of moves) {
     const row = document.createElement('li');
     row.innerHTML = `<strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(item.label)}</span>`;
@@ -4308,12 +4575,16 @@ function renderFreeReviewPanel() {
   }
 
   elements.freeReviewPanel.hidden = false;
+  ensureReviewTree(game);
   const activeEntry = getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const parentEntry = getReviewParent(activeEntry);
+  const nextEntry = getPreferredReviewChild(activeEntry);
+  const childEntries = getReviewChildren(activeEntry.index);
   const header = document.createElement('div');
   header.className = 'free-review-header';
   header.innerHTML = `
     <div>
-      <span class="kicker">Revue de partie</span>
+      <span class="kicker">${isPostGameReviewPlayable() ? 'Analyse libre' : 'Revue de partie'}</span>
       <strong>${escapeHtml(activeEntry.text)}</strong>
     </div>
     <em>${activeEntry.index + 1}/${game.freeReviewMoves.length}</em>
@@ -4325,15 +4596,23 @@ function renderFreeReviewPanel() {
   prevButton.type = 'button';
   prevButton.textContent = '‹';
   prevButton.setAttribute('aria-label', 'Position précédente');
-  prevButton.disabled = activeEntry.index <= 0;
-  prevButton.addEventListener('click', () => setFreeReviewIndex(activeEntry.index - 1));
+  prevButton.disabled = !parentEntry;
+  prevButton.addEventListener('click', () => {
+    if (parentEntry) {
+      setFreeReviewIndex(parentEntry.index);
+    }
+  });
 
   const nextButton = document.createElement('button');
   nextButton.type = 'button';
   nextButton.textContent = '›';
   nextButton.setAttribute('aria-label', 'Position suivante');
-  nextButton.disabled = activeEntry.index >= game.freeReviewMoves.length - 1;
-  nextButton.addEventListener('click', () => setFreeReviewIndex(activeEntry.index + 1));
+  nextButton.disabled = !nextEntry;
+  nextButton.addEventListener('click', () => {
+    if (nextEntry) {
+      setFreeReviewIndex(nextEntry.index);
+    }
+  });
 
   const finalButton = document.createElement('button');
   finalButton.type = 'button';
@@ -4347,12 +4626,31 @@ function renderFreeReviewPanel() {
   });
   controls.append(prevButton, finalButton, nextButton);
 
+  const branches = document.createElement('div');
+  branches.className = 'free-review-branches';
+  if (childEntries.length) {
+    const label = document.createElement('strong');
+    label.textContent = 'Suites depuis ici';
+    branches.append(label);
+    for (const child of childEntries) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = nextEntry?.index === child.index ? 'is-active' : '';
+      button.innerHTML = `
+        <span>${escapeHtml(child.san || child.text)}</span>
+        <em>${escapeHtml(child.branchLabel || 'suite')}</em>
+      `;
+      button.addEventListener('click', () => setFreeReviewIndex(child.index));
+      branches.append(button);
+    }
+  }
+
   const actions = document.createElement('div');
   actions.className = 'free-review-actions';
   const analysisButton = document.createElement('button');
   analysisButton.type = 'button';
   analysisButton.className = 'free-review-analysis-button';
-  analysisButton.textContent = 'Analyse libre depuis ici';
+  analysisButton.textContent = 'Jouer contre Stockfish depuis ici';
   analysisButton.addEventListener('click', () => {
     launchPostGameFreeAnalysis().catch((error) => {
       if (state.game) {
@@ -4375,19 +4673,45 @@ function renderFreeReviewPanel() {
     button.className = entry.index === activeEntry.index ? 'is-active' : '';
     button.innerHTML = `
       <span>${escapeHtml(entry.text)}</span>
-      <em>${formatEval(entry.afterEvalCp)}</em>
+      <em>${escapeHtml(entry.branchLabel || formatEval(entry.afterEvalCp))}</em>
     `;
     button.addEventListener('click', () => setFreeReviewIndex(entry.index));
     list.append(button);
   }
 
-  elements.freeReviewPanel.append(header, controls, actions, summary, list);
+  elements.freeReviewPanel.append(header, controls);
+  if (childEntries.length) {
+    elements.freeReviewPanel.append(branches);
+  }
+  elements.freeReviewPanel.append(actions, summary, list);
 }
 
 function renderGameChoices() {
   const game = state.game;
   elements.choiceList.replaceChildren();
   if (!game) {
+    return;
+  }
+
+  if (isPostGameReviewPlayable()) {
+    const reviewEntry = getActiveFreeReviewEntry();
+    const chess = new Chess(reviewEntry.afterFen);
+    const intro = document.createElement('p');
+    intro.textContent =
+      `Analyse depuis ${reviewEntry.text}: joue un coup légal pour créer une variante.`;
+    elements.choiceList.append(intro);
+    for (const san of chess.moves().slice(0, 10)) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'choice-row';
+      row.innerHTML = `
+        <strong>${escapeHtml(san)}</strong>
+        <span>Créer une variante depuis cette position</span>
+        <em>${escapeHtml(sideLabel(chess.turn()))}</em>
+      `;
+      row.addEventListener('click', () => submitHumanMove(san));
+      elements.choiceList.append(row);
+    }
     return;
   }
 
