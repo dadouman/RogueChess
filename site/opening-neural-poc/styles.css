@@ -476,6 +476,20 @@ p {
   color: var(--text);
 }
 
+.stockfish-difficulty {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(5, 7, 5, 0.18);
+}
+
+.stockfish-difficulty input {
+  width: 100%;
+}
+
 .game-card-header strong {
   display: block;
   margin-top: 2px;

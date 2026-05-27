@@ -14,6 +14,19 @@ const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 const SURVIVAL_LIMIT_CP = -100;
 const STOCKFISH_DEPTH = 8;
+const DEFAULT_STOCKFISH_LEVEL = 5;
+const STOCKFISH_LEVELS = {
+  1: { level: 1, label: 'Débutant', elo: 1320, skill: 1, depth: 2, movetime: 80 },
+  2: { level: 2, label: 'Facile', elo: 1450, skill: 3, depth: 3, movetime: 120 },
+  3: { level: 3, label: 'Club faible', elo: 1600, skill: 5, depth: 4, movetime: 180 },
+  4: { level: 4, label: 'Club', elo: 1750, skill: 7, depth: 5, movetime: 250 },
+  5: { level: 5, label: 'Solide', elo: 1900, skill: 9, depth: 6, movetime: 350 },
+  6: { level: 6, label: 'Fort', elo: 2100, skill: 12, depth: 7, movetime: 500 },
+  7: { level: 7, label: 'Expert', elo: 2300, skill: 15, depth: 8, movetime: 700 },
+  8: { level: 8, label: 'Maître', elo: 2500, skill: 17, depth: 10, movetime: 1000 },
+  9: { level: 9, label: 'Trop fort', elo: 2800, skill: 19, depth: 12, movetime: 1400 },
+  10: { level: 10, label: 'Stockfish pur', elo: null, skill: 20, depth: 14, movetime: null }
+};
 const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
   p: 100,
@@ -47,6 +60,8 @@ const elements = {
   newGameButton: document.querySelector('#newGameButton'),
   challengeModeButton: document.querySelector('#challengeModeButton'),
   explorationModeButton: document.querySelector('#explorationModeButton'),
+  stockfishLevelRange: document.querySelector('#stockfishLevelRange'),
+  stockfishLevelValue: document.querySelector('#stockfishLevelValue'),
   gameLevelLabel: document.querySelector('#gameLevelLabel'),
   lifeRow: document.querySelector('#lifeRow'),
   gameTitle: document.querySelector('#gameTitle'),
@@ -118,6 +133,7 @@ const state = {
   viewMode: 'human',
   playMode: 'challenge',
   campaignLevel: FIRST_LEVEL_NUMBER,
+  stockfishLevel: DEFAULT_STOCKFISH_LEVEL,
   lineFilter: 'all',
   temperatureCp: 95,
   floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
@@ -206,6 +222,21 @@ function sideLabel(side) {
     return 'Noirs';
   }
   return '-';
+}
+
+function getStockfishLevelProfile(level = state.stockfishLevel) {
+  const safeLevel = clamp(Math.round(Number(level) || DEFAULT_STOCKFISH_LEVEL), 1, 10);
+  return STOCKFISH_LEVELS[safeLevel] ?? STOCKFISH_LEVELS[DEFAULT_STOCKFISH_LEVEL];
+}
+
+function formatStockfishLevel(profile = getStockfishLevelProfile()) {
+  return `N${profile.level} ${profile.label}`;
+}
+
+function updateStockfishLevelUi() {
+  const profile = getStockfishLevelProfile();
+  elements.stockfishLevelRange.value = String(profile.level);
+  elements.stockfishLevelValue.textContent = formatStockfishLevel(profile);
 }
 
 function formatPieceCount(piece, count) {
@@ -1195,6 +1226,7 @@ class BrowserStockfishEvaluator {
     this.worker = null;
     this.pending = null;
     this.readyPromise = null;
+    this.modeKey = '';
   }
 
   async init() {
@@ -1255,14 +1287,39 @@ class BrowserStockfishEvaluator {
     }
   }
 
-  async evaluate(fen, depth = this.depth) {
-    const terminal = terminalEvaluation(fen);
-    if (terminal) {
-      return terminal;
+  async configureForAnalysis() {
+    await this.init();
+    if (this.modeKey === 'analysis') {
+      return;
     }
 
-    await this.init();
+    this.send('setoption name UCI_LimitStrength value false');
+    this.send('setoption name Skill Level value 20');
+    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
+    this.modeKey = 'analysis';
+  }
 
+  async configureForPlay(profile) {
+    await this.init();
+    const modeKey = `play:${profile.level}:${profile.elo ?? 'full'}:${profile.skill}`;
+    if (this.modeKey === modeKey) {
+      return;
+    }
+
+    if (profile.elo) {
+      this.send('setoption name UCI_LimitStrength value true');
+      this.send(`setoption name UCI_Elo value ${profile.elo}`);
+      this.send(`setoption name Skill Level value ${profile.skill}`);
+    } else {
+      this.send('setoption name UCI_LimitStrength value false');
+      this.send('setoption name Skill Level value 20');
+    }
+
+    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
+    this.modeKey = modeKey;
+  }
+
+  async search(fen, command, timeoutMs = 18000) {
     return new Promise((resolve, reject) => {
       let latestCpWhite = null;
       let latestDepth = 0;
@@ -1270,7 +1327,7 @@ class BrowserStockfishEvaluator {
       const timeout = setTimeout(() => {
         this.pending = null;
         reject(new Error('Stockfish a mis trop longtemps à évaluer la position.'));
-      }, 18000);
+      }, timeoutMs);
 
       this.pending = {
         onLine: (line) => {
@@ -1302,8 +1359,30 @@ class BrowserStockfishEvaluator {
       };
 
       this.send(`position fen ${fen}`);
-      this.send(`go depth ${depth}`);
+      this.send(command);
     });
+  }
+
+  async evaluate(fen, depth = this.depth) {
+    const terminal = terminalEvaluation(fen);
+    if (terminal) {
+      return terminal;
+    }
+
+    await this.configureForAnalysis();
+    return this.search(fen, `go depth ${depth}`);
+  }
+
+  async pickMove(fen, profile = getStockfishLevelProfile()) {
+    const terminal = terminalEvaluation(fen);
+    if (terminal) {
+      return terminal;
+    }
+
+    await this.configureForPlay(profile);
+    const command = profile.movetime ? `go movetime ${profile.movetime}` : `go depth ${profile.depth}`;
+    const timeoutMs = profile.movetime ? Math.max(8000, profile.movetime + 6000) : 18000;
+    return this.search(fen, command, timeoutMs);
   }
 }
 
@@ -3727,32 +3806,35 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  game.message = 'Stockfish calcule la réponse noire...';
+  const profile = getStockfishLevelProfile();
+  const stockfishLabel = formatStockfishLevel(profile);
+  game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
   renderGamePanel();
   renderGameDetails();
   const evaluator = await ensureStockfishReady(false);
-  const evaluation = await evaluator.evaluate(game.chess.fen());
   const beforeFen = game.chess.fen();
-  const beforeEvalCp = evaluation.cpWhite;
-  if (!evaluation.bestMove) {
+  const beforeEvaluation = await evaluator.evaluate(beforeFen);
+  const moveSearch = await evaluator.pickMove(beforeFen, profile);
+  const beforeEvalCp = beforeEvaluation.cpWhite;
+  if (!moveSearch.bestMove) {
     finishTerminalPosition('La partie est terminée.');
     return;
   }
 
-  const move = playUciOnChess(game.chess, evaluation.bestMove);
+  const move = playUciOnChess(game.chess, moveSearch.bestMove);
   if (!move) {
     finishGame('won', 'Stockfish ne trouve aucun coup légal.');
     return;
   }
 
-  applyFreeMove(move, 'Stockfish noir');
+  applyFreeMove(move, `Stockfish ${stockfishLabel}`);
   const afterEvaluation = await evaluator.evaluate(game.chess.fen());
   game.currentEvalCp = afterEvaluation.cpWhite;
   game.currentPv = afterEvaluation.pv;
   game.currentDepth = afterEvaluation.depth;
   recordFreeReviewMove({
     move,
-    label: 'Stockfish noir',
+    label: `Stockfish ${stockfishLabel}`,
     beforeFen,
     beforeEvalCp,
     evaluation: afterEvaluation
@@ -3783,10 +3865,10 @@ async function playStockfishBlackMove() {
   }
 
   game.message = isExplorationMode()
-    ? `Réponse Stockfish: ${move.san}. Exploration libre, seuil indicatif: -1.00.`
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: -1.00.`
     : isMateObjective(game)
-    ? `Réponse Stockfish: ${move.san}. Objectif final: trouve le mat sans passer sous -1.00.`
-    : `Réponse Stockfish: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous -1.00.`
+    : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
 }
 
 function enterFreePhase(message) {
@@ -4191,7 +4273,7 @@ function renderOpponentGraphMini() {
     rows = [
       {
         label: 'Stockfish libre',
-        value: `d${STOCKFISH_DEPTH}`
+        value: formatStockfishLevel()
       }
     ];
   }
@@ -4597,6 +4679,12 @@ function bindEvents() {
     restoreDefaultGraph();
   });
 
+  elements.stockfishLevelRange.addEventListener('input', () => {
+    state.stockfishLevel = getStockfishLevelProfile(elements.stockfishLevelRange.value).level;
+    updateStockfishLevelUi();
+    renderGamePanel();
+  });
+
   elements.bestPathButton.addEventListener('click', () => buildPath('best'));
   elements.randomPathButton.addEventListener('click', () => buildPath('random'));
   elements.resetButton.addEventListener('click', resetHighlight);
@@ -4650,6 +4738,7 @@ async function init() {
   }
   state.defaultData = await response.json();
   bindEvents();
+  updateStockfishLevelUi();
   setViewMode('human');
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
   elements.pgnImportStatus.textContent = 'Livre actif';
