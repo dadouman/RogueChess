@@ -231,7 +231,8 @@ function getStockfishLevelProfile(level = state.stockfishLevel) {
 }
 
 function formatStockfishLevel(profile = getStockfishLevelProfile()) {
-  return `N${profile.level} ${profile.label}`;
+  const strength = profile.elo ? `${profile.elo} Elo` : 'force max';
+  return `N${profile.level} ${profile.label} · ${strength}`;
 }
 
 function updateStockfishLevelUi() {
