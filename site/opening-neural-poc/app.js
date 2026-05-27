@@ -124,7 +124,6 @@ const state = {
   stockfish: null,
   defaultData: null,
   isImportingPgn: false,
-  bookLotteryStats: new Map(),
   activeResize: null,
   collapsedPanels: {
     left: false,
@@ -2999,35 +2998,28 @@ function normalizeWeightedCandidates(candidates) {
   }));
 }
 
-function pickWeightedCandidate(candidates, lotteryKey = null) {
+function randomUnit() {
+  if (globalThis.crypto?.getRandomValues) {
+    const values = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(values);
+    return values[0] / 4294967296;
+  }
+  return Math.random();
+}
+
+function pickWeightedCandidate(candidates) {
   const normalized = normalizeWeightedCandidates(candidates);
   if (!normalized.length) {
     return null;
   }
 
-  let weighted = normalized.map((candidate) => ({
+  const weighted = normalized.map((candidate) => ({
     ...candidate,
     lotteryWeight: candidate.probability
   }));
 
-  if (lotteryKey) {
-    const stats = state.bookLotteryStats.get(lotteryKey) ?? {
-      total: 0,
-      counts: new Map()
-    };
-    weighted = normalized.map((candidate) => {
-      const count = stats.counts.get(candidate.id) ?? 0;
-      const expectedAfterPick = (stats.total + 1) * candidate.probability;
-      const deficit = Math.max(0, expectedAfterPick - count);
-      return {
-        ...candidate,
-        lotteryWeight: candidate.probability * 0.35 + deficit
-      };
-    });
-  }
-
   const total = weighted.reduce((sum, candidate) => sum + candidate.lotteryWeight, 0);
-  let roll = Math.random() * total;
+  let roll = randomUnit() * total;
   let selected = weighted[weighted.length - 1];
   for (const candidate of weighted) {
     roll -= candidate.lotteryWeight;
@@ -3035,16 +3027,6 @@ function pickWeightedCandidate(candidates, lotteryKey = null) {
       selected = candidate;
       break;
     }
-  }
-
-  if (lotteryKey) {
-    const stats = state.bookLotteryStats.get(lotteryKey) ?? {
-      total: 0,
-      counts: new Map()
-    };
-    stats.total += 1;
-    stats.counts.set(selected.id, (stats.counts.get(selected.id) ?? 0) + 1);
-    state.bookLotteryStats.set(lotteryKey, stats);
   }
 
   return selected;
@@ -3710,8 +3692,7 @@ async function advanceOpponentTurn() {
     const blackBookEdges = getBlackBookEdges();
     const decision = blackBookEdges.length
       ? pickWeightedCandidate(
-          buildOpponentBookCandidates(blackBookEdges),
-          `opponent:${game.currentNodeId}`
+          buildOpponentBookCandidates(blackBookEdges)
         )
       : null;
 
@@ -4456,7 +4437,6 @@ function setGraphData(data, selectedPathLabel = 'Aucun chemin sélectionné') {
   state.nodesByPositionKey = new Map(
     state.data.nodes.map((node) => [fenPositionKey(node.fen), node])
   );
-  state.bookLotteryStats.clear();
   state.lineFilter = 'all';
   state.highlightedEdges.clear();
   state.highlightedNodes = new Set(['root']);
@@ -4587,14 +4567,12 @@ function bindEvents() {
 
   elements.temperatureRange.addEventListener('input', () => {
     state.temperatureCp = Number(elements.temperatureRange.value);
-    state.bookLotteryStats.clear();
     elements.temperatureValue.textContent = `${state.temperatureCp} cp`;
     renderGraph();
   });
 
   elements.floorRange.addEventListener('input', () => {
     state.floorMass = Number(elements.floorRange.value) / 100;
-    state.bookLotteryStats.clear();
     elements.floorValue.textContent = `${elements.floorRange.value}%`;
     renderGraph();
   });
