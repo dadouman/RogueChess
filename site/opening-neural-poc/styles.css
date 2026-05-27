@@ -768,6 +768,27 @@ span.expected-pill {
   text-transform: uppercase;
 }
 
+.free-review-actions {
+  display: grid;
+  min-width: 0;
+}
+
+.free-review-analysis-button {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border-color: rgba(155, 229, 111, 0.58);
+  background: rgba(155, 229, 111, 0.14);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.free-review-analysis-button:hover {
+  background: rgba(155, 229, 111, 0.2);
+}
+
 .free-review-analysis {
   color: var(--soft);
   font-size: 11px;

@@ -2637,9 +2637,13 @@ function setPlayMode(mode) {
     state.campaignLevel = FIRST_LEVEL_NUMBER;
   }
   state.playMode = nextMode;
+  syncPlayModeButtons();
+  startNewGame();
+}
+
+function syncPlayModeButtons() {
   elements.challengeModeButton.classList.toggle('is-active', state.playMode === 'challenge');
   elements.explorationModeButton.classList.toggle('is-active', state.playMode === 'exploration');
-  startNewGame();
 }
 
 function fenPositionKey(fen) {
@@ -3323,6 +3327,84 @@ function stopFreeReview() {
   renderGameDetails();
 }
 
+async function launchPostGameFreeAnalysis() {
+  const game = state.game;
+  if (!game || game.status === 'playing' || !game.freeReviewMoves.length) {
+    return;
+  }
+
+  clearGameCinematic();
+  const originEntry =
+    getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const chess = new Chess(originEntry.afterFen);
+  const originEntries = game.freeReviewMoves
+    .slice(0, originEntry.index + 1)
+    .map((entry, index) => ({ ...entry, index }));
+  const originNode =
+    state.nodesByFen.get(chess.fen()) ??
+    state.nodesByPositionKey.get(fenPositionKey(chess.fen()));
+
+  state.playMode = 'exploration';
+  syncPlayModeButtons();
+  game.mode = 'exploration';
+  game.status = 'playing';
+  game.phase = 'free';
+  game.locked = false;
+  game.chess = chess;
+  game.currentNodeId = originNode?.id ?? game.currentNodeId ?? 'root';
+  game.objective = getLevelObjective(FIRST_LEVEL_NUMBER);
+  game.freeRemaining = Number.POSITIVE_INFINITY;
+  game.freeRoundPending = false;
+  game.currentEvalCp = originEntry.afterEvalCp;
+  game.currentPv = originEntry.pv ?? '';
+  game.currentDepth = originEntry.depth ?? 0;
+  game.lastMove = originEntry.uci
+    ? {
+        san: originEntry.san,
+        from: originEntry.from,
+        to: originEntry.to,
+        color: originEntry.color,
+        before: originEntry.beforeFen,
+        after: originEntry.afterFen,
+        promotion: originEntry.uci.length > 4 ? originEntry.uci.slice(4) : undefined
+      }
+    : null;
+  game.freeReviewMoves = originEntries;
+  game.freeReview.active = false;
+  game.freeReview.index = -1;
+  game.failureFen = null;
+  game.failureEvaluation = null;
+  game.defeatComment = '';
+  game.expectedOpeningArrows = [];
+  game.defeatLineRecorded = false;
+  game.moveLog = originEntries
+    .filter((entry) => entry.phase !== 'start')
+    .slice(-8)
+    .reverse()
+    .map((entry) => ({
+      text: entry.text,
+      label: entry.label,
+      color: entry.color
+    }));
+  game.message = `Analyse libre depuis ${originEntry.text}: joue n'importe quel coup légal, Stockfish répondra sans pénalité.`;
+
+  renderGraph();
+  renderGameDetails();
+
+  if (game.chess.turn() === 'b') {
+    setGameLocked(true);
+    try {
+      await advanceOpponentTurn();
+    } catch (error) {
+      game.message = `Analyse libre lancée, mais Stockfish n'a pas pu répondre: ${error.message}`;
+    } finally {
+      setGameLocked(false);
+      renderGraph();
+      renderGameDetails();
+    }
+  }
+}
+
 function clearGameCinematic() {
   if (state.game?.cinematicTimer) {
     clearInterval(state.game.cinematicTimer);
@@ -3516,7 +3598,7 @@ async function submitFreeMove(input) {
     return;
   }
 
-  applyFreeMove(move, 'Survie blanche');
+  applyFreeMove(move, isExplorationMode() ? 'Exploration blanche' : 'Survie blanche');
   state.game.message = 'Stockfish évalue ton coup libre...';
   renderGamePanel();
   renderGameDetails();
@@ -4151,6 +4233,22 @@ function renderFreeReviewPanel() {
   });
   controls.append(prevButton, finalButton, nextButton);
 
+  const actions = document.createElement('div');
+  actions.className = 'free-review-actions';
+  const analysisButton = document.createElement('button');
+  analysisButton.type = 'button';
+  analysisButton.className = 'free-review-analysis-button';
+  analysisButton.textContent = 'Analyse libre depuis ici';
+  analysisButton.addEventListener('click', () => {
+    launchPostGameFreeAnalysis().catch((error) => {
+      if (state.game) {
+        state.game.message = `Impossible de lancer l'analyse libre: ${error.message}`;
+        renderGamePanel();
+      }
+    });
+  });
+  actions.append(analysisButton);
+
   const summary = document.createElement('p');
   summary.className = 'free-review-analysis';
   summary.textContent = activeEntry.analysis;
@@ -4169,7 +4267,7 @@ function renderFreeReviewPanel() {
     list.append(button);
   }
 
-  elements.freeReviewPanel.append(header, controls, summary, list);
+  elements.freeReviewPanel.append(header, controls, actions, summary, list);
 }
 
 function renderGameChoices() {
