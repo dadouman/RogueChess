@@ -31,6 +31,7 @@ const PIECE_LABELS = {
 };
 
 const elements = {
+  shell: document.querySelector('.poc-shell'),
   summaryText: document.querySelector('#summaryText'),
   lineFilter: document.querySelector('#lineFilter'),
   pgnFileInput: document.querySelector('#pgnFileInput'),
@@ -79,6 +80,10 @@ const elements = {
   boardZoomCloseButton: document.querySelector('#boardZoomCloseButton'),
   boardZoomTitle: document.querySelector('#boardZoomTitle'),
   boardPreview: document.querySelector('#boardPreview'),
+  detailInfoContent: document.querySelector('#detailInfoContent'),
+  graphInfoDrawer: document.querySelector('#graphInfoDrawer'),
+  graphInfoContent: document.querySelector('#graphInfoContent'),
+  resizeHandles: document.querySelectorAll('[data-resize-side]'),
   segmentExplorer: document.querySelector('#segmentExplorer'),
   segmentProgress: document.querySelector('#segmentProgress'),
   segmentToggleButton: document.querySelector('#segmentToggleButton'),
@@ -119,6 +124,7 @@ const state = {
   defaultData: null,
   isImportingPgn: false,
   bookLotteryStats: new Map(),
+  activeResize: null,
   game: null
 };
 
@@ -2348,10 +2354,145 @@ function setBoardZoomed(isZoomed) {
   renderZoomBoard();
 }
 
+function getPanelWidthVar(name, fallback) {
+  const rawValue = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function setPanelWidthVar(name, value) {
+  document.documentElement.style.setProperty(name, `${Math.round(value)}px`);
+}
+
+function clampPanelWidths() {
+  if (!elements.shell || window.innerWidth <= 1060) {
+    return;
+  }
+
+  const rect = elements.shell.getBoundingClientRect();
+  const centerMin = 360;
+  const leftMin = 220;
+  const rightMin = 240;
+  let left = getPanelWidthVar('--left-panel', 328);
+  let right = getPanelWidthVar('--right-panel', 340);
+
+  left = clamp(left, leftMin, Math.max(leftMin, rect.width - rightMin - centerMin));
+  right = clamp(right, rightMin, Math.max(rightMin, rect.width - left - centerMin));
+  left = clamp(left, leftMin, Math.max(leftMin, rect.width - right - centerMin));
+
+  setPanelWidthVar('--left-panel', left);
+  setPanelWidthVar('--right-panel', right);
+}
+
+function setPanelWidthFromPointer(side, clientX) {
+  if (!elements.shell || window.innerWidth <= 1060) {
+    return;
+  }
+
+  const rect = elements.shell.getBoundingClientRect();
+  const centerMin = 360;
+  const leftMin = 220;
+  const rightMin = 240;
+  const leftMax = 520;
+  const rightMax = 560;
+  const currentLeft = getPanelWidthVar('--left-panel', 328);
+  const currentRight = getPanelWidthVar('--right-panel', 340);
+
+  if (side === 'left') {
+    const maxLeft = Math.min(leftMax, rect.width - currentRight - centerMin);
+    setPanelWidthVar('--left-panel', clamp(clientX - rect.left, leftMin, Math.max(leftMin, maxLeft)));
+  } else {
+    const maxRight = Math.min(rightMax, rect.width - currentLeft - centerMin);
+    setPanelWidthVar('--right-panel', clamp(rect.right - clientX, rightMin, Math.max(rightMin, maxRight)));
+  }
+
+  window.requestAnimationFrame(() => renderGraph());
+}
+
+function startPanelResize(event) {
+  const side = event.currentTarget.dataset.resizeSide;
+  if (!side || window.innerWidth <= 1060) {
+    return;
+  }
+
+  event.preventDefault();
+  state.activeResize = side;
+  document.body.classList.add('is-resizing-panels');
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  setPanelWidthFromPointer(side, event.clientX);
+}
+
+function movePanelResize(event) {
+  if (!state.activeResize) {
+    return;
+  }
+  setPanelWidthFromPointer(state.activeResize, event.clientX);
+}
+
+function stopPanelResize() {
+  if (!state.activeResize) {
+    return;
+  }
+  state.activeResize = null;
+  document.body.classList.remove('is-resizing-panels');
+  clampPanelWidths();
+  renderGraph();
+}
+
+function resizePanelWithKeyboard(event) {
+  const side = event.currentTarget.dataset.resizeSide;
+  if (!side || !['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    return;
+  }
+
+  event.preventDefault();
+  const direction = event.key === 'ArrowRight' ? 1 : -1;
+  const step = event.shiftKey ? 40 : 16;
+  const variableName = side === 'left' ? '--left-panel' : '--right-panel';
+  const fallback = side === 'left' ? 328 : 340;
+  const multiplier = side === 'left' ? direction : -direction;
+  setPanelWidthVar(variableName, getPanelWidthVar(variableName, fallback) + step * multiplier);
+  clampPanelWidths();
+  renderGraph();
+}
+
+function bindPanelResizeHandles() {
+  for (const handle of elements.resizeHandles) {
+    handle.addEventListener('pointerdown', startPanelResize);
+    handle.addEventListener('keydown', resizePanelWithKeyboard);
+  }
+  window.addEventListener('pointermove', movePanelResize);
+  window.addEventListener('pointerup', stopPanelResize);
+  window.addEventListener('pointercancel', stopPanelResize);
+}
+
+function syncDetailInfoPlacement() {
+  if (!elements.detailInfoContent || !elements.graphInfoContent || !elements.graphInfoDrawer) {
+    return;
+  }
+
+  if (state.viewMode === 'human') {
+    elements.graphInfoDrawer.hidden = false;
+    if (elements.detailInfoContent.parentElement !== elements.graphInfoContent) {
+      elements.graphInfoContent.append(elements.detailInfoContent);
+    }
+    return;
+  }
+
+  elements.graphInfoDrawer.hidden = true;
+  if (elements.detailInfoContent.parentElement !== document.querySelector('.detail-panel')) {
+    document.querySelector('.detail-panel')?.append(elements.detailInfoContent);
+  }
+}
+
 function setViewMode(mode) {
   state.viewMode = mode === 'brain' ? 'brain' : 'human';
+  if (state.viewMode === 'human' && state.boardZoomed) {
+    setBoardZoomed(false);
+  }
   document.body.classList.toggle('is-human-view', state.viewMode === 'human');
   document.body.classList.toggle('is-brain-view', state.viewMode === 'brain');
+  syncDetailInfoPlacement();
   elements.viewModeButton.textContent =
     state.viewMode === 'human' ? 'Vue cerveau' : 'Vue joueur';
   elements.viewModeButton.setAttribute(
@@ -4184,6 +4325,8 @@ function populateControls() {
 }
 
 function bindEvents() {
+  bindPanelResizeHandles();
+
   elements.temperatureRange.addEventListener('input', () => {
     state.temperatureCp = Number(elements.temperatureRange.value);
     state.bookLotteryStats.clear();
@@ -4258,7 +4401,10 @@ function bindEvents() {
       toggleViewMode();
     }
   });
-  window.addEventListener('resize', () => renderGraph());
+  window.addEventListener('resize', () => {
+    clampPanelWidths();
+    renderGraph();
+  });
 }
 
 async function init() {

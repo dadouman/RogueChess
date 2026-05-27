@@ -140,6 +140,10 @@
         </div>
         <svg id="graphSvg" role="img" aria-label="Graphe des coups d'ouverture"></svg>
         <div id="graphTooltip" class="graph-tooltip" hidden></div>
+        <details id="graphInfoDrawer" class="graph-info-drawer">
+          <summary>Infos position</summary>
+          <div id="graphInfoContent" class="graph-info-content"></div>
+        </details>
       </main>
 
       <aside class="detail-panel" aria-label="Détail du coup sélectionné">
@@ -154,51 +158,56 @@
           <div id="boardPreview" class="board-preview" aria-label="Échiquier de la position"></div>
         </div>
 
-        <dl class="eval-grid">
-          <div>
-            <dt>Évaluation</dt>
-            <dd id="nodeEval">-</dd>
-          </div>
-          <div>
-            <dt>Moyenne future</dt>
-            <dd id="nodeFuture">-</dd>
-          </div>
-          <div>
-            <dt>Trait</dt>
-            <dd id="nodeTurn">-</dd>
-          </div>
-        </dl>
-
-        <section id="segmentExplorer" class="segment-explorer" hidden>
-          <div class="segment-header">
+        <div id="detailInfoContent" class="detail-info-content">
+          <dl class="eval-grid">
             <div>
-              <span class="kicker">Segment compressé</span>
-              <strong id="segmentProgress">-</strong>
+              <dt>Évaluation</dt>
+              <dd id="nodeEval">-</dd>
             </div>
-            <div class="segment-controls">
-              <button id="segmentToggleButton" type="button" aria-label="Afficher tous les coups">Tous</button>
-              <button id="segmentPrevButton" type="button" aria-label="Coup précédent">‹</button>
-              <button id="segmentNextButton" type="button" aria-label="Coup suivant">›</button>
+            <div>
+              <dt>Moyenne future</dt>
+              <dd id="nodeFuture">-</dd>
             </div>
-          </div>
-          <div id="segmentStepList" class="segment-step-list" aria-label="Coups du segment"></div>
-        </section>
+            <div>
+              <dt>Trait</dt>
+              <dd id="nodeTurn">-</dd>
+            </div>
+          </dl>
 
-        <section class="detail-section">
-          <h3>Choix suivants</h3>
-          <div id="choiceList" class="choice-list"></div>
-        </section>
+          <section id="segmentExplorer" class="segment-explorer" hidden>
+            <div class="segment-header">
+              <div>
+                <span class="kicker">Segment compressé</span>
+                <strong id="segmentProgress">-</strong>
+              </div>
+              <div class="segment-controls">
+                <button id="segmentToggleButton" type="button" aria-label="Afficher tous les coups">Tous</button>
+                <button id="segmentPrevButton" type="button" aria-label="Coup précédent">‹</button>
+                <button id="segmentNextButton" type="button" aria-label="Coup suivant">›</button>
+              </div>
+            </div>
+            <div id="segmentStepList" class="segment-step-list" aria-label="Coups du segment"></div>
+          </section>
 
-        <section class="detail-section">
-          <h3>Explication</h3>
-          <p id="nodeComment">Aucune note pour cette position.</p>
-        </section>
+          <section class="detail-section">
+            <h3>Choix suivants</h3>
+            <div id="choiceList" class="choice-list"></div>
+          </section>
 
-        <section class="detail-section">
-          <h3>Sources</h3>
-          <p id="nodeSources">-</p>
-        </section>
+          <section class="detail-section">
+            <h3>Explication</h3>
+            <p id="nodeComment">Aucune note pour cette position.</p>
+          </section>
+
+          <section class="detail-section">
+            <h3>Sources</h3>
+            <p id="nodeSources">-</p>
+          </section>
+        </div>
       </aside>
+
+      <div class="resize-handle resize-handle-left" data-resize-side="left" role="separator" aria-label="Redimensionner le volet gauche" aria-orientation="vertical" tabindex="0"></div>
+      <div class="resize-handle resize-handle-right" data-resize-side="right" role="separator" aria-label="Redimensionner le volet droit" aria-orientation="vertical" tabindex="0"></div>
     </div>
 
     <div id="boardZoomLayer" class="board-zoom-layer" hidden>
