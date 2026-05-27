@@ -206,8 +206,12 @@
         </div>
       </aside>
 
-      <div class="resize-handle resize-handle-left" data-resize-side="left" role="separator" aria-label="Redimensionner le volet gauche" aria-orientation="vertical" tabindex="0"></div>
-      <div class="resize-handle resize-handle-right" data-resize-side="right" role="separator" aria-label="Redimensionner le volet droit" aria-orientation="vertical" tabindex="0"></div>
+      <div class="resize-handle resize-handle-left" data-resize-side="left" role="separator" aria-label="Redimensionner le volet gauche" aria-orientation="vertical" tabindex="0">
+        <button class="panel-collapse-button" data-collapse-side="left" type="button" aria-label="Masquer le volet gauche" aria-pressed="false">‹</button>
+      </div>
+      <div class="resize-handle resize-handle-right" data-resize-side="right" role="separator" aria-label="Redimensionner le volet droit" aria-orientation="vertical" tabindex="0">
+        <button class="panel-collapse-button" data-collapse-side="right" type="button" aria-label="Masquer le volet droit" aria-pressed="false">›</button>
+      </div>
     </div>
 
     <div id="boardZoomLayer" class="board-zoom-layer" hidden>

@@ -208,6 +208,16 @@ body.is-human-view .graph-info-content {
   display: grid;
 }
 
+body.is-left-panel-collapsed .poc-sidebar,
+body.is-right-panel-collapsed.is-human-view .graph-stage,
+body.is-right-panel-collapsed.is-brain-view .detail-panel {
+  visibility: hidden;
+  padding: 0;
+  border-width: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .poc-sidebar,
 .detail-panel {
   min-width: 0;
@@ -258,6 +268,30 @@ body.is-human-view .graph-info-content {
     box-shadow 120ms ease;
 }
 
+.panel-collapse-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  width: 28px;
+  min-width: 28px;
+  min-height: 46px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-color: rgba(255, 217, 102, 0.38);
+  border-radius: 999px;
+  background: rgba(18, 23, 19, 0.94);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+  color: var(--gold);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.panel-collapse-button:hover {
+  background: #263322;
+}
+
 .resize-handle:hover::before,
 .resize-handle:focus-visible::before,
 body.is-resizing-panels .resize-handle::before {
@@ -273,6 +307,24 @@ body.is-resizing-panels .resize-handle::before {
 .resize-handle-right {
   right: var(--right-panel);
   transform: translateX(50%);
+}
+
+body.is-left-panel-collapsed .resize-handle-left::before,
+body.is-right-panel-collapsed .resize-handle-right::before {
+  background: rgba(255, 217, 102, 0.42);
+}
+
+body.is-left-panel-collapsed .resize-handle-left,
+body.is-right-panel-collapsed .resize-handle-right {
+  transform: none;
+}
+
+body.is-left-panel-collapsed .resize-handle-left .panel-collapse-button {
+  left: 100%;
+}
+
+body.is-right-panel-collapsed .resize-handle-right .panel-collapse-button {
+  left: 0;
 }
 
 body.is-resizing-panels,
