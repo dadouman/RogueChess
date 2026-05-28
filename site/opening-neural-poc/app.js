@@ -4034,6 +4034,9 @@ async function submitExplorationMove(input, message) {
 }
 
 async function submitFreeMove(input) {
+  if (!state.game || state.game.status !== 'playing') {
+    return;
+  }
   const beforeFen = state.game.chess.fen();
   const beforeEvalCp = state.game.currentEvalCp;
   const move = tryMoveInput(state.game.chess, input);
