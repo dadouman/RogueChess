@@ -4261,6 +4261,9 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   if (startsCinematic) {
     startDeficitCinematic(failureFen, failureEvaluation, game.defeatComment);
   }
+  if (state.screen === 'adventure') {
+    adventureOnGameFinished(result);
+  }
 }
 
 function startDeficitCinematic(fen, evaluation, defeatComment = '') {
