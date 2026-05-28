@@ -4055,7 +4055,7 @@ async function submitFreeMove(input) {
   state.game.currentPv = evaluation.pv;
   state.game.currentDepth = evaluation.depth;
 
-  if (!isExplorationMode() && evaluation.cpWhite < state.survivalLimitCp) {
+  if (!isExplorationMode() && !isAdventureRun() && evaluation.cpWhite < state.survivalLimitCp) {
     recordFreeReviewMove({
       move,
       label: 'Survie blanche',
