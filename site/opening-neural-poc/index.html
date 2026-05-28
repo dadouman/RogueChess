@@ -330,6 +330,57 @@
       </div>
     </div>
 
+    <div id="adventureMap" class="adventure-map" hidden aria-label="Carte du cerveau">
+      <div class="adv-map-panel">
+        <header class="adv-map-header">
+          <div>
+            <span class="kicker">Mode Aventure</span>
+            <h2>Carte du cerveau</h2>
+          </div>
+          <div class="adv-map-header-actions">
+            <button id="advMapHomeButton" class="adv-ghost" type="button">Accueil</button>
+            <button id="advMapClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+          </div>
+        </header>
+
+        <div class="adv-map-summary">
+          <div class="adv-brain-ring" id="advBrainRing" style="--pct: 0">
+            <div class="adv-brain-ring-core">
+              <strong id="advRingValue">0 %</strong>
+              <span>cortex</span>
+            </div>
+          </div>
+          <dl class="adv-map-stats">
+            <div><dt>Niveau cerveau</dt><dd id="advStatLevel">1</dd></div>
+            <div><dt>XP totale</dt><dd id="advStatXp">0</dd></div>
+            <div><dt>Synapses</dt><dd id="advStatSynapse">0 %</dd></div>
+            <div><dt>Puissance</dt><dd id="advStatPower">N0</dd></div>
+          </dl>
+        </div>
+
+        <div class="adv-map-acts">
+          <section class="adv-act">
+            <div class="adv-act-head">
+              <span class="kicker">Acte 1</span>
+              <strong>Apprends les lignes</strong>
+              <p>Reste dans le livre pour allumer tes neurones. Chaque ligne maîtrisée illumine le cortex.</p>
+            </div>
+            <div id="advAct1Stages" class="adv-stage-rail"></div>
+          </section>
+          <section class="adv-act" id="advAct2Section">
+            <div class="adv-act-head">
+              <span class="kicker">Acte 2</span>
+              <strong>Domine Stockfish</strong>
+              <p id="advAct2Lock">Verrouillé : illumine assez de cortex en Acte 1 pour ouvrir l'arène.</p>
+            </div>
+            <div id="advAct2Stages" class="adv-stage-rail"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
+
     <script src="./app.js" type="module"></script>
   </body>
 </html>
