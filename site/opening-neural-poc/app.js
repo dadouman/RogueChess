@@ -3247,7 +3247,7 @@ function buildOpponentBookCandidates(bookEdges, ply = state.game?.chess.history(
     return [];
   }
 
-  const canLeave = canOpponentLeaveBookAtPly(ply);
+  const canLeave = canOpponentLeaveBookAtPly(ply) && !isAdventureLesson();
   const bookMass = canLeave ? 1 - OPENING_FREE_BREAK_PROBABILITY : 1;
   return normalizeWeightedCandidates([
     ...bookEdges.map((edge) => ({
