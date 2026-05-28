@@ -5304,6 +5304,21 @@ function isAdventureMastered(id) {
   return state.screen === 'adventure' && Boolean(state.adventure?.nodes.has(id));
 }
 
+function isAdventureLesson() {
+  return isAdventureRun() && state.advRun?.kind === 'lesson';
+}
+
+function isAdventureEdgeMastered(edge) {
+  if (state.screen !== 'adventure' || !state.adventure || !edge) {
+    return false;
+  }
+  if (edge.from && edge.from !== 'root' && !state.adventure.nodes.has(edge.from)) {
+    return false;
+  }
+  const ids = edge.pathNodeIds?.length ? edge.pathNodeIds : [edge.to];
+  return ids.every((id) => state.adventure.nodes.has(id));
+}
+
 function advAddXp(amount) {
   if (!amount || !state.adventure) {
     return;
