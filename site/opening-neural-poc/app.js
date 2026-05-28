@@ -3303,6 +3303,7 @@ function applyGameEdge(edge) {
     evaluation,
     status: 'book'
   });
+  adventureLightEdge(edge);
   return move;
 }
 
