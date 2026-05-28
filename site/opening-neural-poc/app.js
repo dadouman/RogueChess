@@ -3993,12 +3993,18 @@ async function submitOpeningMove(input) {
       return;
     }
     state.game.expectedOpeningArrows = getExpectedWhiteBookArrows();
+    if (state.screen === 'adventure') {
+      adventureOnWrongBook();
+    }
     consumeLife(buildOpeningMismatchMessage(result.move));
     return;
   }
 
   state.game.expectedOpeningArrows = [];
   applyGameEdge(result.edge);
+  if (state.screen === 'adventure') {
+    adventureOnCorrectWhiteBook(result.edge);
+  }
   if (!isExplorationMode() && state.game.chess.isCheckmate()) {
     finishCampaignByMate();
     return;
