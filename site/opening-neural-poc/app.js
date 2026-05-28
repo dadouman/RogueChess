@@ -1845,7 +1845,7 @@ function renderGraph() {
         'neural-edge',
         edge.isBest ? 'is-best' : '',
         isForced ? 'is-forced' : '',
-        isAdventureMastered(edge.from) && isAdventureMastered(edge.to) ? 'is-mastered' : '',
+        isAdventureEdgeMastered(edge) ? 'is-mastered' : '',
         !matches ? 'is-muted' : '',
         isHighlighted ? 'is-highlighted' : ''
       ]
