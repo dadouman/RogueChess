@@ -6,7 +6,49 @@
     <title>POC Solo - Graphe neuronal d'ouverture</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="is-human-view">
+  <body class="is-human-view screen-home">
+    <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
+      <div class="home-aurora" aria-hidden="true"></div>
+      <header class="home-header">
+        <span class="kicker">RogueChess</span>
+        <h1 class="home-title">Deviens le cerveau</h1>
+        <p class="home-tagline">
+          Apprends les lignes, allume tes neurones, puis mate Stockfish niveau après niveau.
+        </p>
+      </header>
+      <div class="home-cards">
+        <button id="homeAdventureButton" class="home-card home-card-adventure" type="button">
+          <span class="home-card-badge">Aventure</span>
+          <span class="home-card-icon" aria-hidden="true">🧠</span>
+          <strong>Mode Aventure</strong>
+          <span class="home-card-desc">
+            Une progression qui récompense : maîtrise le répertoire, fais grandir ton cerveau
+            neuronal et grimpe l'échelle Stockfish jusqu'au mat.
+          </span>
+          <span class="home-card-meta">
+            <em id="homeAdventureProgress">Cerveau Nv.1 · 0 % du cortex</em>
+            <span class="home-card-cta">Jouer ▸</span>
+          </span>
+        </button>
+        <button id="homeCreativeButton" class="home-card home-card-creative" type="button">
+          <span class="home-card-badge">Atelier</span>
+          <span class="home-card-icon" aria-hidden="true">⚗️</span>
+          <strong>Mode Créatif</strong>
+          <span class="home-card-desc">
+            L'atelier complet : graphe neuronal d'ouverture, import PGN, analyse Stockfish,
+            défi et exploration libre.
+          </span>
+          <span class="home-card-meta">
+            <em>Outil complet</em>
+            <span class="home-card-cta">Ouvrir ▸</span>
+          </span>
+        </button>
+      </div>
+      <footer class="home-footer">
+        <button id="homeResetAdventure" class="home-reset" type="button">Réinitialiser la progression</button>
+      </footer>
+    </div>
+
     <div class="poc-shell">
       <aside class="poc-sidebar" aria-label="Paramètres du graphe">
         <div class="brand-block">
