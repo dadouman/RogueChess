@@ -4184,7 +4184,7 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  if (!isExplorationMode() && afterEvaluation.cpWhite < state.survivalLimitCp) {
+  if (!isExplorationMode() && !isAdventureRun() && afterEvaluation.cpWhite < state.survivalLimitCp) {
     finishGame(
       'lost',
       `La réponse Stockfish punit l'erreur: la position tombe à ${formatEval(afterEvaluation.cpWhite)}.`,
