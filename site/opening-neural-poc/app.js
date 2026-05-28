@@ -1878,6 +1878,7 @@ function renderGraph() {
         outgoing > 1 ? 'is-branch' : '',
         viewNode.collapsedIncomingPlyCount > 1 ? 'is-compressed' : '',
         node.terminal ? 'is-terminal' : '',
+        isAdventureMastered(node.id) ? 'is-mastered' : '',
         state.highlightedNodes.has(node.id) ? 'is-path' : '',
         state.selectedNodeId === node.id ? 'is-selected' : '',
         !matches ? 'is-muted' : ''
