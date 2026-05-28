@@ -4614,6 +4614,9 @@ function renderGamePanel(phaseLabel = null) {
   renderOpponentGraphMini();
   renderMoveLog();
   renderFreeReviewPanel();
+  if (state.screen === 'adventure') {
+    renderAdventureHud();
+  }
 }
 
 function formatGamePhase(game) {
