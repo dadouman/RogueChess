@@ -186,6 +186,58 @@
         </dl>
       </aside>
 
+      <aside id="adventurePanel" class="adventure-panel" aria-label="Aventure en cours">
+        <div class="adv-topbar">
+          <button id="advHomeButton" class="adv-ghost" type="button">‹ Accueil</button>
+          <button id="advMapButton" class="adv-ghost adv-ghost-strong" type="button">Carte du cerveau</button>
+        </div>
+
+        <div class="adv-brain-bar">
+          <div class="adv-level-badge">
+            <span>NIV</span>
+            <strong id="advBrainLevel">1</strong>
+          </div>
+          <div class="adv-xp">
+            <div class="adv-xp-head">
+              <span>Cerveau</span>
+              <em id="advXpLabel">0 / 260 XP</em>
+            </div>
+            <div class="adv-xp-track"><div id="advXpFill" class="adv-xp-fill"></div></div>
+          </div>
+        </div>
+
+        <div class="adv-gauges">
+          <div class="adv-gauge">
+            <div class="adv-gauge-head"><span>🧠 Synapses</span><strong id="advSynapseValue">0 %</strong></div>
+            <div class="adv-gauge-track"><div id="advSynapseFill" class="adv-gauge-fill is-synapse"></div></div>
+          </div>
+          <div class="adv-gauge">
+            <div class="adv-gauge-head"><span>⚡ Puissance</span><strong id="advPowerValue">N0 / N10</strong></div>
+            <div class="adv-gauge-track"><div id="advPowerFill" class="adv-gauge-fill is-power"></div></div>
+          </div>
+        </div>
+
+        <section class="adv-stage-card">
+          <span class="kicker" id="advStageKicker">Mode Aventure</span>
+          <strong id="advStageTitle">Choisis une étape</strong>
+          <div id="advStars" class="adv-stars" aria-label="Étoiles obtenues"></div>
+          <p id="advObjective" class="adv-objective">Ouvre la carte du cerveau pour lancer une étape.</p>
+          <div id="advStreak" class="adv-streak" hidden></div>
+        </section>
+
+        <form id="advMoveForm" class="adv-move-form">
+          <label for="advMoveInput">Ton coup (Blancs)</label>
+          <div>
+            <input id="advMoveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
+            <button id="advMoveButton" type="submit">Jouer</button>
+          </div>
+        </form>
+
+        <div id="advExpected" class="adv-expected" aria-label="Coups suggérés"></div>
+        <p id="advMessage" class="adv-message">Bienvenue, cerveau. Ouvre la carte pour commencer.</p>
+        <div id="advResult" class="adv-result" hidden></div>
+      </aside>
+
       <main class="graph-stage" aria-label="Visualisation du graphe">
         <div class="stage-toolbar">
           <div>
