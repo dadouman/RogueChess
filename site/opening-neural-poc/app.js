@@ -5189,6 +5189,695 @@ function populateControls() {
   elements.engineDepth.textContent = `d${summary.stockfish.depth}`;
 }
 
+/* =====================================================================
+   Mode Aventure : cerveau RPG (apprentissage + domination Stockfish)
+   ===================================================================== */
+const ADV_STORAGE_KEY = 'roguechess-adventure-v1';
+const ADV_ACT2_UNLOCK = 0.5;
+const ADV_LESSONS = [
+  { id: 'l1', target: 0.25, title: 'Premiers neurones', icon: '🌱' },
+  { id: 'l2', target: 0.5, title: 'Réseau en éveil', icon: '✨' },
+  { id: 'l3', target: 0.75, title: 'Cortex dense', icon: '🔆' },
+  { id: 'l4', target: 1, title: 'Cerveau complet', icon: '🧠' }
+];
+const ADV_XP_PER_SYNAPSE = 8;
+const ADV_XP_BOOK_MOVE = 4;
+const ADV_XP_LESSON = 50;
+let advSurgeTimer = null;
+
+function createAdventureState() {
+  return {
+    xp: 0,
+    nodes: new Set(),
+    lessons: {},
+    bosses: {},
+    highestBoss: 0,
+    act2Announced: false
+  };
+}
+
+function loadAdventure() {
+  const base = createAdventureState();
+  try {
+    const raw = localStorage.getItem(ADV_STORAGE_KEY);
+    if (!raw) {
+      return base;
+    }
+    const data = JSON.parse(raw);
+    base.xp = Number(data.xp) || 0;
+    base.nodes = new Set(Array.isArray(data.nodes) ? data.nodes : []);
+    base.lessons = data.lessons && typeof data.lessons === 'object' ? data.lessons : {};
+    base.bosses = data.bosses && typeof data.bosses === 'object' ? data.bosses : {};
+    base.highestBoss = Number(data.highestBoss) || 0;
+    base.act2Announced = Boolean(data.act2Announced);
+  } catch {
+    return createAdventureState();
+  }
+  return base;
+}
+
+function saveAdventure() {
+  if (!state.adventure) {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      ADV_STORAGE_KEY,
+      JSON.stringify({
+        xp: state.adventure.xp,
+        nodes: [...state.adventure.nodes],
+        lessons: state.adventure.lessons,
+        bosses: state.adventure.bosses,
+        highestBoss: state.adventure.highestBoss,
+        act2Announced: state.adventure.act2Announced
+      })
+    );
+  } catch {
+    /* stockage indisponible: on continue en mémoire */
+  }
+}
+
+function advTotalSynapseNodes() {
+  return state.data ? state.data.nodes.filter((node) => node.id !== 'root').length : 0;
+}
+
+function advCoverage() {
+  const total = advTotalSynapseNodes();
+  return total ? Math.min(1, state.adventure.nodes.size / total) : 0;
+}
+
+function advCoveragePct() {
+  return Math.round(advCoverage() * 100);
+}
+
+function advLevelSpan(level) {
+  return 260 + (level - 1) * 120;
+}
+
+function advBrainProgress() {
+  let level = 1;
+  let remaining = state.adventure ? state.adventure.xp : 0;
+  while (remaining >= advLevelSpan(level)) {
+    remaining -= advLevelSpan(level);
+    level += 1;
+  }
+  return { level, into: remaining, span: advLevelSpan(level) };
+}
+
+function advBossXp(level) {
+  return 120 + level * 40;
+}
+
+function advAct2Unlocked() {
+  return advCoverage() >= ADV_ACT2_UNLOCK;
+}
+
+function advBossUnlocked(level) {
+  return advAct2Unlocked() && level <= state.adventure.highestBoss + 1;
+}
+
+function isAdventureRun() {
+  return state.screen === 'adventure' && Boolean(state.advRun);
+}
+
+function isAdventureMastered(id) {
+  return state.screen === 'adventure' && Boolean(state.adventure?.nodes.has(id));
+}
+
+function advAddXp(amount) {
+  if (!amount || !state.adventure) {
+    return;
+  }
+  const before = advBrainProgress().level;
+  state.adventure.xp += amount;
+  const after = advBrainProgress().level;
+  if (after > before) {
+    showAdventureToast({
+      icon: '🧠',
+      title: `Cerveau niveau ${after} !`,
+      text: 'Nouveau palier neuronal atteint.',
+      kind: 'levelup'
+    });
+  }
+}
+
+function triggerBrainSurge() {
+  document.body.classList.remove('is-brain-surge');
+  void document.body.offsetWidth;
+  document.body.classList.add('is-brain-surge');
+  clearTimeout(advSurgeTimer);
+  advSurgeTimer = setTimeout(() => document.body.classList.remove('is-brain-surge'), 720);
+}
+
+function checkLessonMilestones() {
+  const coverage = advCoverage();
+  for (const lesson of ADV_LESSONS) {
+    if (!state.adventure.lessons[lesson.id] && coverage + 1e-9 >= lesson.target) {
+      state.adventure.lessons[lesson.id] = 3;
+      advAddXp(ADV_XP_LESSON);
+      showAdventureToast({
+        icon: lesson.icon,
+        title: `Leçon validée : ${lesson.title}`,
+        text: `${Math.round(lesson.target * 100)} % du cortex illuminé.`,
+        kind: 'synapse'
+      });
+    }
+  }
+  if (coverage >= ADV_ACT2_UNLOCK && !state.adventure.act2Announced) {
+    state.adventure.act2Announced = true;
+    showAdventureToast({
+      icon: '⚔️',
+      title: 'Arène déverrouillée !',
+      text: 'Acte 2 : affronte Stockfish niveau par niveau.',
+      kind: 'boss'
+    });
+  }
+}
+
+function adventureLightEdge(edge) {
+  if (state.screen !== 'adventure' || !state.adventure || !edge) {
+    return;
+  }
+  let lit = 0;
+  for (const id of [edge.from, edge.to]) {
+    if (id && id !== 'root' && !state.adventure.nodes.has(id)) {
+      state.adventure.nodes.add(id);
+      lit += 1;
+    }
+  }
+  if (lit) {
+    advAddXp(lit * ADV_XP_PER_SYNAPSE);
+    triggerBrainSurge();
+    checkLessonMilestones();
+    updateHomeProgress();
+    saveAdventure();
+  }
+}
+
+function adventureOnCorrectWhiteBook() {
+  const run = state.advRun;
+  if (!run) {
+    return;
+  }
+  run.streak = (run.streak || 0) + 1;
+  run.bookMoves = (run.bookMoves || 0) + 1;
+  const combo = Math.min(run.streak, 6);
+  advAddXp(ADV_XP_BOOK_MOVE + (run.streak >= 3 ? combo : 0));
+  saveAdventure();
+}
+
+function adventureOnWrongBook() {
+  const run = state.advRun;
+  if (!run) {
+    return;
+  }
+  run.streak = 0;
+  run.wrongMoves = (run.wrongMoves || 0) + 1;
+}
+
+function adventureOnLessonReachedFree() {
+  const run = state.advRun;
+  if (!run || run.kind !== 'lesson' || run.completed) {
+    return;
+  }
+  run.completed = true;
+  finishGame('won', `Ligne maîtrisée ! Cortex illuminé à ${advCoveragePct()} %.`);
+}
+
+function adventureOnGameFinished(result) {
+  const run = state.advRun;
+  if (!state.adventure || !run) {
+    return;
+  }
+  if (run.kind === 'boss') {
+    if (result === 'won' && !run.resolved) {
+      run.resolved = true;
+      const level = run.bossLevel;
+      const firstWin = !state.adventure.bosses[level];
+      state.adventure.bosses[level] = 3;
+      if (level > state.adventure.highestBoss) {
+        state.adventure.highestBoss = level;
+      }
+      if (firstWin) {
+        advAddXp(advBossXp(level));
+      }
+      const profile = getStockfishLevelProfile(level);
+      showAdventureToast({
+        icon: '👑',
+        title: `Boss N${level} maté !`,
+        text:
+          level < 10
+            ? `${profile.label} tombe. Adversaire suivant débloqué.`
+            : `${profile.label} tombe. Cortex souverain !`,
+        kind: 'boss'
+      });
+    } else if (result === 'lost') {
+      showAdventureToast({
+        icon: '💥',
+        title: 'Échec et mat subi',
+        text: 'Le boss résiste. Relance l’assaut.',
+        kind: null
+      });
+    }
+  }
+  saveAdventure();
+  updateHomeProgress();
+}
+
+function setScreen(screen) {
+  state.screen = screen;
+  document.body.classList.toggle('screen-home', screen === 'home');
+  document.body.classList.toggle('screen-creative', screen === 'creative');
+  document.body.classList.toggle('screen-adventure', screen === 'adventure');
+  if (screen !== 'adventure') {
+    closeAdventureMap();
+  }
+  if (screen === 'home') {
+    updateHomeProgress();
+  }
+  if (screen === 'adventure') {
+    renderAdventureHud();
+  }
+  renderGraph();
+}
+
+function enterAdventure() {
+  state.advRun = null;
+  if (state.activeBook !== 'default' && state.defaultData) {
+    setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
+    state.activeBook = 'default';
+    elements.pgnImportStatus.textContent = 'Livre actif';
+  }
+  state.playMode = 'challenge';
+  syncPlayModeButtons();
+  setViewMode('brain');
+  setScreen('adventure');
+  openAdventureMap();
+}
+
+function enterCreative() {
+  const from = state.screen;
+  state.advRun = null;
+  setScreen('creative');
+  if (from === 'adventure') {
+    state.playMode = 'challenge';
+    syncPlayModeButtons();
+    startNewGame(FIRST_LEVEL_NUMBER);
+  }
+}
+
+function openAdventureMap() {
+  const map = document.querySelector('#adventureMap');
+  if (map) {
+    map.hidden = false;
+  }
+  renderAdventureMap();
+}
+
+function closeAdventureMap() {
+  const map = document.querySelector('#adventureMap');
+  if (map) {
+    map.hidden = true;
+  }
+}
+
+function resetAdventureProgress() {
+  state.adventure = createAdventureState();
+  saveAdventure();
+  updateHomeProgress();
+  if (state.screen === 'adventure') {
+    renderAdventureHud();
+    renderAdventureMap();
+    renderGraph();
+  }
+  showAdventureToast({
+    icon: '🧼',
+    title: 'Progression réinitialisée',
+    text: 'Le cortex est de nouveau vierge.',
+    kind: null
+  });
+}
+
+function focusAdvInput() {
+  window.requestAnimationFrame(() => {
+    const input = document.querySelector('#advMoveInput');
+    if (input && !input.disabled) {
+      input.focus();
+    }
+  });
+}
+
+function launchLesson() {
+  state.advRun = { kind: 'lesson', streak: 0, wrongMoves: 0, bookMoves: 0, completed: false };
+  state.playMode = 'challenge';
+  closeAdventureMap();
+  setViewMode('brain');
+  startNewGame(FIRST_LEVEL_NUMBER);
+  if (state.game) {
+    state.game.message =
+      'Suis le livre : chaque bon coup allume un neurone. Va jusqu’au bout de la ligne.';
+  }
+  renderAdventureHud();
+  focusAdvInput();
+}
+
+function launchBoss(level) {
+  if (!advBossUnlocked(level)) {
+    return;
+  }
+  state.advRun = { kind: 'boss', bossLevel: level, streak: 0, wrongMoves: 0, resolved: false };
+  state.playMode = 'challenge';
+  state.stockfishLevel = level;
+  updateStockfishLevelUi();
+  closeAdventureMap();
+  setViewMode('brain');
+  startNewGame(FIRST_LEVEL_NUMBER);
+  if (state.game) {
+    const profile = getStockfishLevelProfile(level);
+    state.game.message = `Boss N${level} · ${profile.label}. Sors du livre puis cherche l’échec et mat.`;
+  }
+  renderAdventureHud();
+  focusAdvInput();
+}
+
+function submitAdventureMove() {
+  const input = document.querySelector('#advMoveInput');
+  if (!input) {
+    return;
+  }
+  const value = input.value;
+  input.value = '';
+  submitHumanMove(value);
+}
+
+function advSetText(selector, text) {
+  const el = document.querySelector(selector);
+  if (el) {
+    el.textContent = text;
+  }
+}
+
+function advSetWidth(selector, pct) {
+  const el = document.querySelector(selector);
+  if (el) {
+    el.style.width = `${clamp(pct, 0, 100)}%`;
+  }
+}
+
+function advStarString(count) {
+  const filled = clamp(Math.round(count), 0, 3);
+  return '★'.repeat(filled) + '☆'.repeat(3 - filled);
+}
+
+function updateHomeProgress() {
+  const el = document.querySelector('#homeAdventureProgress');
+  if (!el || !state.adventure) {
+    return;
+  }
+  const progress = advBrainProgress();
+  el.textContent = `Cerveau Nv.${progress.level} · ${advCoveragePct()} % du cortex · ${state.adventure.highestBoss}/10 boss`;
+}
+
+function advResultButton(label, handler, primary = false) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  if (primary) {
+    button.className = 'is-primary';
+  }
+  button.textContent = label;
+  button.addEventListener('click', handler);
+  return button;
+}
+
+function renderAdventureResult(el, game, run) {
+  el.hidden = false;
+  const win = game.status === 'won';
+  el.classList.toggle('is-win', win);
+  el.classList.toggle('is-loss', !win);
+  el.replaceChildren();
+
+  const heading = document.createElement('strong');
+  const stars = document.createElement('div');
+  stars.className = 'adv-stars';
+  const note = document.createElement('p');
+  const actions = document.createElement('div');
+  actions.className = 'adv-result-actions';
+
+  if (run.kind === 'boss') {
+    if (win) {
+      heading.textContent = `Boss N${run.bossLevel} vaincu !`;
+      stars.textContent = advStarString(state.adventure.bosses[run.bossLevel] || 3);
+      note.textContent = 'Échec et mat livré. Le cortex gagne en puissance.';
+      if (run.bossLevel < 10 && advBossUnlocked(run.bossLevel + 1)) {
+        actions.append(
+          advResultButton(`Boss N${run.bossLevel + 1} ▸`, () => launchBoss(run.bossLevel + 1), true)
+        );
+      }
+    } else {
+      heading.textContent = 'Assaut repoussé';
+      note.textContent = 'Le boss tient bon. Relance l’attaque.';
+      actions.append(advResultButton('Réessayer', () => launchBoss(run.bossLevel), true));
+    }
+  } else if (win) {
+    heading.textContent = 'Ligne maîtrisée !';
+    note.textContent = `Cortex illuminé à ${advCoveragePct()} %.`;
+    actions.append(advResultButton('Apprendre une autre ligne', () => launchLesson(), true));
+  } else {
+    heading.textContent = 'Ligne interrompue';
+    note.textContent = 'Reprends une ligne du livre pour illuminer plus de neurones.';
+    actions.append(advResultButton('Reprendre une ligne', () => launchLesson(), true));
+  }
+
+  actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
+  el.append(heading, stars, note, actions);
+}
+
+function renderAdventureHud() {
+  if (!state.adventure) {
+    return;
+  }
+  const progress = advBrainProgress();
+  const coveragePct = advCoveragePct();
+  advSetText('#advBrainLevel', String(progress.level));
+  advSetText('#advXpLabel', `${Math.round(progress.into)} / ${progress.span} XP`);
+  advSetWidth('#advXpFill', progress.span ? (progress.into / progress.span) * 100 : 0);
+  advSetText('#advSynapseValue', `${coveragePct} %`);
+  advSetWidth('#advSynapseFill', coveragePct);
+  advSetText('#advPowerValue', `N${state.adventure.highestBoss} / N10`);
+  advSetWidth('#advPowerFill', state.adventure.highestBoss * 10);
+
+  const run = state.advRun;
+  const game = state.game;
+  const kicker = document.querySelector('#advStageKicker');
+  const title = document.querySelector('#advStageTitle');
+  const starsEl = document.querySelector('#advStars');
+  const objective = document.querySelector('#advObjective');
+  const streak = document.querySelector('#advStreak');
+  const message = document.querySelector('#advMessage');
+  const expected = document.querySelector('#advExpected');
+  const result = document.querySelector('#advResult');
+  const moveInput = document.querySelector('#advMoveInput');
+  const moveButton = document.querySelector('#advMoveButton');
+
+  if (starsEl) {
+    starsEl.textContent = '';
+  }
+
+  if (!run || !game) {
+    if (kicker) kicker.textContent = 'Mode Aventure';
+    if (title) title.textContent = 'Choisis une étape';
+    if (objective)
+      objective.textContent = 'Ouvre la carte du cerveau pour lancer une leçon ou un boss.';
+    if (streak) streak.hidden = true;
+    if (expected) expected.replaceChildren();
+    if (result) result.hidden = true;
+    if (message) message.textContent = 'Bienvenue, cerveau. Ouvre la carte pour commencer.';
+    if (moveInput) moveInput.disabled = true;
+    if (moveButton) moveButton.disabled = true;
+    return;
+  }
+
+  if (run.kind === 'lesson') {
+    if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
+    if (title) title.textContent = 'Apprends la ligne';
+    if (objective)
+      objective.textContent = `Reste dans le livre jusqu’au bout. Cortex actuel : ${coveragePct} %.`;
+  } else {
+    const profile = getStockfishLevelProfile(run.bossLevel);
+    if (kicker) kicker.textContent = `Acte 2 · Boss N${run.bossLevel}`;
+    if (title) title.textContent = `Mater ${profile.label}`;
+    if (objective)
+      objective.textContent = `Sors du livre puis cherche l’échec et mat contre Stockfish N${run.bossLevel}.`;
+  }
+
+  if (streak) {
+    if (game.status === 'playing' && (run.streak || 0) >= 2) {
+      streak.hidden = false;
+      streak.textContent = `🔥 Combo x${run.streak}`;
+    } else {
+      streak.hidden = true;
+    }
+  }
+
+  if (expected) {
+    expected.replaceChildren();
+    if (game.status === 'playing' && game.phase === 'opening') {
+      for (const edge of getExpectedWhiteBookEdges()) {
+        const chip = document.createElement('span');
+        chip.className = 'adv-expected-chip';
+        chip.textContent = edge.san;
+        expected.append(chip);
+      }
+    }
+  }
+
+  if (message) {
+    message.textContent = game.message;
+  }
+
+  if (result) {
+    if (game.status === 'won' || game.status === 'lost') {
+      renderAdventureResult(result, game, run);
+    } else {
+      result.hidden = true;
+    }
+  }
+
+  const canMove = game.status === 'playing' && game.chess.turn() === 'w' && !game.locked;
+  if (moveInput) moveInput.disabled = !canMove;
+  if (moveButton) moveButton.disabled = !canMove;
+}
+
+function makeAdventureStageRow(options) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `adv-stage${options.cls ? ` ${options.cls}` : ''}`;
+  if (options.disabled) {
+    button.disabled = true;
+  }
+  const node = document.createElement('span');
+  node.className = 'adv-stage-node';
+  node.textContent = options.icon;
+  const info = document.createElement('div');
+  info.className = 'adv-stage-info';
+  const title = document.createElement('strong');
+  title.textContent = options.title;
+  const desc = document.createElement('span');
+  desc.textContent = options.desc;
+  info.append(title, desc);
+  const stars = document.createElement('span');
+  stars.className = 'adv-stage-stars';
+  stars.textContent = options.showStars ? advStarString(options.stars) : '';
+  button.append(node, info, stars);
+  if (!options.disabled && options.onClick) {
+    button.addEventListener('click', options.onClick);
+  }
+  return button;
+}
+
+function renderAdventureMap() {
+  if (!state.adventure) {
+    return;
+  }
+  const coveragePct = advCoveragePct();
+  const progress = advBrainProgress();
+  const ring = document.querySelector('#advBrainRing');
+  if (ring) {
+    ring.style.setProperty('--pct', String(coveragePct));
+  }
+  advSetText('#advRingValue', `${coveragePct} %`);
+  advSetText('#advStatLevel', String(progress.level));
+  advSetText('#advStatXp', String(Math.round(state.adventure.xp)));
+  advSetText('#advStatSynapse', `${coveragePct} %`);
+  advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
+
+  const act1 = document.querySelector('#advAct1Stages');
+  if (act1) {
+    act1.replaceChildren();
+    const currentLesson = ADV_LESSONS.find((lesson) => !state.adventure.lessons[lesson.id]);
+    for (const lesson of ADV_LESSONS) {
+      const done = Boolean(state.adventure.lessons[lesson.id]);
+      const isCurrent = currentLesson && lesson.id === currentLesson.id;
+      act1.append(
+        makeAdventureStageRow({
+          icon: done ? '✓' : lesson.icon,
+          title: lesson.title,
+          desc: `Illumine ${Math.round(lesson.target * 100)} % du cortex`,
+          stars: state.adventure.lessons[lesson.id] || 0,
+          showStars: done,
+          cls: done ? 'is-done' : isCurrent ? 'is-current' : '',
+          disabled: false,
+          onClick: () => launchLesson()
+        })
+      );
+    }
+  }
+
+  const act2Section = document.querySelector('#advAct2Section');
+  const act2 = document.querySelector('#advAct2Stages');
+  const lock = document.querySelector('#advAct2Lock');
+  const unlocked = advAct2Unlocked();
+  if (act2Section) {
+    act2Section.classList.toggle('is-locked', !unlocked);
+  }
+  if (lock) {
+    lock.textContent = unlocked
+      ? 'Arène ouverte : mate chaque niveau pour libérer le suivant.'
+      : `Verrouillé : illumine ${Math.round(ADV_ACT2_UNLOCK * 100)} % du cortex (actuel ${coveragePct} %).`;
+  }
+  if (act2) {
+    act2.replaceChildren();
+    for (let level = 1; level <= 10; level += 1) {
+      const profile = getStockfishLevelProfile(level);
+      const done = Boolean(state.adventure.bosses[level]);
+      const open = advBossUnlocked(level);
+      const isCurrent = open && !done && level === state.adventure.highestBoss + 1;
+      act2.append(
+        makeAdventureStageRow({
+          icon: done ? '✓' : open ? `N${level}` : '🔒',
+          title: `Boss N${level} · ${profile.label}`,
+          desc: profile.elo ? `${profile.elo} Elo · échec et mat requis` : 'Force max · échec et mat requis',
+          stars: state.adventure.bosses[level] || 0,
+          showStars: done,
+          cls: done ? 'is-done' : isCurrent ? 'is-current' : open ? '' : 'is-locked',
+          disabled: !open,
+          onClick: () => launchBoss(level)
+        })
+      );
+    }
+  }
+}
+
+function bindAdventureEvents() {
+  const bind = (selector, handler) => {
+    const el = document.querySelector(selector);
+    if (el) {
+      el.addEventListener('click', handler);
+    }
+  };
+  bind('#homeAdventureButton', enterAdventure);
+  bind('#homeCreativeButton', enterCreative);
+  bind('#homeResetAdventure', () => {
+    if (window.confirm('Réinitialiser toute la progression Aventure ?')) {
+      resetAdventureProgress();
+    }
+  });
+  bind('#advHomeButton', () => setScreen('home'));
+  bind('#advMapButton', openAdventureMap);
+  bind('#advMapClose', closeAdventureMap);
+  bind('#advMapHomeButton', () => {
+    closeAdventureMap();
+    setScreen('home');
+  });
+  const form = document.querySelector('#advMoveForm');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      submitAdventureMove();
+    });
+  }
+}
+
 function bindEvents() {
   bindPanelResizeHandles();
 
