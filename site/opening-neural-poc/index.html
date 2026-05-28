@@ -40,6 +40,14 @@
             <input id="stockfishLevelRange" type="range" min="1" max="10" step="1" value="5" />
           </div>
 
+          <div class="stockfish-difficulty">
+            <div class="control-header">
+              <label for="survivalLimitRange">Seuil de défaite</label>
+              <strong id="survivalLimitValue">-1.00</strong>
+            </div>
+            <input id="survivalLimitRange" type="range" min="-300" max="-100" step="50" value="-100" />
+          </div>
+
           <div id="lifeRow" class="life-row" aria-label="Vies restantes"></div>
 
           <dl class="game-stat-grid">

@@ -62,6 +62,8 @@ const elements = {
   explorationModeButton: document.querySelector('#explorationModeButton'),
   stockfishLevelRange: document.querySelector('#stockfishLevelRange'),
   stockfishLevelValue: document.querySelector('#stockfishLevelValue'),
+  survivalLimitRange: document.querySelector('#survivalLimitRange'),
+  survivalLimitValue: document.querySelector('#survivalLimitValue'),
   gameLevelLabel: document.querySelector('#gameLevelLabel'),
   lifeRow: document.querySelector('#lifeRow'),
   gameTitle: document.querySelector('#gameTitle'),
@@ -135,6 +137,7 @@ const state = {
   playMode: 'challenge',
   campaignLevel: FIRST_LEVEL_NUMBER,
   stockfishLevel: DEFAULT_STOCKFISH_LEVEL,
+  survivalLimitCp: SURVIVAL_LIMIT_CP,
   lineFilter: 'all',
   temperatureCp: 95,
   floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
@@ -239,6 +242,11 @@ function updateStockfishLevelUi() {
   const profile = getStockfishLevelProfile();
   elements.stockfishLevelRange.value = String(profile.level);
   elements.stockfishLevelValue.textContent = formatStockfishLevel(profile);
+}
+
+function updateSurvivalLimitUi() {
+  elements.survivalLimitRange.value = String(state.survivalLimitCp);
+  elements.survivalLimitValue.textContent = formatEval(state.survivalLimitCp);
 }
 
 function formatPieceCount(piece, count) {
@@ -3368,8 +3376,8 @@ function buildReviewMoveAnalysis(entry) {
   }
 
   const thresholdText =
-    entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < SURVIVAL_LIMIT_CP
-      ? ` Le coup passe sous le seuil ${formatEval(SURVIVAL_LIMIT_CP)}.`
+    entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < state.survivalLimitCp
+      ? ` Le coup passe sous le seuil ${formatEval(state.survivalLimitCp)}.`
       : '';
   const statusText = entry.status === 'returned'
     ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
@@ -4030,7 +4038,7 @@ async function submitFreeMove(input) {
   state.game.currentPv = evaluation.pv;
   state.game.currentDepth = evaluation.depth;
 
-  if (!isExplorationMode() && evaluation.cpWhite < SURVIVAL_LIMIT_CP) {
+  if (!isExplorationMode() && evaluation.cpWhite < state.survivalLimitCp) {
     recordFreeReviewMove({
       move,
       label: 'Survie blanche',
@@ -4159,7 +4167,7 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  if (!isExplorationMode() && afterEvaluation.cpWhite < SURVIVAL_LIMIT_CP) {
+  if (!isExplorationMode() && afterEvaluation.cpWhite < state.survivalLimitCp) {
     finishGame(
       'lost',
       `La réponse Stockfish punit l'erreur: la position tombe à ${formatEval(afterEvaluation.cpWhite)}.`,
@@ -4175,17 +4183,17 @@ async function playStockfishBlackMove() {
   }
 
   game.message = isExplorationMode()
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: -1.00.`
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
     : isMateObjective(game)
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous -1.00.`
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
     : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
 }
 
 function enterFreePhase(message) {
   state.game.phase = 'free';
   state.game.message = isExplorationMode()
-    ? `${message} Le seuil -1.00 reste affiché comme repère, sans pénalité.`
-    : `${message} Ne laisse pas l'évaluation passer sous -1.00.`;
+    ? `${message} Le seuil ${formatEval(state.survivalLimitCp)} reste affiché comme repère, sans pénalité.`
+    : `${message} Ne laisse pas l'évaluation passer sous ${formatEval(state.survivalLimitCp)}.`;
   const node = getGameNodeByFen();
   if (node) {
     state.game.currentNodeId = node.id;
@@ -4443,7 +4451,7 @@ function getGameInfoAnalysis(game, currentNode = null) {
     return "Position libre: teste une idée, Stockfish répondra sans pénalité.";
   }
 
-  return `Position de survie: garde l'évaluation à ${formatEval(SURVIVAL_LIMIT_CP)} ou mieux.`;
+  return `Position de survie: garde l'évaluation à ${formatEval(state.survivalLimitCp)} ou mieux.`;
 }
 
 function renderGameDetails() {
@@ -4476,7 +4484,7 @@ function renderGameDetails() {
       : isExplorationMode()
         ? 'Exploration libre: teste la position contre Stockfish.'
         : isMateObjective(game)
-          ? "Objectif final: mater sans passer sous -1.00."
+          ? `Objectif final: mater sans passer sous ${formatEval(state.survivalLimitCp)}.`
           : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
   elements.nodeEval.textContent = reviewEntry ? formatEval(reviewEntry.afterEvalCp) : formatEval(game.currentEvalCp);
   elements.nodeFuture.textContent =
@@ -4667,10 +4675,10 @@ function renderExpectedMoveList() {
   const free = document.createElement('span');
   free.className = 'expected-pill is-free';
   free.textContent = isExplorationMode()
-    ? 'Coup libre: seuil indicatif -1.00'
+    ? `Coup libre: seuil indicatif ${formatEval(state.survivalLimitCp)}`
     : isMateObjective(game)
-      ? 'Objectif mat: reste >= -1.00'
-      : 'Coup libre: reste >= -1.00';
+      ? `Objectif mat: reste >= ${formatEval(state.survivalLimitCp)}`
+      : `Coup libre: reste >= ${formatEval(state.survivalLimitCp)}`;
   elements.expectedMoveList.append(free);
   for (const san of game.chess.moves().slice(0, 6)) {
     const button = document.createElement('button');
@@ -4940,10 +4948,10 @@ function renderGameChoices() {
 
   const free = document.createElement('p');
   free.textContent = isExplorationMode()
-    ? 'Exploration libre: joue n’importe quel coup légal, le seuil -1.00 sert seulement de repère.'
+    ? `Exploration libre: joue n’importe quel coup légal, le seuil ${formatEval(state.survivalLimitCp)} sert seulement de repère.`
     : isMateObjective(game)
-      ? "Objectif mat: joue un coup légal qui garde l'évaluation à -1.00 ou mieux jusqu'au mat."
-      : 'Coup libre: joue un coup légal qui garde l’évaluation à -1.00 ou mieux.';
+      ? `Objectif mat: joue un coup légal qui garde l’évaluation à ${formatEval(state.survivalLimitCp)} ou mieux jusqu’au mat.`
+      : `Coup libre: joue un coup légal qui garde l’évaluation à ${formatEval(state.survivalLimitCp)} ou mieux.`;
   elements.choiceList.append(free);
   for (const san of game.chess.moves().slice(0, 10)) {
     const row = document.createElement('button');
@@ -5192,6 +5200,12 @@ function bindEvents() {
     renderGamePanel();
   });
 
+  elements.survivalLimitRange.addEventListener('input', () => {
+    state.survivalLimitCp = Number(elements.survivalLimitRange.value);
+    updateSurvivalLimitUi();
+    renderGamePanel();
+  });
+
   elements.bestPathButton.addEventListener('click', () => buildPath('best'));
   elements.randomPathButton.addEventListener('click', () => buildPath('random'));
   elements.resetButton.addEventListener('click', resetHighlight);
@@ -5246,6 +5260,7 @@ async function init() {
   state.defaultData = await response.json();
   bindEvents();
   updateStockfishLevelUi();
+  updateSurvivalLimitUi();
   setViewMode('human');
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
   elements.pgnImportStatus.textContent = 'Livre actif';
