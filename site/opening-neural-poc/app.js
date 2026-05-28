@@ -5135,6 +5135,7 @@ async function importPgnFromInput() {
   try {
     const data = await buildGraphDataFromPgn(pgn, 'PGN importé');
     setGraphData(data, 'PGN importé: graphe prêt');
+    state.activeBook = 'custom';
     elements.pgnImportStatus.textContent = `Prêt d${IMPORT_STOCKFISH_DEPTH}`;
   } catch (error) {
     elements.pgnImportStatus.textContent = 'Erreur PGN';
