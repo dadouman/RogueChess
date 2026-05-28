@@ -2309,6 +2309,16 @@ body.screen-adventure .detail-panel .detail-heading p {
   gap: 6px;
 }
 
+.adv-expected-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(117, 231, 232, 0.12);
+  color: var(--soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .adv-message {
   color: var(--soft);
   font-size: 12px;
