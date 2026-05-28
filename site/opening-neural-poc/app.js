@@ -2858,7 +2858,10 @@ function createInitialReviewEntry(chess, evaluation) {
 
 function createInitialGameState(level = state.campaignLevel) {
   const exploration = state.playMode === 'exploration';
-  const objective = getLevelObjective(exploration ? FIRST_LEVEL_NUMBER : level);
+  const isAdventureBoss = state.screen === 'adventure' && state.advRun?.kind === 'boss';
+  const objective = isAdventureBoss
+    ? { type: 'mate', target: Number.POSITIVE_INFINITY }
+    : getLevelObjective(exploration ? FIRST_LEVEL_NUMBER : level);
   const rootNode = getNode('root');
   const chess = new Chess(rootNode?.fen ?? STANDARD_START_FEN);
   const rootEvaluation = rootNode?.evaluation ?? { cpWhite: 0 };
