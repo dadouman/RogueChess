@@ -4213,6 +4213,9 @@ function enterFreePhase(message) {
     state.game.currentNodeId = node.id;
     setGameGraphPathToNode(node.id);
   }
+  if (state.screen === 'adventure' && state.advRun?.kind === 'lesson') {
+    adventureOnLessonReachedFree();
+  }
 }
 
 function consumeLife(message) {
