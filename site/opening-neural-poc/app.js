@@ -5151,6 +5151,7 @@ async function restoreDefaultGraph() {
   }
   setImportBusy(true, 'Livre italien');
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
+  state.activeBook = 'default';
   elements.pgnImportStatus.textContent = 'Livre actif';
   setImportBusy(false);
 }
