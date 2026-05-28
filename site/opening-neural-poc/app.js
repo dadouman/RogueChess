@@ -5286,12 +5286,17 @@ async function init() {
     throw new Error(`Impossible de charger opening-graph.json (${response.status})`);
   }
   state.defaultData = await response.json();
+  state.adventure = loadAdventure();
   bindEvents();
+  bindAdventureEvents();
   updateStockfishLevelUi();
   updateSurvivalLimitUi();
   setViewMode('human');
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
+  state.activeBook = 'default';
   elements.pgnImportStatus.textContent = 'Livre actif';
+  setScreen('home');
+  updateHomeProgress();
 }
 
 init().catch((error) => {
