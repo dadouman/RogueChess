@@ -153,6 +153,10 @@ const state = {
     left: 328,
     right: 340
   },
+  screen: 'home',
+  activeBook: 'default',
+  adventure: null,
+  advRun: null,
   game: null
 };
 
