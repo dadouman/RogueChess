@@ -4288,10 +4288,13 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  if (!isExplorationMode() && !isAdventureRun() && afterEvaluation.cpWhite < state.survivalLimitCp) {
+  const replyDeficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
+  if (!isExplorationMode() && afterEvaluation.cpWhite < replyDeficitLimitCp) {
     finishGame(
       'lost',
-      `La réponse Stockfish punit l'erreur: la position tombe à ${formatEval(afterEvaluation.cpWhite)}.`,
+      isAdventureRun()
+        ? `Stockfish punit la gaffe : la position chute à ${formatEval(afterEvaluation.cpWhite)} (seuil ${formatEval(replyDeficitLimitCp)}).`
+        : `La réponse Stockfish punit l'erreur: la position tombe à ${formatEval(afterEvaluation.cpWhite)}.`,
       game.chess.fen(),
       afterEvaluation
     );
@@ -4306,7 +4309,7 @@ async function playStockfishBlackMove() {
   game.message = isExplorationMode()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
     : isAdventureRun()
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. À toi de trouver l'échec et mat !`
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
     : isMateObjective(game)
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
     : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
