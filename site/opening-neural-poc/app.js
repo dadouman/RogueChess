@@ -2338,6 +2338,7 @@ function animateBoardMove(container, fromSquare, toSquare) {
   pieceImg.style.opacity = '0';
   anchor.append(ghost);
 
+  const token = Symbol('board-move');
   let done = false;
   const cleanup = () => {
     if (done) {
@@ -2354,7 +2355,6 @@ function animateBoardMove(container, fromSquare, toSquare) {
       boardMoveAnim = null;
     }
   };
-  const token = Symbol('board-move');
   boardMoveAnim = { token, toSquare, cleanup };
 
   // Forcer un reflow pour valider la position initiale, puis lancer la transition.
