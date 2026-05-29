@@ -5952,6 +5952,7 @@ function bindAdventureEvents() {
   });
   bind('#advHomeButton', () => setScreen('home'));
   bind('#advMapButton', openAdventureMap);
+  bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
   bind('#advMapHomeButton', () => {
     closeAdventureMap();
