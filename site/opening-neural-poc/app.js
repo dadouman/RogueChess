@@ -4643,6 +4643,9 @@ function renderGameDetails() {
   renderSegmentExplorer(null);
   renderGameChoices();
   renderGamePanel(phaseLabel);
+  // Indices visuels propres à la vue joueur aventure
+  applyAdvBoardHints();
+  updateAdvBoardFeedback();
 }
 
 function renderGamePanel(phaseLabel = null) {
