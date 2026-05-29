@@ -4035,6 +4035,7 @@ function clearGameCinematic() {
 
 function startNewGame(level = state.campaignLevel) {
   clearGameCinematic();
+  setEngineThinking(false);
   if (state.playMode === 'challenge') {
     state.campaignLevel = Math.max(FIRST_LEVEL_NUMBER, level);
   }
