@@ -2824,6 +2824,78 @@ function toggleAdvViewMode() {
   setAdvViewMode(state.advViewMode === 'board' ? 'brain' : 'board');
 }
 
+// --- Retours visuels en vue échiquier ---
+
+/** Fait clignoter l'échiquier en vert (bon coup) ou rouge + secousse (mauvais). */
+function flashAdvBoard(type) {
+  if (state.advViewMode !== 'board') {
+    return;
+  }
+  const board = document.querySelector('#boardPreview');
+  if (!board) {
+    return;
+  }
+  board.classList.remove('is-flash-good', 'is-flash-bad');
+  void board.offsetWidth; // force reflow pour redémarrer l'animation
+  board.classList.add(type === 'good' ? 'is-flash-good' : 'is-flash-bad');
+  setTimeout(() => board.classList.remove('is-flash-good', 'is-flash-bad'), 650);
+}
+
+/** Ajoute des points de suivi verts sur les cases-cibles des coups du livre. */
+function applyAdvBoardHints() {
+  if (!isAdventureRun() || state.advViewMode !== 'board') {
+    return;
+  }
+  const game = state.game;
+  if (!game || game.status !== 'playing' || game.chess.turn() !== 'w' || game.phase !== 'opening') {
+    return;
+  }
+  const edges = getExpectedWhiteBookEdges();
+  if (!edges.length) {
+    return;
+  }
+  const toSquares  = new Set(edges.map(e => e.uci.slice(2, 4)));
+  const fromSquares = new Set(edges.map(e => e.uci.slice(0, 2)));
+  const board = document.querySelector('#boardPreview');
+  if (!board) {
+    return;
+  }
+  for (const sq of board.querySelectorAll('.board-square')) {
+    const name = sq.dataset.square;
+    sq.classList.toggle('is-book-hint', toSquares.has(name));
+    sq.classList.toggle('is-book-from',  fromSquares.has(name));
+  }
+}
+
+/** Met à jour l'aura de phase (ouverture / libre) et la légende flottante du board. */
+function updateAdvBoardFeedback() {
+  if (!isAdventureRun() || state.advViewMode !== 'board') {
+    return;
+  }
+  const game = state.game;
+  const board   = document.querySelector('#boardPreview');
+  const caption = document.querySelector('#advBoardCaption');
+  if (!game || !board) {
+    return;
+  }
+  // Aura coral en phase libre (mode boss : trouve l'échec et mat)
+  board.classList.toggle('is-free-phase', game.phase === 'free' && game.status === 'playing');
+  if (!caption) {
+    return;
+  }
+  if (game.status !== 'playing') {
+    caption.textContent = '';
+    return;
+  }
+  if (game.phase === 'opening') {
+    caption.textContent = game.chess.turn() === 'w' ? '⬜ Ton coup' : '⬛ Stockfish réfléchit…';
+  } else {
+    // Phase libre : objectif visuel
+    const isMate = isAdventureRun() && state.advRun?.kind === 'boss';
+    caption.textContent = isMate ? '⚔️ Trouve l\'échec et mat' : '⚡ Phase libre';
+  }
+}
+
 function isExplorationMode() {
   return state.game?.mode === 'exploration' || state.playMode === 'exploration';
 }
