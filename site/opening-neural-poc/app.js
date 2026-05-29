@@ -6220,17 +6220,6 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
-  // [DEBUG-TEMP] hook de test manuel — À RETIRER après vérification
-  window.__rc = {
-    state,
-    startNewGame,
-    setScreen,
-    finishGame,
-    renderGameDetails,
-    renderAdventureHud,
-    advDeficitThresholdCp,
-    advRunDeficitThresholdCp
-  };
 }
 
 init().catch((error) => {
