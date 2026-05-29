@@ -6150,7 +6150,7 @@ function bindAdventureEvents() {
   // Rail d'infos (vue joueur aventure) : replier/déplier les sections de 2e niveau.
   if (elements.detailInfoContent) {
     elements.detailInfoContent.addEventListener('click', (event) => {
-      if (!document.body.classList.contains('is-adv-board-view')) {
+      if (state.screen !== 'adventure' || !document.body.classList.contains('is-adv-board-view')) {
         return;
       }
       const title = event.target.closest('.detail-section > h3');
