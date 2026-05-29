@@ -5028,11 +5028,18 @@ function renderFreeReviewPanel() {
     list.append(button);
   }
 
-  elements.freeReviewPanel.append(header, controls);
+  host.append(header, controls);
   if (childEntries.length) {
-    elements.freeReviewPanel.append(branches);
+    host.append(branches);
   }
-  elements.freeReviewPanel.append(actions, list);
+  // Le bouton « Jouer contre Stockfish depuis ici » s'appuie sur le mode
+  // exploration, lequel masque le plateau dans la vue cerveau de l'aventure.
+  // On l'omet en aventure et on conserve la navigation pas-à-pas + variantes
+  // jouables sur l'échiquier comme analyse rapide.
+  if (!inAdventure) {
+    host.append(actions);
+  }
+  host.append(list);
 }
 
 function renderGameChoices() {
