@@ -4548,6 +4548,7 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   if (!game) {
     return;
   }
+  setEngineThinking(false);
   game.status = result;
   game.locked = false;
   game.defeatComment =
