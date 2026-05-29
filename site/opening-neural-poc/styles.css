@@ -2822,9 +2822,17 @@ body.screen-adventure.is-adv-board-view #graphSvg {
   body.screen-adventure.is-adv-board-view .detail-panel {
     grid-column: 1;
     grid-row: 2;
+    padding: 10px 12px;
   }
 
   body.screen-adventure.is-adv-board-view .graph-stage {
+    display: none;
+  }
+
+  /* Panneau aventure compact en vue joueur mobile : masque les jauges
+     secondaires pour laisser plus de place à l'échiquier. */
+  body.screen-adventure.is-adv-board-view #adventurePanel .adv-brain-bar,
+  body.screen-adventure.is-adv-board-view #adventurePanel .adv-gauges {
     display: none;
   }
 }
