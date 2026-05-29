@@ -4318,7 +4318,7 @@ async function playStockfishBlackMove() {
 function enterFreePhase(message) {
   state.game.phase = 'free';
   if (isAdventureRun() && state.advRun?.kind === 'boss') {
-    state.game.message = "Tu as tenu le livre. À l'attaque : trouve l'échec et mat contre Stockfish !";
+    state.game.message = `Tu as tenu le livre. À l'attaque : cherche le mat sans laisser l'éval passer sous ${formatEval(advRunDeficitThresholdCp())}.`;
   } else if (isExplorationMode()) {
     state.game.message = `${message} Le seuil ${formatEval(state.survivalLimitCp)} reste affiché comme repère, sans pénalité.`;
   } else {
