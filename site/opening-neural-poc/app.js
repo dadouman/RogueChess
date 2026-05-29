@@ -3964,6 +3964,20 @@ function finishSurvivalLevel() {
   );
 }
 
+// Libellé court du type de nulle (pat, répétition, matériel insuffisant…) pour les messages.
+function drawKindLabel(chess) {
+  return chess?.isStalemate?.() ? 'Pat' : 'Partie nulle';
+}
+
+// Nulle (le plus souvent un pat) : aucun camp n'est maté. L'objectif est de mater,
+// donc une nulle n'est PAS une victoire — on termine en demandant de refaire la partie.
+function finishGameByStalemate(chess) {
+  finishGame(
+    'lost',
+    `${drawKindLabel(chess)} : aucun camp n'est maté. Tu n'as pas réussi le mat, il faut refaire la partie.`
+  );
+}
+
 function finishTerminalPosition(message = 'La partie est terminée.') {
   const game = state.game;
   if (!game) {
@@ -3975,6 +3989,11 @@ function finishTerminalPosition(message = 'La partie est terminée.') {
     } else {
       finishGame('lost', message);
     }
+    return;
+  }
+  // Aucun coup légal sans être en échec = pat (nulle) : ce n'est pas un mat, donc pas une victoire.
+  if (game.chess.isDraw()) {
+    finishGameByStalemate(game.chess);
     return;
   }
   finishGame('won', message);
