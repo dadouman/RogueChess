@@ -4906,13 +4906,28 @@ function renderMoveLog() {
 
 function renderFreeReviewPanel() {
   const game = state.game;
-  elements.freeReviewPanel.replaceChildren();
-  if (!hasPostGameFreeReview()) {
-    elements.freeReviewPanel.hidden = true;
+  const inAdventure = state.screen === 'adventure';
+  const host = inAdventure ? document.querySelector('#advReviewPanel') : elements.freeReviewPanel;
+  // Masque le panneau de l'autre mode pour éviter tout doublon.
+  const idle = inAdventure ? elements.freeReviewPanel : document.querySelector('#advReviewPanel');
+  if (idle) {
+    idle.replaceChildren();
+    idle.hidden = true;
+  }
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  // En aventure, on n'ouvre l'analyse rapide qu'après une vraie partie
+  // (au-delà de la simple position de départ).
+  const reviewReady =
+    hasPostGameFreeReview() && (!inAdventure || game.freeReviewMoves.length > 1);
+  if (!reviewReady) {
+    host.hidden = true;
     return;
   }
 
-  elements.freeReviewPanel.hidden = false;
+  host.hidden = false;
   ensureReviewTree(game);
   const activeEntry = getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
   const parentEntry = getReviewParent(activeEntry);
