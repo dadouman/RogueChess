@@ -2798,6 +2798,32 @@ function toggleViewMode() {
   setViewMode(state.viewMode === 'human' ? 'brain' : 'human');
 }
 
+// --- Vue aventure : bascule échiquier ↔ cerveau ---
+
+function setAdvViewMode(mode) {
+  state.advViewMode = mode === 'board' ? 'board' : 'brain';
+  document.body.classList.toggle('is-adv-board-view', state.advViewMode === 'board');
+  const btn = document.querySelector('#advViewToggle');
+  if (btn) {
+    btn.textContent = state.advViewMode === 'board' ? '🧠 Vue cerveau' : '🎮 Vue joueur';
+    btn.setAttribute('aria-label',
+      state.advViewMode === 'board'
+        ? 'Basculer vers la vue cerveau'
+        : 'Basculer vers la vue échiquier'
+    );
+  }
+  window.requestAnimationFrame(() => {
+    renderGraph();
+    if (state.game?.active) {
+      renderGameDetails();
+    }
+  });
+}
+
+function toggleAdvViewMode() {
+  setAdvViewMode(state.advViewMode === 'board' ? 'brain' : 'board');
+}
+
 function isExplorationMode() {
   return state.game?.mode === 'exploration' || state.playMode === 'exploration';
 }
