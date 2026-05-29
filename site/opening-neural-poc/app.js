@@ -4203,6 +4203,8 @@ async function playStockfishBlackMove() {
 
   game.message = isExplorationMode()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
+    : isAdventureRun()
+    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. À toi de trouver l'échec et mat !`
     : isMateObjective(game)
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
     : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
