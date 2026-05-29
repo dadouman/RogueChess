@@ -2249,6 +2249,9 @@ function prefersReducedMotion() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
+// Animation en cours du dernier coup (un seul fantôme à la fois sur le plateau).
+let boardMoveAnim = null;
+
 // Déclenche l'animation du dernier coup, mais seulement sur le plateau de jeu interactif
 // (pas sur les aperçus du graphe) et seulement quand le coup change vraiment — sinon chaque
 // re-rendu (sélection d'une case, mise à jour d'éval, repli d'une section) la relancerait.
@@ -2259,55 +2262,71 @@ function maybeAnimateGameMove(container, node) {
   const isGameNode =
     node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
   if (!isGameNode) {
+    cancelBoardMoveAnim();
     delete container.dataset.lastMoveKey;
     return;
   }
   const { from, to, fen } = node;
   if (!from || !to) {
+    cancelBoardMoveAnim();
     container.dataset.lastMoveKey = `start-${fen}`;
     return;
   }
   const moveKey = `${from}-${to}-${fen}`;
   if (container.dataset.lastMoveKey === moveKey) {
+    // Même position re-rendue (message « calcule… », sélection, éval) : le replaceChildren
+    // a recréé une pièce d'arrivée visible. Si le fantôme glisse encore, on la re-masque
+    // pour éviter de voir la pièce en double le temps du trajet.
+    if (boardMoveAnim && boardMoveAnim.toSquare === to) {
+      const img = container.querySelector(`[data-square="${to}"] img`);
+      if (img) {
+        img.style.opacity = '0';
+      }
+    }
     return;
   }
   container.dataset.lastMoveKey = moveKey;
   animateBoardMove(container, from, to);
 }
 
+function cancelBoardMoveAnim() {
+  boardMoveAnim?.cleanup();
+}
+
 // Technique du « fantôme superposé » : on fait glisser une copie de la pièce de sa case
 // d'origine vers sa case d'arrivée, pendant que la vraie pièce (déjà rendue à l'arrivée)
-// reste masquée le temps du trajet. Évite le clip dû à overflow:hidden des cases.
+// reste masquée le temps du trajet. Le fantôme est posé sur .board-shell (parent du plateau)
+// pour survivre aux re-rendus du plateau (replaceChildren) sans être coupé en plein vol.
 function animateBoardMove(container, fromSquare, toSquare) {
+  cancelBoardMoveAnim();
   if (prefersReducedMotion()) {
     return;
   }
+  const anchor = container.parentElement;
   const fromEl = container.querySelector(`[data-square="${fromSquare}"]`);
   const toEl = container.querySelector(`[data-square="${toSquare}"]`);
   const pieceImg = toEl?.querySelector('img');
-  if (!fromEl || !toEl || !pieceImg) {
+  if (!anchor || !fromEl || !toEl || !pieceImg) {
     return;
   }
 
-  const containerRect = container.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
   const fromRect = fromEl.getBoundingClientRect();
   const imgRect = pieceImg.getBoundingClientRect();
-  if (!containerRect.width || !imgRect.width) {
+  if (!anchorRect.width || !imgRect.width) {
     return;
   }
 
   // Point de départ = centre de la pièce sur la case d'origine ; arrivée = position réelle.
-  const startLeft = fromRect.left - containerRect.left + (fromRect.width - imgRect.width) / 2;
-  const startTop = fromRect.top - containerRect.top + (fromRect.height - imgRect.height) / 2;
-  const endLeft = imgRect.left - containerRect.left;
-  const endTop = imgRect.top - containerRect.top;
+  const startLeft = fromRect.left - anchorRect.left + (fromRect.width - imgRect.width) / 2;
+  const startTop = fromRect.top - anchorRect.top + (fromRect.height - imgRect.height) / 2;
+  const endLeft = imgRect.left - anchorRect.left;
+  const endTop = imgRect.top - anchorRect.top;
   const dx = endLeft - startLeft;
   const dy = endTop - startTop;
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
     return;
   }
-
-  container.querySelector('.board-move-ghost')?.remove();
 
   const ghost = pieceImg.cloneNode(true);
   ghost.classList.add('board-move-ghost');
@@ -2317,7 +2336,7 @@ function animateBoardMove(container, fromSquare, toSquare) {
   ghost.style.height = `${imgRect.height}px`;
   ghost.style.transform = 'translate(0, 0)';
   pieceImg.style.opacity = '0';
-  container.append(ghost);
+  anchor.append(ghost);
 
   let done = false;
   const cleanup = () => {
@@ -2326,15 +2345,24 @@ function animateBoardMove(container, fromSquare, toSquare) {
     }
     done = true;
     ghost.remove();
-    pieceImg.style.opacity = '';
+    // Ré-afficher la pièce d'arrivée du plateau courant (recréée à chaque re-rendu).
+    const liveImg = elements.boardPreview.querySelector(`[data-square="${toSquare}"] img`);
+    if (liveImg) {
+      liveImg.style.opacity = '';
+    }
+    if (boardMoveAnim?.token === token) {
+      boardMoveAnim = null;
+    }
   };
+  const token = Symbol('board-move');
+  boardMoveAnim = { token, toSquare, cleanup };
 
   // Forcer un reflow pour valider la position initiale, puis lancer la transition.
   ghost.getBoundingClientRect();
   ghost.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
   ghost.style.transform = `translate(${dx}px, ${dy}px)`;
   ghost.addEventListener('transitionend', cleanup, { once: true });
-  setTimeout(cleanup, 400); // Filet de sécurité si transitionend ne se déclenche pas.
+  setTimeout(cleanup, 380); // Filet de sécurité si transitionend ne se déclenche pas.
 }
 
 function getOpeningBoardArrows() {
