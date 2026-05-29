@@ -5408,6 +5408,31 @@ function isAdventureRun() {
   return state.screen === 'adventure' && Boolean(state.advRun);
 }
 
+// Seuil de déficit toléré en aventure, fonction de la difficulté choisie.
+// La difficulté la plus basse (N1) tolère jusqu'à -5 ; la plus haute (N10)
+// n'autorise plus qu'un déficit de -1 avant la cinématique de défaite.
+function advDeficitThresholdCp(level) {
+  const safe = clamp(Math.round(Number(level) || 1), 1, 10);
+  const easiestCp = -500; // -5 pions au niveau le plus facile
+  const hardestCp = -100; // -1 pion au niveau le plus difficile
+  const t = (safe - 1) / 9;
+  return Math.round((easiestCp + (hardestCp - easiestCp) * t) / 10) * 10;
+}
+
+// Difficulté de la partie d'aventure courante (niveau du boss, sinon la force
+// Stockfish active pour une leçon).
+function advRunDifficultyLevel() {
+  const run = state.advRun;
+  if (!run) {
+    return state.stockfishLevel;
+  }
+  return run.kind === 'boss' ? run.bossLevel : state.stockfishLevel;
+}
+
+function advRunDeficitThresholdCp() {
+  return advDeficitThresholdCp(advRunDifficultyLevel());
+}
+
 function isAdventureMastered(id) {
   return state.screen === 'adventure' && Boolean(state.adventure?.nodes.has(id));
 }
