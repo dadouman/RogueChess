@@ -6011,6 +6011,22 @@ async function init() {
   updateHomeProgress();
 }
 
+if (typeof window !== 'undefined') {
+  window.__rc = {
+    get state() {
+      return state;
+    },
+    play: (san) => submitHumanMove(san),
+    getBlackBookEdges,
+    getExpectedWhiteBookEdges,
+    buildOpponentBookCandidates,
+    isEdgeLegalInGame,
+    getNode,
+    getEdge,
+    advanceOpponentTurn
+  };
+}
+
 init().catch((error) => {
   elements.summaryText.textContent = error.message;
   elements.selectedPathLabel.textContent = 'Le JSON du graphe est introuvable';
