@@ -4317,6 +4317,12 @@ async function playStockfishBlackMove() {
     return;
   }
 
+  // Pat infligé par Stockfish : la partie est nulle, l'objectif de mat échoue → refaire la partie.
+  if (!isExplorationMode() && game.chess.isDraw()) {
+    finishGameByStalemate(game.chess);
+    return;
+  }
+
   const replyDeficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
   if (!isExplorationMode() && afterEvaluation.cpWhite < replyDeficitLimitCp) {
     finishGame(
