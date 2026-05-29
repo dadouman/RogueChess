@@ -5878,7 +5878,14 @@ function renderAdventureHud() {
   if (streak) {
     if (game.status === 'playing' && (run.streak || 0) >= 2) {
       streak.hidden = false;
-      streak.textContent = `🔥 Combo x${run.streak}`;
+      if (state.advViewMode === 'board') {
+        // Vue joueur : flammes proportionnelles au streak (max 5)
+        streak.textContent = '🔥'.repeat(Math.min(run.streak, 5));
+        streak.dataset.streakCount = run.streak;
+      } else {
+        streak.textContent = `🔥 Combo x${run.streak}`;
+        delete streak.dataset.streakCount;
+      }
     } else {
       streak.hidden = true;
     }
