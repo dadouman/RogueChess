@@ -4269,6 +4269,8 @@ async function submitOpeningMove(input) {
   state.game.message = isExplorationMode()
     ? `Ligne suivie: ${result.edge.san}.`
     : `Bien: ${result.edge.san} reste dans l'ouverture.`;
+  // Affiche (et anime) le coup blanc avant que l'adversaire ne réponde.
+  renderGameDetails();
   await advanceOpponentTurn();
 }
 
