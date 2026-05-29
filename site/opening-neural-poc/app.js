@@ -5638,6 +5638,7 @@ function launchBoss(level) {
   updateStockfishLevelUi();
   closeAdventureMap();
   setViewMode('brain');
+  setAdvViewMode('brain');
   startNewGame(FIRST_LEVEL_NUMBER);
   if (state.game) {
     const profile = getStockfishLevelProfile(level);
