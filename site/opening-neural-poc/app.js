@@ -4380,8 +4380,11 @@ async function advanceOpponentTurn() {
 
     if (decision?.type === 'book') {
       const edge = decision.edge;
-      // Laisse l'animation du coup blanc se jouer avant la réponse de livre (instantanée).
-      await animationGap();
+      // Coup de livre : petite réflexion (pas trop) avant de répondre, le temps aussi
+      // que l'animation du coup blanc se termine.
+      game.message = 'Les Noirs consultent le livre…';
+      renderGamePanel();
+      await pause(randomThinkMs(350, 850));
       if (state.game !== game || game.status !== 'playing') {
         return;
       }
