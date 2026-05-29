@@ -6050,6 +6050,7 @@ if (typeof window !== 'undefined') {
       return state;
     },
     play: (san) => submitHumanMove(san),
+    showAdventureToast,
     getBlackBookEdges,
     getExpectedWhiteBookEdges,
     buildOpponentBookCandidates,
