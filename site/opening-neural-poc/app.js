@@ -5900,6 +5900,7 @@ function adventureOnGameFinished(result) {
 
 function setScreen(screen) {
   state.screen = screen;
+  setEngineThinking(false);
   document.body.classList.toggle('screen-home', screen === 'home');
   document.body.classList.toggle('screen-creative', screen === 'creative');
   document.body.classList.toggle('screen-adventure', screen === 'adventure');
