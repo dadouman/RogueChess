@@ -6311,6 +6311,8 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
+  // [DEBUG-TEMP] hook de test du pat — à retirer après vérification.
+  window.__rcTest = { state, Chess, launchBoss, submitHumanMove };
 }
 
 init().catch((error) => {
