@@ -5539,6 +5539,7 @@ function adventureOnCorrectWhiteBook() {
   run.bookMoves = (run.bookMoves || 0) + 1;
   const combo = Math.min(run.streak, 6);
   advAddXp(ADV_XP_BOOK_MOVE + (run.streak >= 3 ? combo : 0));
+  flashAdvBoard('good');
   saveAdventure();
 }
 
@@ -5549,6 +5550,7 @@ function adventureOnWrongBook() {
   }
   run.streak = 0;
   run.wrongMoves = (run.wrongMoves || 0) + 1;
+  flashAdvBoard('bad');
 }
 
 function adventureOnLessonReachedFree() {
