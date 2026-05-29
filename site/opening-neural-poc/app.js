@@ -4215,6 +4215,12 @@ async function submitFreeMove(input) {
     return;
   }
 
+  // Pat (ou nulle) après ton coup : tu n'as pas maté → il faut refaire la partie.
+  if (!isExplorationMode() && state.game.chess.isDraw()) {
+    finishGameByStalemate(state.game.chess);
+    return;
+  }
+
   state.game.message = isExplorationMode()
     ? `Position explorée à ${formatEval(evaluation.cpWhite)}. Stockfish répond.`
     : `Coup accepté (${formatEval(evaluation.cpWhite)}). Stockfish répond.`;
