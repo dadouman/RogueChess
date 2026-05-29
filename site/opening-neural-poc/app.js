@@ -5618,6 +5618,7 @@ function launchLesson() {
   state.playMode = 'challenge';
   closeAdventureMap();
   setViewMode('brain');
+  setAdvViewMode('brain');
   startNewGame(FIRST_LEVEL_NUMBER);
   if (state.game) {
     state.game.message =
