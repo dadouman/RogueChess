@@ -2754,3 +2754,77 @@ body.is-brain-surge .brain-outline {
     grid-column: 1;
   }
 }
+
+/* =====================================================================
+   Mode aventure · vue échiquier (is-adv-board-view)
+   Permute les colonnes : panneau aventure gauche, échiquier centre,
+   cerveau réduit à droite.
+   ===================================================================== */
+body.screen-adventure.is-adv-board-view .detail-panel {
+  grid-column: 2;
+  grid-row: 1;
+  align-items: center;
+  gap: 0;
+  padding: 18px clamp(16px, 3vw, 40px);
+}
+
+body.screen-adventure.is-adv-board-view .detail-heading,
+body.screen-adventure.is-adv-board-view #detailInfoContent {
+  display: none;
+}
+
+body.screen-adventure.is-adv-board-view .board-shell {
+  width: min(100%, 72vh, 720px);
+  align-self: center;
+}
+
+body.screen-adventure.is-adv-board-view .board-preview {
+  width: 100%;
+  max-width: min(72vh, 720px);
+}
+
+body.screen-adventure.is-adv-board-view .board-zoom-button {
+  display: block;
+}
+
+body.screen-adventure.is-adv-board-view .graph-stage {
+  grid-column: 3;
+  grid-row: 1;
+  border-left: 1px solid var(--line);
+}
+
+body.screen-adventure.is-adv-board-view .stage-toolbar {
+  grid-template-columns: 1fr;
+  gap: 6px;
+  min-height: 0;
+  padding: 14px;
+}
+
+body.screen-adventure.is-adv-board-view .stage-toolbar strong {
+  font-size: 14px;
+  white-space: normal;
+}
+
+body.screen-adventure.is-adv-board-view .stage-toolbar p {
+  display: none;
+}
+
+body.screen-adventure.is-adv-board-view #graphSvg {
+  min-height: 0;
+}
+
+@media (max-width: 1060px) {
+  body.screen-adventure.is-adv-board-view .poc-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  body.screen-adventure.is-adv-board-view .detail-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  body.screen-adventure.is-adv-board-view .graph-stage {
+    display: none;
+  }
+}
