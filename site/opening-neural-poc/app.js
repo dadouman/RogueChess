@@ -2259,6 +2259,12 @@ function randomThinkMs(minMs, maxMs) {
   return Math.round(minMs + Math.random() * (maxMs - minMs));
 }
 
+// Active/désactive l'état visuel « Stockfish réfléchit » (badge sur l'échiquier, halo,
+// pulsation du cerveau). Piloté par la classe body pour cibler tout le tableau en CSS.
+function setEngineThinking(isThinking) {
+  document.body.classList.toggle('is-engine-thinking', Boolean(isThinking));
+}
+
 // Animation en cours du dernier coup (un seul fantôme à la fois sur le plateau).
 let boardMoveAnim = null;
 
