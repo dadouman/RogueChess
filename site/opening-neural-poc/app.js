@@ -157,6 +157,7 @@ const state = {
   activeBook: 'default',
   adventure: null,
   advRun: null,
+  advViewMode: 'brain',
   game: null
 };
 
