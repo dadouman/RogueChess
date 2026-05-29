@@ -1348,6 +1348,140 @@ span.expected-pill {
   will-change: transform;
 }
 
+/* === Réflexion de Stockfish : état visuel marqué pendant le calcul === */
+/* Badge posé sur l'échiquier */
+.engine-thinking {
+  display: none;
+}
+
+body.is-engine-thinking .engine-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  z-index: 7;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: rgba(9, 15, 17, 0.88);
+  border: 1px solid rgba(117, 231, 232, 0.6);
+  color: rgba(184, 246, 247, 0.98);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(3px);
+  animation: engine-badge-pop 220ms ease-out, engine-badge-glow 1.6s ease-in-out infinite;
+}
+
+.engine-thinking-brain {
+  font-size: 15px;
+  animation: engine-brain-bob 1.6s ease-in-out infinite;
+}
+
+.engine-thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.engine-thinking-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: engine-dot-blink 1.1s ease-in-out infinite;
+}
+
+.engine-thinking-dots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.engine-thinking-dots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes engine-badge-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes engine-badge-glow {
+  0%, 100% {
+    transform: translateX(-50%);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42), 0 0 8px rgba(117, 231, 232, 0.25);
+  }
+  50% {
+    transform: translateX(-50%);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.42), 0 0 20px rgba(117, 231, 232, 0.62);
+  }
+}
+
+@keyframes engine-brain-bob {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.16); }
+}
+
+@keyframes engine-dot-blink {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+/* Halo pulsant autour de l'échiquier pendant la réflexion */
+body.is-engine-thinking .board-preview {
+  animation: engine-board-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes engine-board-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(117, 231, 232, 0.25), 0 0 14px rgba(117, 231, 232, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(117, 231, 232, 0.62), 0 0 26px rgba(117, 231, 232, 0.36);
+  }
+}
+
+/* Fine barre de « calcul » qui balaie le haut de l'échiquier */
+body.is-engine-thinking .board-preview::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 38%;
+  z-index: 5;
+  background: linear-gradient(90deg, transparent, rgba(117, 231, 232, 0.95), transparent);
+  pointer-events: none;
+  animation: engine-scan 1.25s ease-in-out infinite;
+}
+
+@keyframes engine-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(280%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.is-engine-thinking .engine-thinking,
+  body.is-engine-thinking .engine-thinking-brain,
+  body.is-engine-thinking .engine-thinking-dots i,
+  body.is-engine-thinking .board-preview {
+    animation: none;
+  }
+  body.is-engine-thinking .engine-thinking {
+    transform: translateX(-50%);
+  }
+  body.is-engine-thinking .board-preview::before {
+    display: none;
+  }
+}
+
 .board-square.is-from::after,
 .board-square.is-to::after,
 .board-square.is-selected::after {
