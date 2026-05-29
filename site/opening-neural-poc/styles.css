@@ -2756,10 +2756,152 @@ body.is-brain-surge .brain-outline {
 }
 
 /* =====================================================================
+   Vue échiquier : retours visuels (hints, flashs, auras)
+   ===================================================================== */
+
+/* --- Pièce à bouger : glow vert sur la case source --- */
+.board-square.is-book-from {
+  outline: 3px solid rgba(155, 229, 111, 0.55);
+  outline-offset: -3px;
+  border-radius: 2px;
+}
+
+/* --- Destination : point pulsant vert --- */
+.board-square.is-book-hint {
+  position: relative;
+}
+
+.board-square.is-book-hint::before {
+  content: '';
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  background: rgba(155, 229, 111, 0.72);
+  animation: adv-hint-pulse 1s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+@keyframes adv-hint-pulse {
+  0%, 100% { transform: scale(0.72); opacity: 0.55; }
+  50%       { transform: scale(1.08); opacity: 1; }
+}
+
+/* --- Flash vert : bon coup --- */
+@keyframes adv-flash-good {
+  0%   { outline: 6px solid rgba(155, 229, 111, 1);   outline-offset: 0;   }
+  55%  { outline: 8px solid rgba(155, 229, 111, 0.35); outline-offset: 5px; }
+  100% { outline: 0px solid transparent;               outline-offset: 5px; }
+}
+
+#boardPreview.is-flash-good {
+  animation: adv-flash-good 0.55s ease-out forwards;
+  border-radius: 2px;
+}
+
+/* --- Flash rouge + secousse : mauvais coup --- */
+@keyframes adv-flash-bad {
+  0%, 100% { transform: translateX(0);    outline: 4px solid rgba(255, 80, 80, 0.9); outline-offset: 0; }
+  14%      { transform: translateX(-7px); }
+  28%      { transform: translateX(7px);  }
+  42%      { transform: translateX(-5px); }
+  56%      { transform: translateX(5px);  }
+  72%      { transform: translateX(-2px); outline: 3px solid rgba(255, 80, 80, 0.4); }
+}
+
+#boardPreview.is-flash-bad {
+  animation: adv-flash-bad 0.52s ease-out forwards;
+  border-radius: 2px;
+}
+
+/* --- Aura coral : phase libre (boss, chasse au mat) --- */
+#boardPreview.is-free-phase {
+  box-shadow: 0 0 0 3px var(--coral), 0 0 28px rgba(255, 139, 135, 0.38);
+  border-radius: 2px;
+  transition: box-shadow 400ms ease;
+}
+
+/* --- Légende flottante sur l'échiquier --- */
+.adv-board-caption {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  right: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(8, 10, 8, 0.74);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  pointer-events: none;
+  letter-spacing: 0.05em;
+  /* masqué quand vide ou hors mode aventure joueur */
+}
+
+.adv-board-caption:empty {
+  display: none;
+}
+
+body:not(.screen-adventure) .adv-board-caption,
+body.screen-adventure:not(.is-adv-board-view) .adv-board-caption {
+  display: none;
+}
+
+/* =====================================================================
    Mode aventure · vue échiquier (is-adv-board-view)
    Permute les colonnes : panneau aventure gauche, échiquier centre,
    cerveau réduit à droite.
    ===================================================================== */
+
+/* --- Panneau gauche : épuration des textes verbeux --- */
+body.screen-adventure.is-adv-board-view .adv-gauges,
+body.screen-adventure.is-adv-board-view .adv-xp,
+body.screen-adventure.is-adv-board-view .adv-objective,
+body.screen-adventure.is-adv-board-view #advExpected,
+body.screen-adventure.is-adv-board-view #advMessage {
+  display: none;
+}
+
+body.screen-adventure.is-adv-board-view .adv-brain-bar {
+  grid-template-columns: auto;
+  justify-content: center;
+}
+
+body.screen-adventure.is-adv-board-view .adv-level-badge {
+  width: 60px;
+  padding: 10px 0;
+}
+
+body.screen-adventure.is-adv-board-view .adv-level-badge strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+body.screen-adventure.is-adv-board-view .adv-stage-card {
+  padding: 4px 0;
+  gap: 4px;
+}
+
+/* Streak en flammes visuelles */
+body.screen-adventure.is-adv-board-view #advStreak {
+  font-size: 22px;
+  letter-spacing: 4px;
+  text-align: center;
+  padding: 2px 0;
+}
+
+/* Seuil de combo élevé : légère animation */
+body.screen-adventure.is-adv-board-view #advStreak[data-streak-count="5"],
+body.screen-adventure.is-adv-board-view #advStreak[data-streak-count="6"],
+body.screen-adventure.is-adv-board-view #advStreak[data-streak-count="7"] {
+  animation: streak-glow 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes streak-glow {
+  from { filter: drop-shadow(0 0 3px rgba(255, 150, 30, 0.6)); }
+  to   { filter: drop-shadow(0 0 8px rgba(255, 200, 30, 0.9)); }
+}
 body.screen-adventure.is-adv-board-view .detail-panel {
   grid-column: 2;
   grid-row: 1;
