@@ -1337,6 +1337,17 @@ span.expected-pill {
   pointer-events: none;
 }
 
+/* Copie de la pièce qui glisse d'une case à l'autre pendant l'animation du coup. */
+.board-move-ghost {
+  position: absolute;
+  z-index: 6;
+  margin: 0;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.34));
+  pointer-events: none;
+  will-change: transform;
+}
+
 .board-square.is-from::after,
 .board-square.is-to::after,
 .board-square.is-selected::after {
