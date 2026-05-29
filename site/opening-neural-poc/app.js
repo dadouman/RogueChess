@@ -5855,8 +5855,11 @@ function renderAdventureResult(el, game, run) {
         );
       }
     } else {
-      heading.textContent = 'Assaut repoussé';
-      note.textContent = 'Le boss tient bon. Relance l’attaque.';
+      const mated = Boolean(game.chess?.isCheckmate?.());
+      heading.textContent = mated ? 'Échec et mat subi' : 'Position effondrée';
+      note.textContent = mated
+        ? 'Le boss t’a maté. Rejoue la chute ci-dessous, puis relance l’attaque.'
+        : `La position est passée sous ${formatEval(advDeficitThresholdCp(run.bossLevel))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
       actions.append(advResultButton('Réessayer', () => launchBoss(run.bossLevel), true));
     }
   } else if (win) {
