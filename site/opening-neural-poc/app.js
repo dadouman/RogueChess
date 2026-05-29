@@ -4426,6 +4426,7 @@ async function playStockfishBlackMove() {
   const profile = getStockfishLevelProfile();
   const stockfishLabel = formatStockfishLevel(profile);
   game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
+  setEngineThinking(true);
   renderGamePanel();
   renderGameDetails();
   // Réflexion perçue, tirée au sort entre 1 et 5 s (en plus du vrai calcul s'il est plus court).
@@ -4443,6 +4444,7 @@ async function playStockfishBlackMove() {
 
   // Complète le temps de calcul réel pour que la réponse arrive après la durée de réflexion.
   await pause(thinkTarget - (performance.now() - thinkStart));
+  setEngineThinking(false);
   if (state.game !== game || game.status !== 'playing' || game.chess.turn() !== 'b') {
     return;
   }
