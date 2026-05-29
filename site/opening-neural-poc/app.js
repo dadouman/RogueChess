@@ -114,7 +114,11 @@ const elements = {
   nodeTurn: document.querySelector('#nodeTurn'),
   nodeComment: document.querySelector('#nodeComment'),
   choiceList: document.querySelector('#choiceList'),
-  nodeSources: document.querySelector('#nodeSources')
+  nodeSources: document.querySelector('#nodeSources'),
+  liveEvalBar: document.querySelector('#liveEvalBar'),
+  liveEvalBarFill: document.querySelector('#liveEvalBarFill'),
+  liveMoveLog: document.querySelector('#liveMoveLog'),
+  advBrainThinking: document.querySelector('#advBrainThinking')
 };
 
 const state = {
