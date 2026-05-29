@@ -4653,6 +4653,9 @@ function renderGameDetails() {
   renderSegmentExplorer(null);
   renderGameChoices();
   renderGamePanel(phaseLabel);
+  // Rail d'infos de la vue joueur aventure : barre d'éval + coups joués
+  updateLiveEvalBar(reviewEntry ? reviewEntry.afterEvalCp : game.currentEvalCp);
+  renderRailMoveLog();
   // Indices visuels propres à la vue joueur aventure
   applyAdvBoardHints();
   updateAdvBoardFeedback();
