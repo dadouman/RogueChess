@@ -4911,6 +4911,38 @@ function renderMoveLog() {
   }
 }
 
+// --- Vue joueur aventure : barre d'éval + journal compact du rail ---
+
+/** Convertit une éval (centipions, côté blanc) en pourcentage [0..100] pour la barre. */
+function evalToBarPct(cpWhite) {
+  const v = Math.max(-1200, Math.min(1200, Number(cpWhite) || 0));
+  return Math.round((Math.tanh(v / 400) + 1) * 50);
+}
+
+/** Met à jour la largeur de la barre d'évaluation du rail (part des Blancs). */
+function updateLiveEvalBar(cpWhite) {
+  const fill = elements.liveEvalBarFill;
+  if (!fill) {
+    return;
+  }
+  fill.style.width = `${evalToBarPct(cpWhite)}%`;
+}
+
+/** Remplit le journal compact « Coups joués » du rail à partir de moveLog. */
+function renderRailMoveLog() {
+  const list = elements.liveMoveLog;
+  if (!list) {
+    return;
+  }
+  list.replaceChildren();
+  const moves = state.game?.moveLog ?? [];
+  for (const item of moves) {
+    const row = document.createElement('li');
+    row.innerHTML = `<strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(item.label)}</span>`;
+    list.append(row);
+  }
+}
+
 function renderFreeReviewPanel() {
   const game = state.game;
   const inAdventure = state.screen === 'adventure';
