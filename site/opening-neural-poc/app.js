@@ -4422,6 +4422,9 @@ async function playStockfishBlackMove() {
   game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
   renderGamePanel();
   renderGameDetails();
+  // Réflexion perçue, tirée au sort entre 1 et 5 s (en plus du vrai calcul s'il est plus court).
+  const thinkStart = performance.now();
+  const thinkTarget = randomThinkMs(1000, 5000);
   const evaluator = await ensureStockfishReady(false);
   const beforeFen = game.chess.fen();
   const beforeEvaluation = await evaluator.evaluate(beforeFen);
@@ -4429,6 +4432,12 @@ async function playStockfishBlackMove() {
   const beforeEvalCp = beforeEvaluation.cpWhite;
   if (!moveSearch.bestMove) {
     finishTerminalPosition('La partie est terminée.');
+    return;
+  }
+
+  // Complète le temps de calcul réel pour que la réponse arrive après la durée de réflexion.
+  await pause(thinkTarget - (performance.now() - thinkStart));
+  if (state.game !== game || game.status !== 'playing' || game.chess.turn() !== 'b') {
     return;
   }
 
