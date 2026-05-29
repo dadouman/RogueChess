@@ -3039,8 +3039,10 @@ body.screen-adventure.is-adv-board-view .detail-section:not(.is-open) > :not(h3)
   display: none;
 }
 
-/* Barre d'évaluation visuelle (1er niveau) — masquée hors vue joueur aventure */
-.live-eval-bar {
+/* Éléments propres au rail joueur aventure — masqués partout ailleurs.
+   En vue joueur aventure, la règle .detail-section ci-dessus les réaffiche. */
+.live-eval-bar,
+.live-moves-section {
   display: none;
 }
 
