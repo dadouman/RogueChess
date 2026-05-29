@@ -2240,6 +2240,101 @@ function renderBoard(node, container = elements.boardPreview) {
   });
 
   renderBoardArrows(container, openingArrows);
+
+  // Anime le glissement de la pièce du dernier coup (plateau de jeu uniquement).
+  maybeAnimateGameMove(container, node);
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+}
+
+// Déclenche l'animation du dernier coup, mais seulement sur le plateau de jeu interactif
+// (pas sur les aperçus du graphe) et seulement quand le coup change vraiment — sinon chaque
+// re-rendu (sélection d'une case, mise à jour d'éval, repli d'une section) la relancerait.
+function maybeAnimateGameMove(container, node) {
+  if (container !== elements.boardPreview) {
+    return;
+  }
+  const isGameNode =
+    node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
+  if (!isGameNode) {
+    delete container.dataset.lastMoveKey;
+    return;
+  }
+  const { from, to, fen } = node;
+  if (!from || !to) {
+    container.dataset.lastMoveKey = `start-${fen}`;
+    return;
+  }
+  const moveKey = `${from}-${to}-${fen}`;
+  if (container.dataset.lastMoveKey === moveKey) {
+    return;
+  }
+  container.dataset.lastMoveKey = moveKey;
+  animateBoardMove(container, from, to);
+}
+
+// Technique du « fantôme superposé » : on fait glisser une copie de la pièce de sa case
+// d'origine vers sa case d'arrivée, pendant que la vraie pièce (déjà rendue à l'arrivée)
+// reste masquée le temps du trajet. Évite le clip dû à overflow:hidden des cases.
+function animateBoardMove(container, fromSquare, toSquare) {
+  if (prefersReducedMotion()) {
+    return;
+  }
+  const fromEl = container.querySelector(`[data-square="${fromSquare}"]`);
+  const toEl = container.querySelector(`[data-square="${toSquare}"]`);
+  const pieceImg = toEl?.querySelector('img');
+  if (!fromEl || !toEl || !pieceImg) {
+    return;
+  }
+
+  const containerRect = container.getBoundingClientRect();
+  const fromRect = fromEl.getBoundingClientRect();
+  const imgRect = pieceImg.getBoundingClientRect();
+  if (!containerRect.width || !imgRect.width) {
+    return;
+  }
+
+  // Point de départ = centre de la pièce sur la case d'origine ; arrivée = position réelle.
+  const startLeft = fromRect.left - containerRect.left + (fromRect.width - imgRect.width) / 2;
+  const startTop = fromRect.top - containerRect.top + (fromRect.height - imgRect.height) / 2;
+  const endLeft = imgRect.left - containerRect.left;
+  const endTop = imgRect.top - containerRect.top;
+  const dx = endLeft - startLeft;
+  const dy = endTop - startTop;
+  if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+    return;
+  }
+
+  container.querySelector('.board-move-ghost')?.remove();
+
+  const ghost = pieceImg.cloneNode(true);
+  ghost.classList.add('board-move-ghost');
+  ghost.style.left = `${startLeft}px`;
+  ghost.style.top = `${startTop}px`;
+  ghost.style.width = `${imgRect.width}px`;
+  ghost.style.height = `${imgRect.height}px`;
+  ghost.style.transform = 'translate(0, 0)';
+  pieceImg.style.opacity = '0';
+  container.append(ghost);
+
+  let done = false;
+  const cleanup = () => {
+    if (done) {
+      return;
+    }
+    done = true;
+    ghost.remove();
+    pieceImg.style.opacity = '';
+  };
+
+  // Forcer un reflow pour valider la position initiale, puis lancer la transition.
+  ghost.getBoundingClientRect();
+  ghost.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+  ghost.style.transform = `translate(${dx}px, ${dy}px)`;
+  ghost.addEventListener('transitionend', cleanup, { once: true });
+  setTimeout(cleanup, 400); // Filet de sécurité si transitionend ne se déclenche pas.
 }
 
 function getOpeningBoardArrows() {
