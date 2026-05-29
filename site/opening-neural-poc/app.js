@@ -4156,7 +4156,8 @@ async function submitFreeMove(input) {
   state.game.currentPv = evaluation.pv;
   state.game.currentDepth = evaluation.depth;
 
-  if (!isExplorationMode() && !isAdventureRun() && evaluation.cpWhite < state.survivalLimitCp) {
+  const deficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
+  if (!isExplorationMode() && evaluation.cpWhite < deficitLimitCp) {
     recordFreeReviewMove({
       move,
       label: 'Survie blanche',
@@ -4169,7 +4170,9 @@ async function submitFreeMove(input) {
     state.game.failureEvaluation = evaluation;
     finishGame(
       'lost',
-      `Erreur en survie: la position tombe à ${formatEval(evaluation.cpWhite)}.`,
+      isAdventureRun()
+        ? `Gaffe fatale : la position s'effondre à ${formatEval(evaluation.cpWhite)} (seuil ${formatEval(deficitLimitCp)}).`
+        : `Erreur en survie: la position tombe à ${formatEval(evaluation.cpWhite)}.`,
       state.game.chess.fen(),
       evaluation
     );
