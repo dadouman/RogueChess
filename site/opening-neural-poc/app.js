@@ -5531,9 +5531,14 @@ function enterAdventure() {
 
 function enterCreative() {
   const from = state.screen;
+  // Une partie d'aventure (leçon/boss) reste chargée tant que state.advRun existe,
+  // même après un détour par l'accueil. On repart alors sur une partie créative neuve
+  // pour ne pas hériter d'une position d'aventure. Une partie créative en cours
+  // (advRun nul) est préservée.
+  const hadAdventureGame = from === 'adventure' || Boolean(state.advRun);
   state.advRun = null;
   setScreen('creative');
-  if (from === 'adventure') {
+  if (hadAdventureGame) {
     state.playMode = 'challenge';
     syncPlayModeButtons();
     startNewGame(FIRST_LEVEL_NUMBER);
