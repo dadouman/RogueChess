@@ -3264,7 +3264,7 @@ body.screen-adventure.is-adv-board-view .stage-toolbar .kicker::after {
   display: none;
 }
 
-body.screen-adventure.is-adv-board-view .adv-brain-thinking {
+body.screen-adventure.is-adv-board-view.is-engine-thinking .adv-brain-thinking {
   display: flex;
   align-items: center;
   gap: 7px;
