@@ -4380,6 +4380,11 @@ async function advanceOpponentTurn() {
 
     if (decision?.type === 'book') {
       const edge = decision.edge;
+      // Laisse l'animation du coup blanc se jouer avant la réponse de livre (instantanée).
+      await animationGap();
+      if (state.game !== game || game.status !== 'playing') {
+        return;
+      }
       applyGameEdge(edge);
       game.openingBlackMoves += 1;
       game.message = `Les Noirs suivent le livre: ${edge.san} (${formatPercent(edge.probability)}).`;
