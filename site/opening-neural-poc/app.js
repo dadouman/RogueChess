@@ -6406,6 +6406,8 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
+  // [DEBUG-TEMP] hook de test de l'animation — à retirer après vérification.
+  window.__rcTest = { state, Chess, submitHumanMove, renderGameDetails, enterCreative, elements };
 }
 
 init().catch((error) => {
