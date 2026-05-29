@@ -4937,7 +4937,7 @@ function renderFreeReviewPanel() {
   header.className = 'free-review-header';
   header.innerHTML = `
     <div>
-      <span class="kicker">${isPostGameReviewPlayable() ? 'Analyse libre' : 'Revue de partie'}</span>
+      <span class="kicker">${inAdventure ? 'Analyse rapide' : isPostGameReviewPlayable() ? 'Analyse libre' : 'Revue de partie'}</span>
       <strong>${escapeHtml(activeEntry.text)}</strong>
     </div>
     <em>${activeEntry.index + 1}/${game.freeReviewMoves.length}</em>
