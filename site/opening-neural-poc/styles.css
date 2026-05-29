@@ -2375,6 +2375,25 @@ body.screen-adventure .detail-panel .detail-heading p {
   color: #fff;
 }
 
+/* Analyse rapide post-partie en mode aventure : réutilise le panneau de revue
+   en l'adaptant au panneau aventure (étroit, défilable). */
+.adv-review-panel {
+  margin-top: 2px;
+}
+
+.adv-review-panel .free-review-list {
+  max-height: 168px;
+}
+
+/* En vue échiquier, le panneau d'analyse reste visible dans la colonne gauche. */
+body.screen-adventure.is-adv-board-view .adv-review-panel {
+  display: grid;
+}
+
+body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
+  display: none;
+}
+
 /* =====================================================================
    Carte du cerveau (hub d'aventure)
    ===================================================================== */
