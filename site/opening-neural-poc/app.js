@@ -2249,14 +2249,14 @@ function prefersReducedMotion() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
-// Petite pause (≈ durée de l'animation) pour laisser glisser le coup joué avant d'enchaîner
-// la réponse adverse. Sans coups de livre instantanés cette pause manquerait et la réponse
-// noire écraserait l'animation du coup blanc. Annulée si l'utilisateur refuse les animations.
-function animationGap(ms = 240) {
-  if (prefersReducedMotion()) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Pause (Promise) de `ms` millisecondes.
+function pause(ms) {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+}
+
+// Durée de « réflexion » simulée de l'adversaire, tirée aléatoirement dans une fourchette (ms).
+function randomThinkMs(minMs, maxMs) {
+  return Math.round(minMs + Math.random() * (maxMs - minMs));
 }
 
 // Animation en cours du dernier coup (un seul fantôme à la fois sur le plateau).
