@@ -5713,11 +5713,19 @@ function adventureOnGameFinished(result) {
         kind: 'boss'
       });
     } else if (result === 'lost') {
-      const matedReally = Boolean(state.game?.chess?.isCheckmate?.());
+      const chess = state.game?.chess;
+      const drawn = Boolean(chess?.isDraw?.());
+      const matedReally = Boolean(chess?.isCheckmate?.());
       showAdventureToast({
-        icon: '💥',
-        title: matedReally ? 'Échec et mat subi' : 'Position effondrée',
-        text: matedReally
+        icon: drawn ? '🤝' : '💥',
+        title: drawn
+          ? `${drawKindLabel(chess)} — pas de mat`
+          : matedReally
+          ? 'Échec et mat subi'
+          : 'Position effondrée',
+        text: drawn
+          ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
+          : matedReally
           ? 'Le boss te mate. Relance l’assaut.'
           : 'Ta position est tombée trop bas. Relance l’assaut.',
         kind: null
