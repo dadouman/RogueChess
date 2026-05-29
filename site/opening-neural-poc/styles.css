@@ -3316,12 +3316,26 @@ body.screen-adventure.is-adv-board-view .graph-stage {
   animation: adv-brain-pulse 3.4s ease-in-out infinite;
 }
 
+/* Pendant la vraie réflexion : pulsation plus rapide et plus intense. */
+body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
+  animation: adv-brain-pulse-active 1.3s ease-in-out infinite;
+}
+
 @keyframes adv-brain-pulse {
   0%, 100% {
     box-shadow: inset 0 0 40px rgba(117, 231, 232, 0.05);
   }
   50% {
     box-shadow: inset 0 0 60px rgba(117, 231, 232, 0.14);
+  }
+}
+
+@keyframes adv-brain-pulse-active {
+  0%, 100% {
+    box-shadow: inset 0 0 44px rgba(117, 231, 232, 0.12);
+  }
+  50% {
+    box-shadow: inset 0 0 80px rgba(117, 231, 232, 0.3);
   }
 }
 
