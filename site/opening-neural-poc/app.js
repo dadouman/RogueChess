@@ -5621,10 +5621,13 @@ function adventureOnGameFinished(result) {
         kind: 'boss'
       });
     } else if (result === 'lost') {
+      const matedReally = Boolean(state.game?.chess?.isCheckmate?.());
       showAdventureToast({
         icon: '💥',
-        title: 'Échec et mat subi',
-        text: 'Le boss résiste. Relance l’assaut.',
+        title: matedReally ? 'Échec et mat subi' : 'Position effondrée',
+        text: matedReally
+          ? 'Le boss te mate. Relance l’assaut.'
+          : 'Ta position est tombée trop bas. Relance l’assaut.',
         kind: null
       });
     }
