@@ -4210,9 +4210,13 @@ async function playStockfishBlackMove() {
 
 function enterFreePhase(message) {
   state.game.phase = 'free';
-  state.game.message = isExplorationMode()
-    ? `${message} Le seuil ${formatEval(state.survivalLimitCp)} reste affiché comme repère, sans pénalité.`
-    : `${message} Ne laisse pas l'évaluation passer sous ${formatEval(state.survivalLimitCp)}.`;
+  if (isAdventureRun() && state.advRun?.kind === 'boss') {
+    state.game.message = "Tu as tenu le livre. À l'attaque : trouve l'échec et mat contre Stockfish !";
+  } else if (isExplorationMode()) {
+    state.game.message = `${message} Le seuil ${formatEval(state.survivalLimitCp)} reste affiché comme repère, sans pénalité.`;
+  } else {
+    state.game.message = `${message} Ne laisse pas l'évaluation passer sous ${formatEval(state.survivalLimitCp)}.`;
+  }
   const node = getGameNodeByFen();
   if (node) {
     state.game.currentNodeId = node.id;
