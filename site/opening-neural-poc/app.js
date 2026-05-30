@@ -161,7 +161,7 @@ const state = {
   activeBook: 'default',
   adventure: null,
   advRun: null,
-  advViewMode: 'brain',
+  advViewMode: 'board',
   game: null
 };
 
@@ -1762,19 +1762,62 @@ function brainOutlinePath(width, height) {
   ].join(' ');
 }
 
-function edgePath(edge) {
+function edgeControlPoints(edge) {
   const source = state.layout.get(edge.from);
   const target = state.layout.get(edge.to);
   if (!source || !target) {
-    return '';
+    return null;
   }
   const dx = target.x - source.x;
   const dy = target.y - source.y;
-  const c1x = source.x + dx * 0.62;
-  const c2x = target.x - dx * 0.34;
-  const c1y = source.y + dy * 0.08;
-  const c2y = target.y - dy * 0.08;
-  return `M ${source.x.toFixed(1)} ${source.y.toFixed(1)} C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${target.x.toFixed(1)} ${target.y.toFixed(1)}`;
+  return {
+    p0: { x: source.x, y: source.y },
+    c1: { x: source.x + dx * 0.62, y: source.y + dy * 0.08 },
+    c2: { x: target.x - dx * 0.34, y: target.y - dy * 0.08 },
+    p3: { x: target.x, y: target.y }
+  };
+}
+
+function edgePath(edge) {
+  const cp = edgeControlPoints(edge);
+  if (!cp) {
+    return '';
+  }
+  return `M ${cp.p0.x.toFixed(1)} ${cp.p0.y.toFixed(1)} C ${cp.c1.x.toFixed(1)} ${cp.c1.y.toFixed(1)}, ${cp.c2.x.toFixed(1)} ${cp.c2.y.toFixed(1)}, ${cp.p3.x.toFixed(1)} ${cp.p3.y.toFixed(1)}`;
+}
+
+// Point et tangente d'une courbe de Bézier cubique au paramètre t (pour poser les barreaux).
+function cubicBezierAt(cp, t) {
+  const mt = 1 - t;
+  const a = mt * mt * mt;
+  const b = 3 * mt * mt * t;
+  const c = 3 * mt * t * t;
+  const d = t * t * t;
+  const da = 3 * mt * mt;
+  const db = 6 * mt * t;
+  const dc = 3 * t * t;
+  return {
+    x: a * cp.p0.x + b * cp.c1.x + c * cp.c2.x + d * cp.p3.x,
+    y: a * cp.p0.y + b * cp.c1.y + c * cp.c2.y + d * cp.p3.y,
+    tx: da * (cp.c1.x - cp.p0.x) + db * (cp.c2.x - cp.c1.x) + dc * (cp.p3.x - cp.c2.x),
+    ty: da * (cp.c1.y - cp.p0.y) + db * (cp.c2.y - cp.c1.y) + dc * (cp.p3.y - cp.c2.y)
+  };
+}
+
+// Lettre de pièce (Merida) à partir d'un SAN : O-O→roi, sinon N/B/R/Q/K, défaut pion.
+function sanPieceLetter(san) {
+  const s = String(san ?? '');
+  if (/^O-O/.test(s)) {
+    return 'K';
+  }
+  const m = s.match(/^([NBRQK])/);
+  return m ? m[1] : 'P';
+}
+
+// Couleur qui joue le i-ème coup d'une séquence compressée (alternance depuis edge.color).
+function moveColorAt(edge, index) {
+  const first = edge.color === 'b' ? 'b' : 'w';
+  return index % 2 === 0 ? first : first === 'w' ? 'b' : 'w';
 }
 
 function renderGraph() {
@@ -1813,8 +1856,9 @@ function renderGraph() {
   svg.append(createSvgElement('path', { class: 'brain-outline', d: brainOutlinePath(width, height) }));
 
   const edgeLayer = createSvgElement('g', { class: 'edge-layer' });
+  const rungLayer = createSvgElement('g', { class: 'rung-layer' });
   const nodeLayer = createSvgElement('g', { class: 'node-layer' });
-  svg.append(edgeLayer, nodeLayer);
+  svg.append(edgeLayer, rungLayer, nodeLayer);
 
   const orderedEdges = [...view.edges].sort((a, b) => a.probability - b.probability);
   for (const edge of orderedEdges) {
@@ -1864,6 +1908,38 @@ function renderGraph() {
     path.addEventListener('mouseleave', hideTooltip);
     path.addEventListener('click', () => selectEdge(edge));
     edgeLayer.append(casing, path);
+
+    // Barreaux d'échelle : un par coup intermédiaire d'un arc compressé. Survol = coup attendu + position.
+    if (edge.isCompressed && matches) {
+      const cp = edgeControlPoints(edge);
+      const moveCount = edge.sequence?.length ?? 0;
+      if (cp && moveCount > 1) {
+        for (let i = 0; i < moveCount; i += 1) {
+          const pt = cubicBezierAt(cp, (i + 0.5) / moveCount);
+          const len = Math.hypot(pt.tx, pt.ty) || 1;
+          const nx = -pt.ty / len;
+          const ny = pt.tx / len;
+          const half = 5.5;
+          const coords = {
+            x1: (pt.x - nx * half).toFixed(1),
+            y1: (pt.y - ny * half).toFixed(1),
+            x2: (pt.x + nx * half).toFixed(1),
+            y2: (pt.y + ny * half).toFixed(1)
+          };
+          const rungGroup = createSvgElement('g', {
+            class: ['edge-rung-group', isHighlighted ? 'is-highlighted' : ''].filter(Boolean).join(' ')
+          });
+          rungGroup.append(
+            createSvgElement('line', { class: 'edge-rung-hit', ...coords }),
+            createSvgElement('line', { class: 'edge-rung', ...coords })
+          );
+          const moveIndex = i;
+          rungGroup.addEventListener('mouseenter', (event) => showRungTooltip(edge, moveIndex, event));
+          rungGroup.addEventListener('mouseleave', hideTooltip);
+          rungLayer.append(rungGroup);
+        }
+      }
+    }
   }
 
   for (const viewNode of view.nodes) {
@@ -1881,6 +1957,7 @@ function renderGraph() {
     const group = createSvgElement('g', {
       class: [
         'neural-node',
+        node.sideToMove === 'w' ? 'is-white-turn' : node.sideToMove === 'b' ? 'is-black-turn' : '',
         outgoing > 1 ? 'is-branch' : '',
         viewNode.collapsedIncomingPlyCount > 1 ? 'is-compressed' : '',
         node.terminal ? 'is-terminal' : '',
@@ -1910,7 +1987,13 @@ function renderGraph() {
       label.setAttribute('opacity', '0');
     }
 
-    group.append(pulse, circle, label);
+    // Pastille « au trait » : blanche si les Blancs choisissent l'embranchement, sombre si les Noirs.
+    const turnPip = createSvgElement('circle', {
+      class: 'node-turn-pip',
+      cy: String(-(radius + 4)),
+      r: outgoing > 1 ? '4' : '3.2'
+    });
+    group.append(pulse, circle, turnPip, label);
     group.addEventListener('mouseenter', (event) => showNodeTooltip(node, event));
     group.addEventListener('mouseleave', hideTooltip);
     group.addEventListener('click', () => selectNode(node.id, { clearPath: false }));
@@ -1943,6 +2026,18 @@ function showEdgeTooltip(edge, event) {
     <span>Moyenne du chemin: ${formatEval(edge.pathMeanCp)}</span>
     ${compressedText}
     ${mateText}
+  `;
+  positionTooltip(event);
+}
+
+function showRungTooltip(edge, index, event) {
+  const san = edge.sequence?.[index] ?? '';
+  const total = edge.sequence?.length ?? 0;
+  const color = moveColorAt(edge, index);
+  const img = `/pieces/merida/${color}${sanPieceLetter(san)}.svg`;
+  elements.graphTooltip.innerHTML = `
+    <strong><img class="tooltip-piece" src="${img}" alt="" aria-hidden="true"> Coup ${index + 1}/${total} : ${escapeHtml(san)}</strong>
+    <span>${sideLabel(color)} au trait · séquence ${escapeHtml(edge.sequenceLabel)}</span>
   `;
   positionTooltip(event);
 }
@@ -2969,7 +3064,8 @@ function toggleAdvViewMode() {
 
 // --- Retours visuels en vue échiquier ---
 
-/** Fait clignoter l'échiquier en vert (bon coup) ou rouge + secousse (mauvais). */
+/** Fait réagir l'échiquier : vert (bon coup), rouge + secousse (mauvais),
+ *  ou halo doré « apprentissage » quand le joueur illumine un nouveau neurone. */
 function flashAdvBoard(type) {
   if (state.advViewMode !== 'board') {
     return;
@@ -2978,10 +3074,16 @@ function flashAdvBoard(type) {
   if (!board) {
     return;
   }
-  board.classList.remove('is-flash-good', 'is-flash-bad');
+  const classByType = {
+    good: 'is-flash-good',
+    bad: 'is-flash-bad',
+    learn: 'is-flash-learn'
+  };
+  const cls = classByType[type] ?? 'is-flash-good';
+  board.classList.remove(...Object.values(classByType));
   void board.offsetWidth; // force reflow pour redémarrer l'animation
-  board.classList.add(type === 'good' ? 'is-flash-good' : 'is-flash-bad');
-  setTimeout(() => board.classList.remove('is-flash-good', 'is-flash-bad'), 650);
+  board.classList.add(cls);
+  setTimeout(() => board.classList.remove(cls), type === 'learn' ? 900 : 650);
 }
 
 /** Ajoute des points de suivi verts sur les cases-cibles des coups du livre. */
@@ -5809,6 +5911,7 @@ function adventureLightEdge(edge) {
   if (lit) {
     advAddXp(lit * ADV_XP_PER_SYNAPSE);
     triggerBrainSurge();
+    flashAdvBoard('learn'); // écho de l'apprentissage sur l'échiquier (vue joueur)
     checkLessonMilestones();
     updateHomeProgress();
     saveAdventure();
@@ -5926,6 +6029,7 @@ function enterAdventure() {
   state.playMode = 'challenge';
   syncPlayModeButtons();
   setViewMode('brain');
+  setAdvViewMode(state.advViewMode); // applique la vue par défaut (joueur) dès l'entrée
   setScreen('adventure');
   openAdventureMap();
 }
@@ -5992,7 +6096,7 @@ function launchLesson() {
   state.playMode = 'challenge';
   closeAdventureMap();
   setViewMode('brain');
-  setAdvViewMode('brain');
+  setAdvViewMode('board');
   startNewGame(FIRST_LEVEL_NUMBER);
   if (state.game) {
     state.game.message =
@@ -6012,7 +6116,7 @@ function launchBoss(level) {
   updateStockfishLevelUi();
   closeAdventureMap();
   setViewMode('brain');
-  setAdvViewMode('brain');
+  setAdvViewMode('board');
   startNewGame(FIRST_LEVEL_NUMBER);
   if (state.game) {
     const profile = getStockfishLevelProfile(level);

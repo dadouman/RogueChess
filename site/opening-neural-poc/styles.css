@@ -1097,6 +1097,36 @@ span.expected-pill {
   opacity: 0.92;
 }
 
+/* Barreaux d'échelle : un par coup intermédiaire d'un arc compressé. */
+.edge-rung-group {
+  cursor: help;
+}
+
+.edge-rung-hit {
+  stroke: transparent;
+  stroke-width: 13;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
+.edge-rung {
+  stroke: rgba(214, 240, 200, 0.72);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+
+.edge-rung-group.is-highlighted .edge-rung {
+  stroke: rgba(255, 217, 102, 0.92);
+}
+
+.edge-rung-group:hover .edge-rung {
+  stroke: var(--gold);
+  stroke-width: 3.4;
+}
+
 .neural-node {
   cursor: pointer;
 }
@@ -1157,6 +1187,29 @@ span.expected-pill {
   stroke-width: 1;
 }
 
+/* Pastille « au trait » : qui choisit l'embranchement à ce noeud.
+   Blanc = les Blancs jouent ; sombre = les Noirs jouent. Les contours
+   assurent la lisibilité des deux sur le fond foncé du graphe. */
+.neural-node .node-turn-pip {
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.neural-node.is-white-turn .node-turn-pip {
+  fill: #f5f6f0;
+  stroke: rgba(12, 14, 10, 0.85);
+}
+
+.neural-node.is-black-turn .node-turn-pip {
+  fill: #14160f;
+  stroke: rgba(245, 246, 240, 0.92);
+}
+
+.neural-node.is-branch .node-turn-pip {
+  stroke-width: 1.5;
+}
+
 .graph-tooltip {
   position: absolute;
   z-index: 5;
@@ -1174,6 +1227,13 @@ span.expected-pill {
 .graph-tooltip strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.graph-tooltip .tooltip-piece {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+  margin-right: 3px;
 }
 
 .graph-tooltip span {
@@ -2975,6 +3035,30 @@ body.is-brain-surge .brain-outline {
 
 #boardPreview.is-flash-bad {
   animation: adv-flash-bad 0.52s ease-out forwards;
+  border-radius: 2px;
+}
+
+/* --- Halo doré « apprentissage » : un neurone vient de s'illuminer --- */
+@keyframes adv-flash-learn {
+  0% {
+    outline: 3px solid rgba(255, 214, 120, 0.9);
+    outline-offset: 0;
+    box-shadow: 0 0 0 0 rgba(255, 214, 120, 0.5), inset 0 0 0 rgba(117, 231, 232, 0);
+  }
+  45% {
+    outline: 4px solid rgba(255, 214, 120, 0.55);
+    outline-offset: 4px;
+    box-shadow: 0 0 22px 6px rgba(255, 214, 120, 0.4), inset 0 0 34px rgba(117, 231, 232, 0.26);
+  }
+  100% {
+    outline: 0 solid transparent;
+    outline-offset: 8px;
+    box-shadow: 0 0 0 0 rgba(255, 214, 120, 0), inset 0 0 0 rgba(117, 231, 232, 0);
+  }
+}
+
+#boardPreview.is-flash-learn {
+  animation: adv-flash-learn 0.9s ease-out forwards;
   border-radius: 2px;
 }
 
