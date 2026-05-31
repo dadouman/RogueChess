@@ -3960,7 +3960,14 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     margin: 6px 0 0;
   }
 
-  body.is-history-hidden.is-adv-board-view #advHistory {
+  /* Groupe ‹ — › masquable : la touche historique, elle, reste visible. */
+  .adv-hist-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.is-history-hidden.is-adv-board-view #advHistNav {
     display: none;
   }
 
@@ -3995,25 +4002,31 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     font-weight: 700;
   }
 
-  /* Touche « historique » en haut à droite de l'échiquier (à la place du zoom). */
+  /* Touche « historique » intégrée à la barre, hors de l'échiquier. */
   body.screen-adventure.is-adv-board-view .adv-hist-toggle {
-    display: block;
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    z-index: 4;
-    width: 34px;
-    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     border: 1px solid var(--line-strong);
     border-radius: 9px;
-    background: rgba(9, 14, 11, 0.86);
-    color: var(--text);
-    font-size: 15px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--soft);
     cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
   }
 
-  body.is-history-hidden.is-adv-board-view .adv-hist-toggle {
-    opacity: 0.5;
+  body.screen-adventure.is-adv-board-view .adv-hist-toggle svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  /* Mise en avant quand l'historique est affiché (état actif). */
+  body.screen-adventure.is-adv-board-view:not(.is-history-hidden) .adv-hist-toggle {
+    color: var(--cyan);
+    border-color: var(--cyan);
   }
 
   /* Plateau en cours de revue : liseré cyan pour signaler une position passée. */
