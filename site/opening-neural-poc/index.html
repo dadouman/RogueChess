@@ -400,6 +400,37 @@
       </div>
     </div>
 
+    <!-- Version portable : barre d'actions fixe + feuille de coups -->
+    <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions Aventure">
+      <button id="advBarMenu" type="button" class="adv-bar-btn">
+        <span class="adv-bar-ico" aria-hidden="true">🗺️</span><span>Étapes</span>
+      </button>
+      <button id="advBarMoves" type="button" class="adv-bar-btn">
+        <span class="adv-bar-ico" aria-hidden="true">♟️</span><span>Coups</span>
+        <span id="advBarMovesCount" class="adv-bar-badge" hidden>0</span>
+      </button>
+      <button id="advBarView" type="button" class="adv-bar-btn">
+        <span class="adv-bar-ico" aria-hidden="true">🧠</span><span id="advBarViewLabel">Cerveau</span>
+      </button>
+    </nav>
+
+    <div id="advMoveSheet" class="adv-move-sheet" aria-hidden="true">
+      <div class="adv-sheet-backdrop" data-sheet-close></div>
+      <div class="adv-sheet-panel" role="dialog" aria-modal="true" aria-label="Coups possibles">
+        <div class="adv-sheet-grip" aria-hidden="true"></div>
+        <div class="adv-sheet-head">
+          <strong>Quel coup jouer ?</strong>
+          <button class="adv-ghost" type="button" data-sheet-close>Fermer ✕</button>
+        </div>
+        <p id="advSheetHint" class="adv-sheet-hint"></p>
+        <div id="advSheetMoves" class="adv-sheet-moves"></div>
+        <form id="advSheetForm" class="adv-sheet-form">
+          <input id="advSheetInput" type="text" autocomplete="off" placeholder="ou tape ton coup : Nf3 / g1f3" />
+          <button type="submit">Jouer</button>
+        </form>
+      </div>
+    </div>
+
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
     <script src="./app.js" type="module"></script>

@@ -3466,3 +3466,257 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 }
+
+/* ============================================================
+   Version portable (téléphone) du mode Aventure
+   Barre d'actions fixe + feuille de coups + écran échiquier
+   ============================================================ */
+.adv-mobile-bar {
+  display: none;
+}
+
+.adv-move-sheet {
+  display: none;
+}
+
+.adv-move-sheet.is-open {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.adv-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.adv-sheet-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 78vh;
+  overflow: auto;
+  padding: 8px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  background: #11150f;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -16px 44px rgba(0, 0, 0, 0.55);
+  animation: adv-sheet-up 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes adv-sheet-up {
+  from { transform: translateY(101%); }
+  to { transform: translateY(0); }
+}
+
+.adv-sheet-grip {
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  margin: 4px auto 12px;
+}
+
+.adv-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.adv-sheet-head strong {
+  font-size: 16px;
+}
+
+.adv-sheet-hint {
+  margin: 0 0 14px;
+  color: var(--soft);
+  font-size: 12.5px;
+}
+
+.adv-sheet-moves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.adv-sheet-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 13px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(117, 231, 232, 0.08);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-sheet-move:active {
+  background: rgba(117, 231, 232, 0.18);
+}
+
+.adv-sheet-move-piece {
+  width: 22px;
+  height: 22px;
+}
+
+.adv-sheet-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.adv-sheet-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.adv-sheet-form button {
+  padding: 11px 16px;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  background: rgba(155, 229, 111, 0.16);
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  /* Barre d'actions fixe en bas */
+  body.screen-adventure .adv-mobile-bar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    gap: 6px;
+    padding: 7px 9px calc(7px + env(safe-area-inset-bottom, 0px));
+    background: rgba(11, 15, 11, 0.97);
+    border-top: 1px solid var(--line-strong);
+    backdrop-filter: blur(6px);
+  }
+
+  .adv-mobile-bar .adv-bar-btn {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 50px;
+    padding: 6px 4px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .adv-mobile-bar .adv-bar-btn:active {
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  .adv-bar-ico {
+    font-size: 19px;
+    line-height: 1;
+  }
+
+  .adv-bar-badge {
+    position: absolute;
+    top: 3px;
+    right: calc(50% - 27px);
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--gold);
+    color: #1a1405;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 17px;
+    text-align: center;
+  }
+
+  /* Réserve la hauteur de la barre fixe */
+  body.screen-adventure .poc-shell {
+    padding-bottom: 66px;
+  }
+
+  /* --- Vue échiquier : écran quasi 100 % échiquier --- */
+  body.screen-adventure.is-adv-board-view #adventurePanel {
+    padding: 8px 12px;
+    gap: 0;
+    min-height: 0;
+  }
+
+  body.screen-adventure.is-adv-board-view #adventurePanel > * {
+    display: none;
+  }
+
+  body.screen-adventure.is-adv-board-view #adventurePanel #advMessage,
+  body.screen-adventure.is-adv-board-view #adventurePanel #advResult {
+    display: block;
+  }
+
+  body.screen-adventure.is-adv-board-view #advMessage {
+    margin: 0;
+    font-size: 12.5px;
+    text-align: center;
+  }
+
+  body.screen-adventure.is-adv-board-view .detail-panel {
+    padding: 6px 10px;
+  }
+
+  body.screen-adventure.is-adv-board-view .detail-heading {
+    display: none;
+  }
+
+  body.screen-adventure.is-adv-board-view .board-shell {
+    width: min(calc(100vw - 22px), 60vh);
+    grid-row: 1;
+  }
+
+  body.screen-adventure.is-adv-board-view .board-preview {
+    width: min(calc(100vw - 22px), 60vh);
+    max-width: none;
+    min-height: 0;
+    max-height: none;
+    height: auto;
+    flex-basis: auto;
+  }
+
+  /* Garde l'essentiel (barre d'éval + grille éval) ; masque les sections de 2e niveau. */
+  body.screen-adventure.is-adv-board-view .detail-section {
+    display: none;
+  }
+
+  /* --- Vue cerveau (2e niveau) : graphe plein écran --- */
+  body.screen-adventure:not(.is-adv-board-view) #adventurePanel,
+  body.screen-adventure:not(.is-adv-board-view) .detail-panel {
+    display: none;
+  }
+
+  body.screen-adventure:not(.is-adv-board-view) .graph-stage {
+    grid-column: 1;
+    grid-row: 1;
+    height: auto;
+    min-height: calc(100dvh - 66px);
+  }
+}

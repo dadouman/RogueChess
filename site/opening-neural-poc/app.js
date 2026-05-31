@@ -3050,6 +3050,7 @@ function setAdvViewMode(mode) {
         : 'Basculer vers la vue échiquier'
     );
   }
+  updateAdvMobileBar();
   window.requestAnimationFrame(() => {
     renderGraph();
     if (state.game?.active) {
@@ -6004,6 +6005,7 @@ function adventureOnGameFinished(result) {
 function setScreen(screen) {
   state.screen = screen;
   setEngineThinking(false);
+  closeAdvMoveSheet();
   document.body.classList.toggle('screen-home', screen === 'home');
   document.body.classList.toggle('screen-creative', screen === 'creative');
   document.body.classList.toggle('screen-adventure', screen === 'adventure');
@@ -6051,6 +6053,7 @@ function enterCreative() {
 }
 
 function openAdventureMap() {
+  closeAdvMoveSheet();
   const map = document.querySelector('#adventureMap');
   if (map) {
     map.hidden = false;
@@ -6134,6 +6137,86 @@ function submitAdventureMove() {
   const value = input.value;
   input.value = '';
   submitHumanMove(value);
+}
+
+// --- Version portable : feuille de coups (bottom sheet) ---
+
+function openAdvMoveSheet() {
+  renderAdvMoveSheet();
+  const sheet = document.querySelector('#advMoveSheet');
+  if (sheet) {
+    sheet.classList.add('is-open');
+    sheet.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closeAdvMoveSheet() {
+  const sheet = document.querySelector('#advMoveSheet');
+  if (sheet) {
+    sheet.classList.remove('is-open');
+    sheet.setAttribute('aria-hidden', 'true');
+  }
+}
+
+// Nombre de coups de livre jouables ici (sert au badge de la barre et à la feuille).
+function adventureBookMoveCount() {
+  const game = state.game;
+  if (!game || game.status !== 'playing' || game.phase !== 'opening' || game.chess.turn() !== 'w') {
+    return 0;
+  }
+  return getExpectedWhiteBookEdges().length;
+}
+
+function renderAdvMoveSheet() {
+  const host = document.querySelector('#advSheetMoves');
+  const hint = document.querySelector('#advSheetHint');
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  const game = state.game;
+  const playable = Boolean(game && game.status === 'playing' && game.chess.turn() === 'w' && !game.locked);
+  const edges = playable && game.phase === 'opening' ? getExpectedWhiteBookEdges() : [];
+
+  if (hint) {
+    hint.textContent = !playable
+      ? (game?.chess.turn() === 'b' ? 'Stockfish réfléchit…' : 'Pas à toi de jouer pour l’instant.')
+      : edges.length
+        ? `${edges.length} coup${edges.length > 1 ? 's' : ''} de livre pour avancer dans l’ouverture.`
+        : 'Hors du livre : à toi de trouver le meilleur coup.';
+  }
+
+  for (const edge of edges) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'adv-sheet-move';
+    btn.dataset.uci = edge.uci;
+    btn.innerHTML =
+      `<img class="adv-sheet-move-piece" src="/pieces/merida/w${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
+      `<span class="adv-sheet-move-san">${escapeHtml(edge.san)}</span>`;
+    host.append(btn);
+  }
+}
+
+// Met à jour le badge « nombre de coups » et le libellé du bouton de bascule de vue.
+function updateAdvMobileBar() {
+  const badge = document.querySelector('#advBarMovesCount');
+  if (badge) {
+    const count = adventureBookMoveCount();
+    badge.textContent = String(count);
+    badge.hidden = count === 0;
+  }
+  const label = document.querySelector('#advBarViewLabel');
+  if (label) {
+    label.textContent = state.advViewMode === 'board' ? 'Cerveau' : 'Échiquier';
+  }
+  const ico = document.querySelector('#advBarView .adv-bar-ico');
+  if (ico) {
+    ico.textContent = state.advViewMode === 'board' ? '🧠' : '🎮';
+  }
+  if (document.querySelector('#advMoveSheet')?.classList.contains('is-open')) {
+    renderAdvMoveSheet();
+  }
 }
 
 function advSetText(selector, text) {
@@ -6247,6 +6330,8 @@ function renderAdventureHud() {
   const result = document.querySelector('#advResult');
   const moveInput = document.querySelector('#advMoveInput');
   const moveButton = document.querySelector('#advMoveButton');
+
+  updateAdvMobileBar();
 
   if (starsEl) {
     starsEl.textContent = '';
@@ -6442,6 +6527,43 @@ function bindAdventureEvents() {
   bind('#advMapButton', openAdventureMap);
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
+  // Barre d'actions portable
+  bind('#advBarMenu', openAdventureMap);
+  bind('#advBarMoves', openAdvMoveSheet);
+  bind('#advBarView', toggleAdvViewMode);
+  // Feuille de coups : fermeture (croix/backdrop) + jeu d'un coup tapé/touché
+  const sheet = document.querySelector('#advMoveSheet');
+  if (sheet) {
+    sheet.addEventListener('click', (event) => {
+      if (event.target.closest('[data-sheet-close]')) {
+        closeAdvMoveSheet();
+      }
+    });
+  }
+  const sheetMoves = document.querySelector('#advSheetMoves');
+  if (sheetMoves) {
+    sheetMoves.addEventListener('click', (event) => {
+      const btn = event.target.closest('.adv-sheet-move');
+      if (!btn) {
+        return;
+      }
+      closeAdvMoveSheet();
+      submitHumanMove(btn.dataset.uci);
+    });
+  }
+  const sheetForm = document.querySelector('#advSheetForm');
+  if (sheetForm) {
+    sheetForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const input = document.querySelector('#advSheetInput');
+      const value = input ? input.value : '';
+      if (input) {
+        input.value = '';
+      }
+      closeAdvMoveSheet();
+      submitHumanMove(value);
+    });
+  }
   bind('#advMapHomeButton', () => {
     closeAdventureMap();
     setScreen('home');
