@@ -2791,6 +2791,7 @@ function isBoardInteractive(container) {
       shouldRenderGameDetails() &&
       state.game?.active &&
       !state.game.locked &&
+      state.game.historyView == null &&
       getPlayableBoardColor()
   );
 }
@@ -3970,6 +3971,7 @@ function applyGameEdge(edge) {
   if (!move) {
     return null;
   }
+  state.game.historyView = null; // un nouveau coup ramène toujours à la position en cours
   state.game.lastMove = move;
   state.game.currentNodeId = edge.to;
   appendGameGraphPathEdge(edge);
@@ -3997,6 +3999,7 @@ function applyGameEdge(edge) {
 }
 
 function applyFreeMove(move, label) {
+  state.game.historyView = null; // un nouveau coup ramène toujours à la position en cours
   state.game.lastMove = move;
   const node = getGameNodeByFen();
   if (node) {
@@ -5184,6 +5187,11 @@ function makeGameBoardNode() {
     };
   }
 
+  // Revue de l'historique : on prévisualise une position passée (lecture seule).
+  if (game && game.historyView != null) {
+    return makeHistoryBoardNode(game);
+  }
+
   return {
     id: 'game',
     san: game.lastMove?.san ?? 'Départ',
@@ -5191,6 +5199,25 @@ function makeGameBoardNode() {
     from: game.lastMove?.from ?? '',
     to: game.lastMove?.to ?? '',
     sideToMove: game.chess.turn()
+  };
+}
+
+// Reconstruit la position après `game.historyView` demi-coups (rejoués depuis le départ).
+function makeHistoryBoardNode(game) {
+  const history = game.chess.history({ verbose: true });
+  const idx = clamp(game.historyView, 0, history.length);
+  const probe = new Chess();
+  let last = null;
+  for (let i = 0; i < idx; i += 1) {
+    last = probe.move(history[i]);
+  }
+  return {
+    id: 'history',
+    san: last?.san ?? 'Départ',
+    fen: probe.fen(),
+    from: last?.from ?? '',
+    to: last?.to ?? '',
+    sideToMove: probe.turn()
   };
 }
 
@@ -6553,7 +6580,7 @@ function renderAdvMovesStrip() {
   }
   host.replaceChildren();
   const game = state.game;
-  const playable = Boolean(game && game.status === 'playing' && game.chess.turn() === 'w' && !game.locked);
+  const playable = Boolean(game && game.status === 'playing' && game.chess.turn() === 'w' && !game.locked && game.historyView == null);
   const edges = playable && game.phase === 'opening' ? getExpectedWhiteBookEdges() : [];
   for (const edge of edges) {
     const btn = document.createElement('button');
@@ -6592,9 +6619,84 @@ function updateAdvMobileBar() {
     ico.textContent = state.advViewMode === 'board' ? '🧠' : '🎮';
   }
   renderAdvMovesStrip();
+  renderAdvHistory();
   if (document.querySelector('#advAnalyseSheet')?.classList.contains('is-open')) {
     renderAdvAnalyseSheet();
   }
+}
+
+// --- Historique : navigation ‹/› + prévisualisation des positions passées ---
+
+function advHistoryLength() {
+  const game = state.game;
+  return game?.chess ? game.chess.history().length : 0;
+}
+
+// Place la revue à un index de demi-coups (null/au-delà du total = position en cours).
+function advHistoryGoto(index) {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const total = advHistoryLength();
+  game.historyView = index == null || index >= total ? null : clamp(index, 0, total);
+  game.selectedSquare = null;
+  renderGameDetails();
+}
+
+function advHistoryStep(delta) {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const current = game.historyView ?? advHistoryLength(); // position en cours = total demi-coups
+  advHistoryGoto(current + delta);
+}
+
+// Affiche/masque la bande d'historique ; en la masquant on revient à la position en cours.
+function toggleAdvHistory() {
+  const hidden = document.body.classList.toggle('is-history-hidden');
+  if (hidden && state.game?.historyView != null) {
+    advHistoryGoto(null);
+  }
+}
+
+// Libellé « N. san » / « N… san » du coup amenant à la position `idx`.
+function formatHistoryMoveLabel(game, idx) {
+  const move = game.chess.history({ verbose: true })[idx - 1];
+  if (!move) {
+    return 'Départ';
+  }
+  const moveNumber = Math.ceil(idx / 2);
+  return move.color === 'w' ? `${moveNumber}. ${move.san}` : `${moveNumber}… ${move.san}`;
+}
+
+function renderAdvHistory() {
+  const host = document.querySelector('#advHistory');
+  if (!host) {
+    return;
+  }
+  const game = state.game;
+  const total = advHistoryLength();
+  const prev = document.querySelector('#advHistPrev');
+  const next = document.querySelector('#advHistNext');
+  const label = document.querySelector('#advHistLabel');
+  const reviewing = Boolean(game && game.historyView != null);
+  document.body.classList.toggle('is-reviewing-history', reviewing);
+  host.classList.toggle('is-reviewing', reviewing);
+
+  if (!game || total === 0) {
+    if (label) label.textContent = 'Aucun coup';
+    if (prev) prev.disabled = true;
+    if (next) next.disabled = true;
+    return;
+  }
+  const current = game.historyView ?? total;
+  if (label) {
+    label.textContent = `${formatHistoryMoveLabel(game, current)} · ${current}/${total}`;
+  }
+  if (prev) prev.disabled = current <= 0;
+  if (next) next.disabled = !reviewing; // déjà à la position en cours
 }
 
 function advSetText(selector, text) {
@@ -6909,6 +7011,10 @@ function bindAdventureEvents() {
   bind('#advBarMenu', openAdventureMap);
   bind('#advBarAnalyse', openAdvAnalyseSheet);
   bind('#advBarView', toggleAdvViewMode);
+  // Historique : navigation ‹/› + masquer/afficher
+  bind('#advHistPrev', () => advHistoryStep(-1));
+  bind('#advHistNext', () => advHistoryStep(1));
+  bind('#advHistToggle', toggleAdvHistory);
   // Feuille d'analyse : fermeture (croix / backdrop)
   const sheet = document.querySelector('#advAnalyseSheet');
   if (sheet) {
