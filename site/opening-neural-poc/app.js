@@ -1968,7 +1968,8 @@ function renderGraph() {
       ]
         .filter(Boolean)
         .join(' '),
-      transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`
+      transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`,
+      'data-node-id': node.id
     });
 
     const pulse = createSvgElement('circle', {
@@ -1996,7 +1997,13 @@ function renderGraph() {
     group.append(pulse, circle, turnPip, label);
     group.addEventListener('mouseenter', (event) => showNodeTooltip(node, event));
     group.addEventListener('mouseleave', hideTooltip);
-    group.addEventListener('click', () => selectNode(node.id, { clearPath: false }));
+    group.addEventListener('click', () => {
+      if (suppressNextGraphClick) {
+        suppressNextGraphClick = false;
+        return;
+      }
+      selectNode(node.id, { clearPath: false });
+    });
     nodeLayer.append(group);
   }
 
@@ -2051,6 +2058,142 @@ function positionTooltip(event) {
 
 function hideTooltip() {
   elements.graphTooltip.hidden = true;
+}
+
+// --- Vue cerveau au doigt : glisser sur le graphe pour révéler les positions ---
+// (mini-échiquier de prévisualisation + infos + retour haptique au changement de noeud)
+
+let brainScrub = null;
+let suppressNextGraphClick = false;
+
+function bindBrainScrubEvents() {
+  elements.graphSvg?.addEventListener('pointerdown', onBrainPointerDown);
+}
+
+// Actif quand le graphe est la vue principale « cerveau » de l'Aventure.
+function isBrainScrubContext() {
+  return state.screen === 'adventure' && state.advViewMode === 'brain';
+}
+
+// Noeud du graphe le plus proche du point écran (converti en coordonnées du viewBox SVG).
+function graphNearestNode(clientX, clientY) {
+  const svg = elements.graphSvg;
+  const ctm = svg?.getScreenCTM?.();
+  if (!ctm || !state.layout?.size) {
+    return null;
+  }
+  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  let bestId = null;
+  let bestDist = Infinity;
+  for (const [id, p] of state.layout) {
+    const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+    if (d < bestDist) {
+      bestDist = d;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
+
+function onBrainPointerDown(event) {
+  if (!isBrainScrubContext()) {
+    return;
+  }
+  brainScrub = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    started: false,
+    lastId: null
+  };
+  window.addEventListener('pointermove', onBrainPointerMove);
+  window.addEventListener('pointerup', onBrainPointerUp);
+  window.addEventListener('pointercancel', onBrainPointerUp);
+}
+
+function onBrainPointerMove(event) {
+  if (!brainScrub || event.pointerId !== brainScrub.pointerId) {
+    return;
+  }
+  if (!brainScrub.started) {
+    if (Math.hypot(event.clientX - brainScrub.startX, event.clientY - brainScrub.startY) < 8) {
+      return; // reste un tap potentiel (sélection de noeud)
+    }
+    brainScrub.started = true;
+    showBrainScrub(true);
+  }
+  event.preventDefault();
+  const id = graphNearestNode(event.clientX, event.clientY);
+  if (id && id !== brainScrub.lastId) {
+    brainScrub.lastId = id;
+    updateBrainScrub(id);
+    navigator.vibrate?.(8); // retour haptique (Android) si supporté
+  }
+}
+
+function onBrainPointerUp(event) {
+  if (!brainScrub || event.pointerId !== brainScrub.pointerId) {
+    return;
+  }
+  const wasScrubbing = brainScrub.started;
+  brainScrub = null;
+  window.removeEventListener('pointermove', onBrainPointerMove);
+  window.removeEventListener('pointerup', onBrainPointerUp);
+  window.removeEventListener('pointercancel', onBrainPointerUp);
+  if (wasScrubbing) {
+    // évite la sélection de noeud par le clic synthétique qui suit le scrub
+    suppressNextGraphClick = true;
+    setTimeout(() => {
+      suppressNextGraphClick = false;
+    }, 60);
+  }
+}
+
+function showBrainScrub(show) {
+  const panel = document.querySelector('#brainScrub');
+  if (panel) {
+    panel.classList.toggle('is-active', show);
+    panel.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+  if (!show) {
+    clearScrubNodeHighlight();
+  }
+}
+
+function updateBrainScrub(id) {
+  const node = getNode(id);
+  if (!node) {
+    return;
+  }
+  const boardEl = document.querySelector('#brainScrubBoard');
+  if (boardEl) {
+    renderBoard(
+      { id: `scrub-${id}`, fen: node.fen, from: node.from, to: node.to, san: node.san },
+      boardEl
+    );
+  }
+  const title = document.querySelector('#brainScrubTitle');
+  if (title) {
+    title.textContent = node.id === 'root' ? 'Départ' : node.san || node.id;
+  }
+  const meta = document.querySelector('#brainScrubMeta');
+  if (meta) {
+    meta.textContent = `Éval ${formatEval(node.evaluation?.cpWhite)} · ${sideLabel(node.sideToMove)} au trait`;
+  }
+  highlightScrubNode(id);
+}
+
+function highlightScrubNode(id) {
+  clearScrubNodeHighlight();
+  elements.graphSvg
+    ?.querySelector(`.neural-node[data-node-id="${CSS.escape(id)}"]`)
+    ?.classList.add('is-scrub');
+}
+
+function clearScrubNodeHighlight() {
+  for (const el of elements.graphSvg?.querySelectorAll('.neural-node.is-scrub') ?? []) {
+    el.classList.remove('is-scrub');
+  }
 }
 
 function escapeHtml(value) {
@@ -3220,6 +3363,7 @@ function toggleViewMode() {
 
 function setAdvViewMode(mode) {
   state.advViewMode = mode === 'board' ? 'board' : 'brain';
+  showBrainScrub(false); // l'aperçu au doigt ne persiste pas d'une vue à l'autre
   document.body.classList.toggle('is-adv-board-view', state.advViewMode === 'board');
   const btn = document.querySelector('#advViewToggle');
   if (btn) {
@@ -6186,6 +6330,7 @@ function setScreen(screen) {
   state.screen = screen;
   setEngineThinking(false);
   closeAdvAnalyseSheet();
+  showBrainScrub(false);
   document.body.classList.toggle('screen-home', screen === 'home');
   document.body.classList.toggle('screen-creative', screen === 'creative');
   document.body.classList.toggle('screen-adventure', screen === 'adventure');
@@ -6778,6 +6923,7 @@ function bindAdventureEvents() {
 function bindEvents() {
   bindPanelResizeHandles();
   bindBoardDragEvents();
+  bindBrainScrubEvents();
 
   elements.temperatureRange.addEventListener('input', () => {
     state.temperatureCp = Number(elements.temperatureRange.value);
