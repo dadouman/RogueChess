@@ -2690,7 +2690,29 @@ function getBoardSquareLabel(squareName, piece, isTarget) {
   return isTarget ? `${squareName}, destination légale` : `${squareName}, ${pieceLabel}`;
 }
 
+// Joue le coup from→to s'il est légal (auto-promotion en dame). Renvoie true si joué.
+function attemptBoardMove(from, to) {
+  const chess = getInteractiveChess();
+  if (!chess) {
+    return false;
+  }
+  const legalMoves = chess.moves({ square: from, verbose: true });
+  const move =
+    legalMoves.find((c) => c.to === to && (!c.promotion || c.promotion === 'q')) ??
+    legalMoves.find((c) => c.to === to);
+  if (!move) {
+    return false;
+  }
+  submitHumanMove(`${from}${to}${move.promotion ?? ''}`);
+  return true;
+}
+
 function handleBoardSquareClick(squareName) {
+  // Ignore le clic synthétique qui suit un glisser-déposer.
+  if (suppressNextBoardClick) {
+    suppressNextBoardClick = false;
+    return;
+  }
   const game = state.game;
   const chess = getInteractiveChess();
   const playableColor = getPlayableBoardColor();
@@ -2718,16 +2740,7 @@ function handleBoardSquareClick(squareName) {
     return;
   }
 
-  const legalMoves = chess.moves({ square: selected, verbose: true });
-  const move = legalMoves.find(
-    (candidate) =>
-      candidate.to === squareName &&
-      (!candidate.promotion || candidate.promotion === 'q')
-  ) ?? legalMoves.find((candidate) => candidate.to === squareName);
-
-  if (move) {
-    const uci = `${selected}${squareName}${move.promotion ?? ''}`;
-    submitHumanMove(uci);
+  if (attemptBoardMove(selected, squareName)) {
     return;
   }
 
@@ -2759,6 +2772,155 @@ function selectBoardSquare(squareName) {
     state.game.message = `Pièce sélectionnée en ${squareName}: choisis une destination.`;
   }
   renderGameDetails();
+}
+
+// --- Glisser-déposer des pièces (souris + tactile, via Pointer Events) ---
+
+let boardDrag = null;
+let suppressNextBoardClick = false;
+
+function bindBoardDragEvents() {
+  const board = elements.boardPreview;
+  if (board) {
+    board.addEventListener('pointerdown', onBoardPointerDown);
+  }
+}
+
+function onBoardPointerDown(event) {
+  if (event.button > 0) {
+    return; // bouton gauche / tactile uniquement
+  }
+  const board = elements.boardPreview;
+  if (!isBoardInteractive(board)) {
+    return;
+  }
+  const squareEl = event.target.closest?.('.board-square');
+  if (!squareEl || !board.contains(squareEl)) {
+    return;
+  }
+  const from = squareEl.dataset.square;
+  const chess = getInteractiveChess();
+  const playableColor = getPlayableBoardColor();
+  const piece = chess?.get(from);
+  if (!chess || !playableColor || piece?.color !== playableColor) {
+    return; // on ne glisse que ses propres pièces
+  }
+  boardDrag = {
+    from,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    started: false
+  };
+  window.addEventListener('pointermove', onBoardPointerMove);
+  window.addEventListener('pointerup', onBoardPointerUp);
+  window.addEventListener('pointercancel', onBoardPointerUp);
+}
+
+function onBoardPointerMove(event) {
+  if (!boardDrag || event.pointerId !== boardDrag.pointerId) {
+    return;
+  }
+  if (!boardDrag.started) {
+    if (Math.hypot(event.clientX - boardDrag.startX, event.clientY - boardDrag.startY) < 6) {
+      return; // pas encore assez de mouvement : reste un clic potentiel
+    }
+    boardDrag.started = true;
+    startBoardDragVisual(boardDrag.from);
+    const liveImg = elements.boardPreview.querySelector(`[data-square="${boardDrag.from}"] img`);
+    if (liveImg) {
+      const rect = liveImg.getBoundingClientRect();
+      const ghost = liveImg.cloneNode(true);
+      ghost.className = 'board-drag-ghost';
+      ghost.style.width = `${rect.width}px`;
+      ghost.style.height = `${rect.height}px`;
+      document.body.append(ghost);
+      liveImg.style.opacity = '0';
+      boardDrag.ghost = ghost;
+      boardDrag.liveImg = liveImg;
+    }
+  }
+  if (boardDrag.ghost) {
+    event.preventDefault();
+    boardDrag.ghost.style.left = `${event.clientX}px`;
+    boardDrag.ghost.style.top = `${event.clientY}px`;
+    highlightDropTarget(event.clientX, event.clientY);
+  }
+}
+
+function onBoardPointerUp(event) {
+  if (!boardDrag || event.pointerId !== boardDrag.pointerId) {
+    return;
+  }
+  const drag = boardDrag;
+  boardDrag = null;
+  window.removeEventListener('pointermove', onBoardPointerMove);
+  window.removeEventListener('pointerup', onBoardPointerUp);
+  window.removeEventListener('pointercancel', onBoardPointerUp);
+
+  if (!drag.started) {
+    return; // simple tap : le gestionnaire de clic gère la sélection
+  }
+
+  drag.ghost?.remove();
+  if (drag.liveImg) {
+    drag.liveImg.style.opacity = '';
+  }
+  // Empêche le clic synthétique qui suit le drag de re-sélectionner.
+  suppressNextBoardClick = true;
+  setTimeout(() => {
+    suppressNextBoardClick = false;
+  }, 60);
+
+  const targetEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.board-square');
+  const to = targetEl && elements.boardPreview.contains(targetEl) ? targetEl.dataset.square : null;
+
+  if (to && to !== drag.from && attemptBoardMove(drag.from, to)) {
+    return; // coup joué : le re-rendu efface les surbrillances
+  }
+  clearDragTargets(); // drop annulé : nettoie sans re-rendre
+}
+
+// Surbrillances de sélection/cibles posées directement sur les cases (sans re-rendu,
+// pour préserver la capture du pointeur tactile pendant le glissement).
+function startBoardDragVisual(from) {
+  const board = elements.boardPreview;
+  if (!board) {
+    return;
+  }
+  if (state.game) {
+    state.game.selectedSquare = null;
+  }
+  clearDragTargets();
+  const chess = getInteractiveChess();
+  board.querySelector(`[data-square="${from}"]`)?.classList.add('is-selected');
+  for (const mv of chess?.moves({ square: from, verbose: true }) ?? []) {
+    const el = board.querySelector(`[data-square="${mv.to}"]`);
+    if (el) {
+      el.classList.add('is-target');
+      if (mv.captured) {
+        el.classList.add('is-capture-target');
+      }
+    }
+  }
+}
+
+function clearDragTargets() {
+  for (const el of elements.boardPreview?.querySelectorAll(
+    '.is-selected, .is-target, .is-capture-target, .is-drop-hover'
+  ) ?? []) {
+    el.classList.remove('is-selected', 'is-target', 'is-capture-target', 'is-drop-hover');
+  }
+}
+
+function highlightDropTarget(x, y) {
+  for (const el of elements.boardPreview?.querySelectorAll('.is-drop-hover') ?? []) {
+    el.classList.remove('is-drop-hover');
+  }
+  const el = document.elementFromPoint(x, y)?.closest?.('.board-square');
+  if (el && elements.boardPreview.contains(el)) {
+    el.classList.add('is-drop-hover');
+  }
 }
 
 function renderZoomBoard(node = state.currentPreviewNode) {
@@ -6592,6 +6754,7 @@ function bindAdventureEvents() {
 
 function bindEvents() {
   bindPanelResizeHandles();
+  bindBoardDragEvents();
 
   elements.temperatureRange.addEventListener('input', () => {
     state.temperatureCp = Number(elements.temperatureRange.value);
