@@ -6505,6 +6505,16 @@ function closeAdvAnalyseSheet() {
 
 // Reprend l'éval détaillée + le commentaire déjà calculés (éléments du rail) dans la feuille.
 function renderAdvAnalyseSheet() {
+  const game = state.game;
+  // Message d'évaluation / feedback en cours (ce qui apparaissait avant sur l'échiquier) —
+  // c'est la première info utile : « Coup accepté (+0.38)… », combos, raison de défaite, etc.
+  const message = document.querySelector('#advSheetMessage');
+  if (message) {
+    const text = game?.message ?? '';
+    message.textContent = text;
+    message.hidden = !text;
+    message.classList.toggle('is-defeat', game?.status === 'lost');
+  }
   const evalDl = document.querySelector('#advSheetEval');
   if (evalDl) {
     const rows = [
@@ -6519,13 +6529,13 @@ function renderAdvAnalyseSheet() {
       evalDl.append(div);
     }
   }
+  // Commentaire de position (note du livre) : secondaire, masqué s'il double le message.
   const comment = document.querySelector('#advSheetComment');
   if (comment) {
-    const game = state.game;
-    const lost = game?.status === 'lost' && game.message;
-    // En cas de défaite, on déplace la description ici (l'échiquier ne garde que l'encadré rouge).
-    comment.textContent = lost ? game.message : (document.querySelector('#nodeComment')?.textContent ?? '');
-    comment.classList.toggle('is-defeat', Boolean(lost));
+    const txt = document.querySelector('#nodeComment')?.textContent ?? '';
+    comment.textContent = txt;
+    comment.hidden = !txt || txt === (game?.message ?? '');
+    comment.classList.remove('is-defeat');
   }
   const sources = document.querySelector('#advSheetSources');
   if (sources) {

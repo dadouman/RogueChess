@@ -3796,10 +3796,29 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   font-weight: 800;
 }
 
+/* Message d'évaluation / feedback en cours, mis en avant en haut de la feuille. */
+.adv-sheet-message {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(117, 231, 232, 0.08);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.adv-sheet-message.is-defeat {
+  border-color: rgba(255, 80, 80, 0.55);
+  background: rgba(255, 70, 70, 0.1);
+  color: #ff9a9a;
+}
+
 .adv-sheet-comment {
   margin: 0 0 8px;
-  color: var(--text);
-  font-size: 13.5px;
+  color: var(--soft);
+  font-size: 13px;
   line-height: 1.4;
 }
 
