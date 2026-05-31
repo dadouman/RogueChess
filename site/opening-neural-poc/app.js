@@ -2617,6 +2617,7 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     const image = document.createElement('img');
     image.alt = `${pieceColor === 'w' ? 'Blanc' : 'Noir'} ${piece.toUpperCase()}`;
     image.src = `/pieces/merida/${pieceColor}${piece.toUpperCase()}.svg`;
+    image.draggable = false; // évite le glisser-image natif (surbrillance parasite)
     square.append(image);
   }
 
@@ -2894,22 +2895,39 @@ function startBoardDragVisual(from) {
   clearDragTargets();
   const chess = getInteractiveChess();
   board.querySelector(`[data-square="${from}"]`)?.classList.add('is-selected');
+  // Mêmes indicateurs qu'au clic : en ouverture, points dorés (coup de livre) vs gris
+  // (légal mais hors livre), anneau pour les captures.
+  const bookTargets = getBookTargetsFromSquare(from);
+  const openingBookMode = isOpeningBookChoiceActive();
   for (const mv of chess?.moves({ square: from, verbose: true }) ?? []) {
     const el = board.querySelector(`[data-square="${mv.to}"]`);
-    if (el) {
-      el.classList.add('is-target');
-      if (mv.captured) {
-        el.classList.add('is-capture-target');
-      }
+    if (!el) {
+      continue;
+    }
+    el.classList.add('is-target');
+    if (bookTargets.has(mv.to)) {
+      el.classList.add('is-book-target');
+    } else if (openingBookMode) {
+      el.classList.add('is-offbook-target');
+    }
+    if (mv.captured) {
+      el.classList.add('is-capture-target');
     }
   }
 }
 
 function clearDragTargets() {
   for (const el of elements.boardPreview?.querySelectorAll(
-    '.is-selected, .is-target, .is-capture-target, .is-drop-hover'
+    '.is-selected, .is-target, .is-capture-target, .is-book-target, .is-offbook-target, .is-drop-hover'
   ) ?? []) {
-    el.classList.remove('is-selected', 'is-target', 'is-capture-target', 'is-drop-hover');
+    el.classList.remove(
+      'is-selected',
+      'is-target',
+      'is-capture-target',
+      'is-book-target',
+      'is-offbook-target',
+      'is-drop-hover'
+    );
   }
 }
 

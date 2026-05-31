@@ -1352,6 +1352,9 @@ span.expected-pill {
   display: grid;
   place-items: center;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .board-preview.has-opening-arrows .board-square.is-from::after,
@@ -1395,6 +1398,9 @@ span.expected-pill {
   object-fit: contain;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, 0.28));
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* Copie de la pièce qui glisse d'une case à l'autre pendant l'animation du coup. */
