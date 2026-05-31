@@ -1499,6 +1499,48 @@ span.expected-pill {
   box-shadow: inset 0 0 0 4px rgba(255, 217, 102, 0.9);
 }
 
+/* Roi en échec : la case passe au rouge et pulse (les deux couleurs). */
+.board-square.is-check {
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 64, 64, 0.95) 0%,
+    rgba(214, 36, 36, 0.6) 56%,
+    transparent 74%
+  );
+  animation: board-check-pulse 0.85s ease-in-out infinite;
+}
+
+@keyframes board-check-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 0 0 rgba(255, 70, 70, 0);
+  }
+  50% {
+    box-shadow: inset 0 0 16px 3px rgba(255, 70, 70, 0.85);
+  }
+}
+
+/* Défaite : on garde uniquement un encadré rouge autour de l'échiquier
+   (la description part dans la feuille « Analyse »). */
+body.is-game-lost #boardPreview {
+  outline: 4px solid rgba(255, 60, 60, 0.92);
+  outline-offset: 2px;
+  animation: board-defeat-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes board-defeat-pulse {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(255, 48, 48, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 34px rgba(255, 48, 48, 0.62);
+  }
+}
+
+.adv-sheet-comment.is-defeat {
+  color: #ff8c8c;
+  font-weight: 600;
+}
+
 /* === Réflexion de Stockfish : état visuel marqué pendant le calcul === */
 /* Badge posé sur l'échiquier */
 .engine-thinking {
@@ -3849,6 +3891,12 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     margin: 8px 0;
   }
 
+  /* En défaite : pas de texte sur l'échiquier, juste l'encadré rouge
+     (détails dispo sous la touche « Analyse »). */
+  body.is-game-lost.is-adv-board-view #adventurePanel #advResult {
+    display: none;
+  }
+
   body.screen-adventure.is-adv-board-view .detail-panel {
     padding: 6px 10px;
   }
@@ -3871,8 +3919,9 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     flex-basis: auto;
   }
 
-  /* Garde l'essentiel (barre d'éval + grille éval) ; masque les sections de 2e niveau. */
-  body.screen-adventure.is-adv-board-view .detail-section {
+  /* Garde l'essentiel ; masque les 3 zones dépliantes (Choix suivants / Analyse / Coups joués).
+     Spécificité alignée sur la règle « carte » (.detail-panel .detail-section) pour la battre. */
+  body.screen-adventure.is-adv-board-view .detail-panel .detail-section {
     display: none;
   }
 

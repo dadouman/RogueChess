@@ -2430,6 +2430,27 @@ function renderInternalSegmentChoice(segment) {
   elements.choiceList.append(finishRow);
 }
 
+// Case du roi en échec (le camp au trait), ou null. Marche pour les deux couleurs.
+function kingInCheckSquare(fen) {
+  try {
+    const probe = new Chess(fen);
+    if (!probe.isCheck()) {
+      return null;
+    }
+    const turn = probe.turn();
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.type === 'k' && cell.color === turn) {
+          return cell.square;
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas de surbrillance d'échec */
+  }
+  return null;
+}
+
 function renderBoard(node, container = elements.boardPreview) {
   const [boardPart] = node.fen.split(' ');
   const rows = boardPart.split('/');
@@ -2443,35 +2464,31 @@ function renderBoard(node, container = elements.boardPreview) {
   const openingBookMode = interactive && isOpeningBookChoiceActive();
   const bookTargets =
     selectedSquare && openingBookMode ? getBookTargetsFromSquare(selectedSquare) : new Set();
+  const checkSquare = kingInCheckSquare(node.fen);
   container.replaceChildren();
   container.classList.toggle('is-game-board', interactive);
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
 
+  const squareOptions = {
+    interactive,
+    selectedSquare,
+    playableColor,
+    legalTargets,
+    bookTargets,
+    openingBookMode,
+    checkSquare
+  };
   rows.forEach((row, rankIndex) => {
     let fileIndex = 0;
     for (const char of row) {
       if (/\d/.test(char)) {
         const empty = Number(char);
         for (let index = 0; index < empty; index += 1) {
-          appendSquare(container, rankIndex, fileIndex, null, from, to, {
-            interactive,
-            selectedSquare,
-            playableColor,
-            legalTargets,
-            bookTargets,
-            openingBookMode
-          });
+          appendSquare(container, rankIndex, fileIndex, null, from, to, squareOptions);
           fileIndex += 1;
         }
       } else {
-        appendSquare(container, rankIndex, fileIndex, char, from, to, {
-          interactive,
-          selectedSquare,
-          playableColor,
-          legalTargets,
-          bookTargets,
-          openingBookMode
-        });
+        appendSquare(container, rankIndex, fileIndex, char, from, to, squareOptions);
         fileIndex += 1;
       }
     }
@@ -2738,6 +2755,7 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     bookTarget ? 'is-book-target' : '',
     offbookTarget ? 'is-offbook-target' : '',
     target && piece ? 'is-capture-target' : '',
+    squareName === options.checkSquare ? 'is-check' : '',
     squareName === options.selectedSquare ? 'is-selected' : ''
   ]
     .filter(Boolean)
@@ -4463,6 +4481,7 @@ function clearGameCinematic() {
 function startNewGame(level = state.campaignLevel) {
   clearGameCinematic();
   setEngineThinking(false);
+  document.body.classList.remove('is-game-lost');
   if (state.playMode === 'challenge') {
     state.campaignLevel = Math.max(FIRST_LEVEL_NUMBER, level);
   }
@@ -4977,6 +4996,7 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     return;
   }
   setEngineThinking(false);
+  document.body.classList.toggle('is-game-lost', result === 'lost');
   game.status = result;
   game.locked = false;
   game.defeatComment =
@@ -6501,7 +6521,11 @@ function renderAdvAnalyseSheet() {
   }
   const comment = document.querySelector('#advSheetComment');
   if (comment) {
-    comment.textContent = document.querySelector('#nodeComment')?.textContent ?? '';
+    const game = state.game;
+    const lost = game?.status === 'lost' && game.message;
+    // En cas de défaite, on déplace la description ici (l'échiquier ne garde que l'encadré rouge).
+    comment.textContent = lost ? game.message : (document.querySelector('#nodeComment')?.textContent ?? '');
+    comment.classList.toggle('is-defeat', Boolean(lost));
   }
   const sources = document.querySelector('#advSheetSources');
   if (sources) {
