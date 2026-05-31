@@ -3621,6 +3621,82 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   cursor: pointer;
 }
 
+/* Barreau de coups en 1er niveau : touches « pièce + notation », sans texte autour. */
+.adv-moves-strip {
+  display: none;
+}
+
+.adv-move-key {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(117, 231, 232, 0.08);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-move-key:active {
+  background: rgba(117, 231, 232, 0.18);
+}
+
+.adv-move-key-piece {
+  width: 26px;
+  height: 26px;
+}
+
+.adv-move-key-san {
+  line-height: 1;
+}
+
+/* Feuille « Analyse » : éval détaillée + commentaire. */
+.adv-sheet-eval {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.adv-sheet-eval div {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(12, 15, 11, 0.55);
+}
+
+.adv-sheet-eval dt {
+  margin: 0;
+  color: var(--soft);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.adv-sheet-eval dd {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.adv-sheet-comment {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.adv-sheet-sources {
+  margin: 0;
+  color: var(--soft);
+  font-size: 11.5px;
+}
+
 @media (max-width: 640px) {
   /* Barre d'actions fixe en bas */
   body.screen-adventure .adv-mobile-bar {
@@ -3731,6 +3807,30 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
 
   /* Garde l'essentiel (barre d'éval + grille éval) ; masque les sections de 2e niveau. */
   body.screen-adventure.is-adv-board-view .detail-section {
+    display: none;
+  }
+
+  /* Coups jouables en 1er niveau, juste sous la barre d'éval. */
+  body.screen-adventure.is-adv-board-view #advMovesStrip {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 4px 0 0;
+  }
+
+  body.screen-adventure.is-adv-board-view #advMovesStrip.is-empty {
+    display: none;
+  }
+
+  /* L'éval chiffrée + le commentaire passent dans la feuille « Analyse » :
+     sur l'échiquier on ne garde que la barre d'éval visuelle. */
+  body.screen-adventure.is-adv-board-view .eval-grid {
+    display: none;
+  }
+
+  /* Bouton « Agrandir » retiré en portable (inutile). */
+  body.screen-adventure.is-adv-board-view .board-zoom-button {
     display: none;
   }
 

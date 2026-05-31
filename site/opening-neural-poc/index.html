@@ -285,6 +285,7 @@
             <div id="liveEvalBarFill" class="live-eval-bar-fill"></div>
             <div class="live-eval-bar-tick" aria-hidden="true"></div>
           </div>
+          <div id="advMovesStrip" class="adv-moves-strip" aria-label="Coups possibles"></div>
           <dl class="eval-grid">
             <div>
               <dt>Évaluation</dt>
@@ -403,31 +404,27 @@
     <!-- Version portable : barre d'actions fixe + feuille de coups -->
     <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions Aventure">
       <button id="advBarMenu" type="button" class="adv-bar-btn">
-        <span class="adv-bar-ico" aria-hidden="true">🗺️</span><span>Étapes</span>
+        <span class="adv-bar-ico" aria-hidden="true">🗺️</span><span>Niveau</span>
       </button>
-      <button id="advBarMoves" type="button" class="adv-bar-btn">
-        <span class="adv-bar-ico" aria-hidden="true">♟️</span><span>Coups</span>
-        <span id="advBarMovesCount" class="adv-bar-badge" hidden>0</span>
+      <button id="advBarAnalyse" type="button" class="adv-bar-btn">
+        <span class="adv-bar-ico" aria-hidden="true">🔬</span><span>Analyse</span>
       </button>
       <button id="advBarView" type="button" class="adv-bar-btn">
         <span class="adv-bar-ico" aria-hidden="true">🧠</span><span id="advBarViewLabel">Cerveau</span>
       </button>
     </nav>
 
-    <div id="advMoveSheet" class="adv-move-sheet" aria-hidden="true">
+    <div id="advAnalyseSheet" class="adv-move-sheet" aria-hidden="true">
       <div class="adv-sheet-backdrop" data-sheet-close></div>
-      <div class="adv-sheet-panel" role="dialog" aria-modal="true" aria-label="Coups possibles">
+      <div class="adv-sheet-panel" role="dialog" aria-modal="true" aria-label="Analyse de la position">
         <div class="adv-sheet-grip" aria-hidden="true"></div>
         <div class="adv-sheet-head">
-          <strong>Quel coup jouer ?</strong>
+          <strong>Analyse de la position</strong>
           <button class="adv-ghost" type="button" data-sheet-close>Fermer ✕</button>
         </div>
-        <p id="advSheetHint" class="adv-sheet-hint"></p>
-        <div id="advSheetMoves" class="adv-sheet-moves"></div>
-        <form id="advSheetForm" class="adv-sheet-form">
-          <input id="advSheetInput" type="text" autocomplete="off" placeholder="ou tape ton coup : Nf3 / g1f3" />
-          <button type="submit">Jouer</button>
-        </form>
+        <dl id="advSheetEval" class="adv-sheet-eval"></dl>
+        <p id="advSheetComment" class="adv-sheet-comment"></p>
+        <p id="advSheetSources" class="adv-sheet-sources"></p>
       </div>
     </div>
 

@@ -6167,7 +6167,7 @@ function adventureOnGameFinished(result) {
 function setScreen(screen) {
   state.screen = screen;
   setEngineThinking(false);
-  closeAdvMoveSheet();
+  closeAdvAnalyseSheet();
   document.body.classList.toggle('screen-home', screen === 'home');
   document.body.classList.toggle('screen-creative', screen === 'creative');
   document.body.classList.toggle('screen-adventure', screen === 'adventure');
@@ -6215,7 +6215,7 @@ function enterCreative() {
 }
 
 function openAdventureMap() {
-  closeAdvMoveSheet();
+  closeAdvAnalyseSheet();
   const map = document.querySelector('#adventureMap');
   if (map) {
     map.hidden = false;
@@ -6301,37 +6301,56 @@ function submitAdventureMove() {
   submitHumanMove(value);
 }
 
-// --- Version portable : feuille de coups (bottom sheet) ---
+// --- Version portable : feuille d'analyse + barreau de coups en 1er niveau ---
 
-function openAdvMoveSheet() {
-  renderAdvMoveSheet();
-  const sheet = document.querySelector('#advMoveSheet');
+function openAdvAnalyseSheet() {
+  renderAdvAnalyseSheet();
+  const sheet = document.querySelector('#advAnalyseSheet');
   if (sheet) {
     sheet.classList.add('is-open');
     sheet.setAttribute('aria-hidden', 'false');
   }
 }
 
-function closeAdvMoveSheet() {
-  const sheet = document.querySelector('#advMoveSheet');
+function closeAdvAnalyseSheet() {
+  const sheet = document.querySelector('#advAnalyseSheet');
   if (sheet) {
     sheet.classList.remove('is-open');
     sheet.setAttribute('aria-hidden', 'true');
   }
 }
 
-// Nombre de coups de livre jouables ici (sert au badge de la barre et à la feuille).
-function adventureBookMoveCount() {
-  const game = state.game;
-  if (!game || game.status !== 'playing' || game.phase !== 'opening' || game.chess.turn() !== 'w') {
-    return 0;
+// Reprend l'éval détaillée + le commentaire déjà calculés (éléments du rail) dans la feuille.
+function renderAdvAnalyseSheet() {
+  const evalDl = document.querySelector('#advSheetEval');
+  if (evalDl) {
+    const rows = [
+      ['Évaluation', document.querySelector('#nodeEval')?.textContent ?? '-'],
+      ['Moyenne future', document.querySelector('#nodeFuture')?.textContent ?? '-'],
+      ['Trait', document.querySelector('#nodeTurn')?.textContent ?? '-']
+    ];
+    evalDl.replaceChildren();
+    for (const [key, value] of rows) {
+      const div = document.createElement('div');
+      div.innerHTML = `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`;
+      evalDl.append(div);
+    }
   }
-  return getExpectedWhiteBookEdges().length;
+  const comment = document.querySelector('#advSheetComment');
+  if (comment) {
+    comment.textContent = document.querySelector('#nodeComment')?.textContent ?? '';
+  }
+  const sources = document.querySelector('#advSheetSources');
+  if (sources) {
+    const txt = document.querySelector('#nodeSources')?.textContent ?? '';
+    sources.textContent = txt;
+    sources.hidden = !txt || txt === '-';
+  }
 }
 
-function renderAdvMoveSheet() {
-  const host = document.querySelector('#advSheetMoves');
-  const hint = document.querySelector('#advSheetHint');
+// Coups jouables (livre) affichés en 1er niveau : pièce + notation, sans texte autour.
+function renderAdvMovesStrip() {
+  const host = document.querySelector('#advMovesStrip');
   if (!host) {
     return;
   }
@@ -6339,35 +6358,21 @@ function renderAdvMoveSheet() {
   const game = state.game;
   const playable = Boolean(game && game.status === 'playing' && game.chess.turn() === 'w' && !game.locked);
   const edges = playable && game.phase === 'opening' ? getExpectedWhiteBookEdges() : [];
-
-  if (hint) {
-    hint.textContent = !playable
-      ? (game?.chess.turn() === 'b' ? 'Stockfish réfléchit…' : 'Pas à toi de jouer pour l’instant.')
-      : edges.length
-        ? `${edges.length} coup${edges.length > 1 ? 's' : ''} de livre pour avancer dans l’ouverture.`
-        : 'Hors du livre : à toi de trouver le meilleur coup.';
-  }
-
   for (const edge of edges) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'adv-sheet-move';
+    btn.className = 'adv-move-key';
     btn.dataset.uci = edge.uci;
     btn.innerHTML =
-      `<img class="adv-sheet-move-piece" src="/pieces/merida/w${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
-      `<span class="adv-sheet-move-san">${escapeHtml(edge.san)}</span>`;
+      `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
+      `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
     host.append(btn);
   }
+  host.classList.toggle('is-empty', edges.length === 0);
 }
 
-// Met à jour le badge « nombre de coups » et le libellé du bouton de bascule de vue.
+// Rafraîchit la barre portable (libellé de vue + barreau de coups + feuille d'analyse ouverte).
 function updateAdvMobileBar() {
-  const badge = document.querySelector('#advBarMovesCount');
-  if (badge) {
-    const count = adventureBookMoveCount();
-    badge.textContent = String(count);
-    badge.hidden = count === 0;
-  }
   const label = document.querySelector('#advBarViewLabel');
   if (label) {
     label.textContent = state.advViewMode === 'board' ? 'Cerveau' : 'Échiquier';
@@ -6376,8 +6381,9 @@ function updateAdvMobileBar() {
   if (ico) {
     ico.textContent = state.advViewMode === 'board' ? '🧠' : '🎮';
   }
-  if (document.querySelector('#advMoveSheet')?.classList.contains('is-open')) {
-    renderAdvMoveSheet();
+  renderAdvMovesStrip();
+  if (document.querySelector('#advAnalyseSheet')?.classList.contains('is-open')) {
+    renderAdvAnalyseSheet();
   }
 }
 
@@ -6689,41 +6695,27 @@ function bindAdventureEvents() {
   bind('#advMapButton', openAdventureMap);
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
-  // Barre d'actions portable
+  // Barre d'actions portable : Niveau / Analyse / Cerveau
   bind('#advBarMenu', openAdventureMap);
-  bind('#advBarMoves', openAdvMoveSheet);
+  bind('#advBarAnalyse', openAdvAnalyseSheet);
   bind('#advBarView', toggleAdvViewMode);
-  // Feuille de coups : fermeture (croix/backdrop) + jeu d'un coup tapé/touché
-  const sheet = document.querySelector('#advMoveSheet');
+  // Feuille d'analyse : fermeture (croix / backdrop)
+  const sheet = document.querySelector('#advAnalyseSheet');
   if (sheet) {
     sheet.addEventListener('click', (event) => {
       if (event.target.closest('[data-sheet-close]')) {
-        closeAdvMoveSheet();
+        closeAdvAnalyseSheet();
       }
     });
   }
-  const sheetMoves = document.querySelector('#advSheetMoves');
-  if (sheetMoves) {
-    sheetMoves.addEventListener('click', (event) => {
-      const btn = event.target.closest('.adv-sheet-move');
-      if (!btn) {
-        return;
+  // Barreau de coups en 1er niveau : touche = jouer le coup.
+  const movesStrip = document.querySelector('#advMovesStrip');
+  if (movesStrip) {
+    movesStrip.addEventListener('click', (event) => {
+      const btn = event.target.closest('.adv-move-key');
+      if (btn) {
+        submitHumanMove(btn.dataset.uci);
       }
-      closeAdvMoveSheet();
-      submitHumanMove(btn.dataset.uci);
-    });
-  }
-  const sheetForm = document.querySelector('#advSheetForm');
-  if (sheetForm) {
-    sheetForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const input = document.querySelector('#advSheetInput');
-      const value = input ? input.value : '';
-      if (input) {
-        input.value = '';
-      }
-      closeAdvMoveSheet();
-      submitHumanMove(value);
     });
   }
   bind('#advMapHomeButton', () => {
