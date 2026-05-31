@@ -3767,6 +3767,15 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   text-align: center;
 }
 
+/* Historique ‹/› + touche de bascule (visibles seulement en portable). */
+.adv-history {
+  display: none;
+}
+
+.adv-hist-toggle {
+  display: none;
+}
+
 /* Feuille « Analyse » : éval détaillée + commentaire. */
 .adv-sheet-eval {
   display: grid;
@@ -3940,6 +3949,77 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   body.screen-adventure.is-adv-board-view #advMovesStrip.is-empty {
     border: 1px dashed var(--line);
     border-radius: 12px;
+  }
+
+  /* Historique ‹/› sous la barre d'éval. */
+  body.screen-adventure.is-adv-board-view #advHistory {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 6px 0 0;
+  }
+
+  body.is-history-hidden.is-adv-board-view #advHistory {
+    display: none;
+  }
+
+  .adv-history .adv-hist-nav {
+    width: 40px;
+    height: 32px;
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .adv-history .adv-hist-nav:disabled {
+    opacity: 0.32;
+    cursor: default;
+  }
+
+  .adv-hist-label {
+    min-width: 116px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .adv-history.is-reviewing .adv-hist-label {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+
+  /* Touche « historique » en haut à droite de l'échiquier (à la place du zoom). */
+  body.screen-adventure.is-adv-board-view .adv-hist-toggle {
+    display: block;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 4;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    background: rgba(9, 14, 11, 0.86);
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  body.is-history-hidden.is-adv-board-view .adv-hist-toggle {
+    opacity: 0.5;
+  }
+
+  /* Plateau en cours de revue : liseré cyan pour signaler une position passée. */
+  body.is-reviewing-history.is-adv-board-view #boardPreview {
+    outline: 3px solid rgba(117, 231, 232, 0.72);
+    outline-offset: 2px;
   }
 
   /* L'éval chiffrée + le commentaire passent dans la feuille « Analyse » :

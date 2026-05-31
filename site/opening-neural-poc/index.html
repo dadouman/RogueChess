@@ -278,6 +278,7 @@
 
         <div class="board-shell">
           <button id="boardZoomButton" class="board-zoom-button" type="button">Agrandir</button>
+          <button id="advHistToggle" class="adv-hist-toggle" type="button" aria-label="Afficher ou masquer l'historique">🕘</button>
           <div id="boardPreview" class="board-preview" aria-label="Échiquier de la position"></div>
           <div id="engineThinking" class="engine-thinking" aria-hidden="true">
             <span class="engine-thinking-brain" aria-hidden="true">🧠</span>
@@ -291,6 +292,11 @@
           <div id="liveEvalBar" class="live-eval-bar" aria-label="Barre d'évaluation">
             <div id="liveEvalBarFill" class="live-eval-bar-fill"></div>
             <div class="live-eval-bar-tick" aria-hidden="true"></div>
+          </div>
+          <div id="advHistory" class="adv-history" aria-label="Historique des coups">
+            <button id="advHistPrev" class="adv-hist-nav" type="button" aria-label="Position précédente">‹</button>
+            <span id="advHistLabel" class="adv-hist-label">—</span>
+            <button id="advHistNext" class="adv-hist-nav" type="button" aria-label="Position suivante">›</button>
           </div>
           <div id="advMovesStrip" class="adv-moves-strip" aria-label="Coups possibles"></div>
           <dl class="eval-grid">
