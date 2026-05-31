@@ -3661,6 +3661,12 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   line-height: 1;
 }
 
+.adv-moves-placeholder {
+  color: var(--soft);
+  font-size: 12.5px;
+  text-align: center;
+}
+
 /* Feuille « Analyse » : éval détaillée + commentaire. */
 .adv-sheet-eval {
   display: grid;
@@ -3768,8 +3774,10 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   }
 
   /* --- Vue échiquier : écran quasi 100 % échiquier --- */
+  /* Panneau réduit au minimum : on retire le message (variable) au-dessus de l'échiquier
+     pour le garder fixe — l'état du tour est déjà donné par la zone des coups. */
   body.screen-adventure.is-adv-board-view #adventurePanel {
-    padding: 8px 12px;
+    padding: 0 12px;
     gap: 0;
     min-height: 0;
   }
@@ -3778,15 +3786,9 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
-  body.screen-adventure.is-adv-board-view #adventurePanel #advMessage,
   body.screen-adventure.is-adv-board-view #adventurePanel #advResult {
     display: block;
-  }
-
-  body.screen-adventure.is-adv-board-view #advMessage {
-    margin: 0;
-    font-size: 12.5px;
-    text-align: center;
+    margin: 8px 0;
   }
 
   body.screen-adventure.is-adv-board-view .detail-panel {
@@ -3816,17 +3818,21 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
-  /* Coups jouables en 1er niveau, juste sous la barre d'éval. */
+  /* Coups jouables en 1er niveau, dans une zone dédiée de hauteur fixe : l'échiquier
+     ne bouge plus quand les coups apparaissent/disparaissent (tour de Stockfish). */
   body.screen-adventure.is-adv-board-view #advMovesStrip {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
     gap: 8px;
-    margin: 4px 0 0;
+    margin: 6px 0 0;
+    min-height: 60px;
   }
 
   body.screen-adventure.is-adv-board-view #advMovesStrip.is-empty {
-    display: none;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
   }
 
   /* L'éval chiffrée + le commentaire passent dans la feuille « Analyse » :

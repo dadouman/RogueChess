@@ -6386,6 +6386,19 @@ function renderAdvMovesStrip() {
       `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
     host.append(btn);
   }
+  // Zone réservée en permanence : quand aucun coup de livre n'est dispo (au tour de
+  // Stockfish, ou hors livre), on garde la place avec un libellé — l'échiquier ne bouge plus.
+  if (!edges.length) {
+    const ph = document.createElement('span');
+    ph.className = 'adv-moves-placeholder';
+    ph.textContent =
+      game?.status === 'playing' && game.chess.turn() === 'b'
+        ? 'Au tour de Stockfish…'
+        : game?.status === 'playing' && game.phase !== 'opening'
+          ? 'Hors du livre : joue ton coup sur l’échiquier'
+          : ' ';
+    host.append(ph);
+  }
   host.classList.toggle('is-empty', edges.length === 0);
 }
 
