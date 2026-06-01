@@ -3234,6 +3234,22 @@ body.screen-adventure:not(.is-adv-board-view) .adv-board-caption {
   display: none;
 }
 
+/* Conversion automatique « cinématique » vers le mat : halo sur l'échiquier et
+   bandeau doré pulsant pour signaler la séquence auto-jouée. */
+body.is-victory-cinematic #boardPreview {
+  animation: engine-board-glow 1.4s ease-in-out infinite;
+}
+
+body.is-victory-cinematic .adv-board-top {
+  color: var(--gold);
+  animation: cinematic-banner-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cinematic-banner-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
 /* =====================================================================
    Mode aventure · vue échiquier (is-adv-board-view)
    Permute les colonnes : panneau aventure gauche, échiquier centre,

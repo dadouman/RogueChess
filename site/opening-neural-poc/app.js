@@ -27,6 +27,14 @@ const STOCKFISH_LEVELS = {
   9: { level: 9, label: 'Trop fort', elo: 2800, skill: 19, depth: 12, movetime: 1400 },
   10: { level: 10, label: 'Stockfish pur', elo: null, skill: 20, depth: 14, movetime: null }
 };
+// Conversion automatique « cinématique » de la phase libre : dès que les Blancs
+// dépassent +2, on avance la partie seul (meilleurs coups blancs vs défense Stockfish)
+// jusqu'à voir un mat forcé, puis on rend la main au joueur pour conclure.
+const VICTORY_CINEMATIC_TRIGGER_CP = 200;  // +2.00 : seuil de déclenchement
+const VICTORY_CINEMATIC_KEEP_CP = 150;     // si l'avantage retombe sous +1.50, on rend la main
+const VICTORY_CINEMATIC_DEPTH = 10;        // profondeur d'analyse pendant la conversion
+const VICTORY_CINEMATIC_MAX_PLIES = 24;    // garde-fou : ~12 coups complets max
+const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
   p: 100,
@@ -3526,6 +3534,10 @@ function advBoardTopText() {
   if (!game || game.status !== 'playing') {
     return '';
   }
+  // Conversion automatique en cours : bandeau dédié au-dessus de l'échiquier.
+  if (game.victoryCinematic) {
+    return '🎬 Conversion automatique vers le mat…';
+  }
   const run = state.advRun;
   // Boss : on annonce le Stockfish en face.
   if (run?.kind === 'boss') {
@@ -3662,7 +3674,9 @@ function createInitialGameState(level = state.campaignLevel) {
     expectedOpeningArrows: [],
     defeatLineRecorded: false,
     cinematic: null,
-    cinematicTimer: null
+    cinematicTimer: null,
+    victoryCinematic: false, // conversion automatique vers le mat en cours
+    victoryConverted: false  // déjà déclenchée une fois pour cette partie
   };
 }
 
@@ -4896,6 +4910,19 @@ async function submitFreeMove(input) {
     return;
   }
 
+  // Avantage décisif (> +2) : on enclenche la conversion cinématique vers le mat,
+  // puis on rendra la main au joueur pour conclure.
+  if (
+    !isExplorationMode() &&
+    state.game.phase === 'free' &&
+    !state.game.victoryConverted &&
+    evaluation.cpWhite >= VICTORY_CINEMATIC_TRIGGER_CP &&
+    !isMateScore(evaluation.cpWhite)
+  ) {
+    await runVictoryConversion();
+    return;
+  }
+
   state.game.message = isExplorationMode()
     ? `Position explorée à ${formatEval(evaluation.cpWhite)}. Stockfish répond.`
     : `Coup accepté (${formatEval(evaluation.cpWhite)}). Stockfish répond.`;
@@ -5086,6 +5113,7 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   document.body.classList.toggle('is-game-lost', result === 'lost');
   game.status = result;
   game.locked = false;
+  game.victoryCinematic = false;
   game.defeatComment =
     result === 'lost' && failureFen && failureEvaluation
       ? buildDefeatComment(failureFen, failureEvaluation)
@@ -5148,6 +5176,134 @@ function setGameLocked(isLocked) {
   }
   state.game.locked = isLocked;
   renderGamePanel();
+}
+
+// Un score Stockfish encode un mat forcé quand il frôle MATE_SCORE_CP.
+function isMateScore(cpWhite) {
+  return Number.isFinite(cpWhite) && Math.abs(cpWhite) >= MATE_SCORE_CP - 1000;
+}
+
+// Reconstruit le « mat en X » à partir du score encodé (cf. parseWhiteCentipawn).
+function mateMovesFromCp(cpWhite) {
+  const penalty = MATE_SCORE_CP - Math.abs(cpWhite);
+  return Math.max(1, Math.round(penalty / 12));
+}
+
+/**
+ * Conversion « cinématique » de la phase libre. Dès que les Blancs dépassent +2,
+ * on enchaîne automatiquement meilleurs coups blancs + défense Stockfish, en animant
+ * chaque coup, jusqu'à détecter un mat forcé pour les Blancs ; on rend alors la main
+ * au joueur pour qu'il porte l'estocade. Garde-fous : on s'arrête si l'avantage
+ * retombe, si la partie se termine, ou après un nombre maximal de demi-coups.
+ */
+async function runVictoryConversion() {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  game.victoryConverted = true;
+  game.victoryCinematic = true;
+  setGameLocked(true);
+  game.message = 'Position gagnante : conversion automatique vers le mat…';
+  renderGamePanel();
+  renderGameDetails();
+
+  const evaluator = await ensureStockfishReady(false);
+  const profile = getStockfishLevelProfile();
+  let mateFound = null;
+
+  for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
+    if (state.game !== game || game.status !== 'playing') {
+      return; // partie changée ou terminée ailleurs
+    }
+
+    if (game.chess.turn() === 'w') {
+      // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
+      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+      if (state.game !== game || game.status !== 'playing') {
+        return;
+      }
+      game.currentEvalCp = evalNow.cpWhite;
+      game.currentPv = evalNow.pv;
+      game.currentDepth = evalNow.depth;
+      if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
+        mateFound = evalNow;
+        break; // mat détecté → on rend la main au joueur
+      }
+      if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
+        break; // l'avantage s'est évaporé → on rend la main
+      }
+      if (!evalNow.bestMove) {
+        break;
+      }
+      const wmove = playUciOnChess(game.chess, evalNow.bestMove);
+      if (!wmove) {
+        break;
+      }
+      applyFreeMove(wmove, 'Conversion auto');
+      game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
+      renderGamePanel();
+      renderGameDetails();
+      if (game.chess.isCheckmate()) {
+        finishCampaignByMate('Mat ! La conversion automatique a conclu la partie.');
+        return;
+      }
+      if (game.chess.isDraw()) {
+        finishGameByStalemate(game.chess);
+        return;
+      }
+      await pause(VICTORY_CINEMATIC_STEP_MS);
+    } else {
+      // Trait aux Noirs : défense de Stockfish au niveau du boss.
+      const search = await evaluator.pickMove(game.chess.fen(), profile);
+      if (state.game !== game || game.status !== 'playing') {
+        return;
+      }
+      if (!search.bestMove) {
+        break;
+      }
+      const bmove = playUciOnChess(game.chess, search.bestMove);
+      if (!bmove) {
+        break;
+      }
+      applyFreeMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`);
+      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+      if (state.game !== game || game.status !== 'playing') {
+        return;
+      }
+      game.currentEvalCp = evalNow.cpWhite;
+      game.currentPv = evalNow.pv;
+      game.currentDepth = evalNow.depth;
+      renderGamePanel();
+      renderGameDetails();
+      if (game.chess.isCheckmate()) {
+        // Les Noirs matent (très improbable depuis une position gagnante).
+        finishGame('lost', 'Échec et mat subi pendant la conversion.', game.chess.fen(), evalNow);
+        return;
+      }
+      if (game.chess.isDraw()) {
+        finishGameByStalemate(game.chess);
+        return;
+      }
+      await pause(VICTORY_CINEMATIC_STEP_MS);
+    }
+  }
+
+  // Fin de la conversion : on rend la main au joueur.
+  if (state.game !== game) {
+    return;
+  }
+  game.victoryCinematic = false;
+  setGameLocked(false);
+  game.freeRoundPending = false;
+  if (mateFound) {
+    const x = mateMovesFromCp(mateFound.cpWhite);
+    game.message = `Position gagnante : mat en ${x}. À toi de conclure !`;
+  } else {
+    game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
+  }
+  renderGamePanel();
+  renderGameDetails();
 }
 
 function getGameRawPathToCurrentNode() {
@@ -5410,6 +5566,8 @@ function renderGameDetails() {
   // Indices visuels propres à la vue joueur aventure
   applyAdvBoardHints();
   updateAdvBoardFeedback();
+  // Effet « cinématique » pendant la conversion automatique vers le mat.
+  document.body.classList.toggle('is-victory-cinematic', Boolean(game.victoryCinematic));
 }
 
 function renderGamePanel(phaseLabel = null) {
@@ -6711,8 +6869,9 @@ function renderAdvMovesStrip() {
   if (!hasContent) {
     const ph = document.createElement('span');
     ph.className = 'adv-moves-placeholder';
-    ph.textContent =
-      game?.status === 'playing' && game.chess.turn() === 'b'
+    ph.textContent = game?.victoryCinematic
+      ? 'Conversion automatique en cours…'
+      : game?.status === 'playing' && game.chess.turn() === 'b'
         ? 'Au tour de Stockfish…'
         : game?.status === 'playing' && game.phase !== 'opening'
           ? 'Hors du livre : joue ton coup sur l’échiquier'
