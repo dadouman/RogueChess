@@ -3969,6 +3969,7 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   body.screen-adventure.is-adv-board-view .detail-panel {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 6px;
     padding: 6px 10px 4px;
     overflow: visible;
@@ -4015,9 +4016,11 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
-  /* Rail d'infos serré sous l'échiquier : barre d'éval « collée », puis coups,
-     puis historique. */
+  /* Rail d'infos serré sous l'échiquier, pleine largeur : barre d'éval « collée »,
+     puis coups, puis historique. Flex colonne pour que tout occupe 100 % de la largeur. */
   body.screen-adventure.is-adv-board-view #detailInfoContent {
+    display: flex;
+    flex-direction: column;
     gap: 10px;
   }
 
