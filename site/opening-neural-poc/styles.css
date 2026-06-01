@@ -3966,13 +3966,27 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
 
   /* Colonne simple et serrée : on abandonne la grille « desktop » (qui centrait
      l'échiquier dans une grande ligne et laissait un vide en dessous). */
+  /* Contenu centré verticalement : l'échiquier descend vers le milieu et le vide
+     se répartit (haut + bas) au lieu de s'accumuler tout en bas. */
   body.screen-adventure.is-adv-board-view .detail-panel {
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    justify-content: center;
     gap: 6px;
-    padding: 6px 10px 4px;
+    padding: 6px 10px 10px;
     overflow: visible;
+  }
+
+  /* Animation « Stockfish réfléchit » : au-dessus de l'échiquier (et non par-dessus
+     les pièces). Le bandeau de contexte cède sa place pendant la réflexion. */
+  body.screen-adventure.is-adv-board-view.is-engine-thinking .engine-thinking {
+    top: auto;
+    bottom: calc(100% + 8px);
+  }
+
+  body.screen-adventure.is-adv-board-view.is-engine-thinking .adv-board-top {
+    visibility: hidden;
   }
 
   body.screen-adventure.is-adv-board-view .detail-heading {
