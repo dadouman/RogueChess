@@ -3844,6 +3844,23 @@ function getBlackBookEdges() {
   return buildLiveBookEdgesForNode(state.game.currentNodeId, 'b', { legalInCurrentGame: true });
 }
 
+/**
+ * Réponses du livre que l'adversaire peut réellement jouer pour le run en cours.
+ * En mode apprentissage, on retire les lignes déjà découvertes (« tombées ») afin de
+ * pousser le joueur vers du neuf. On ne touche pas aux poids relatifs des autres :
+ * comme les lignes tombées ne peuvent plus sortir, les restantes se renormalisent
+ * naturellement (elles deviennent plus probables). Quand tout est découvert à ce
+ * nœud, on relâche le filtre : tout peut de nouveau tomber.
+ */
+function getOpponentBookEdgesForRun() {
+  const edges = getBlackBookEdges();
+  if (!isAdventureLesson() || edges.length <= 1) {
+    return edges;
+  }
+  const fresh = edges.filter((edge) => !isAdventureEdgeMastered(edge));
+  return fresh.length ? fresh : edges;
+}
+
 function normalizeSanForCompare(san) {
   return String(san ?? '')
     .replace(/[!?]+$/g, '')
@@ -4894,7 +4911,7 @@ async function advanceOpponentTurn() {
   }
 
   if (game.phase === 'opening') {
-    const blackBookEdges = getBlackBookEdges();
+    const blackBookEdges = getOpponentBookEdgesForRun();
     const decision = blackBookEdges.length
       ? pickWeightedCandidate(
           buildOpponentBookCandidates(blackBookEdges)
@@ -5586,7 +5603,7 @@ function renderOpponentGraphMini() {
 
   let rows = [];
   if (game.phase === 'opening' && game.chess.turn() === 'b') {
-    rows = buildOpponentBookCandidates(getBlackBookEdges()).map((candidate) => ({
+    rows = buildOpponentBookCandidates(getOpponentBookEdgesForRun()).map((candidate) => ({
       label: candidate.type === 'free' ? candidate.label : candidate.edge.san,
       value: formatPercent(candidate.probability)
     }));
@@ -6668,7 +6685,7 @@ function renderAdvMovesStrip() {
   //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
   let ghosts = [];
   if (!whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
-    ghosts = buildOpponentBookCandidates(getBlackBookEdges());
+    ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
   }
   for (const cand of ghosts) {
     const btn = document.createElement('button');
