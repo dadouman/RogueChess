@@ -3766,10 +3766,44 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   line-height: 1;
 }
 
+/* Probabilité discrète affichée sur les touches « fantômes » de Stockfish. */
+.adv-move-key-prob {
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--soft);
+  opacity: 0.78;
+  letter-spacing: 0.02em;
+}
+
+/* Touches « fantômes » : réponses possibles de Stockfish, visibles mais non cliquables. */
+.adv-move-key.is-ghost {
+  cursor: default;
+  border-style: dashed;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--soft);
+  opacity: 0.82;
+}
+
+.adv-move-key.is-ghost:active {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.adv-move-key.is-ghost-free .adv-move-key-san {
+  font-style: italic;
+}
+
 .adv-moves-placeholder {
   color: var(--soft);
   font-size: 12.5px;
   text-align: center;
+}
+
+/* Conteneur transparent par défaut : la jauge d'éval se comporte comme avant
+   (le passage en flex « toggle + jauge » est réservé au portable aventure). */
+.adv-eval-row {
+  display: contents;
 }
 
 /* Historique ‹/› + touche de bascule (visibles seulement en portable). */
@@ -3987,8 +4021,16 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     gap: 10px;
   }
 
-  body.screen-adventure.is-adv-board-view #liveEvalBar {
+  /* Ligne d'éval : la touche historique à gauche, la jauge qui remplit le reste. */
+  body.screen-adventure.is-adv-board-view .adv-eval-row {
     order: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-eval-row #liveEvalBar {
+    flex: 1 1 auto;
     margin: 0;
   }
 
@@ -4010,7 +4052,8 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     border-radius: 12px;
   }
 
-  /* Historique ‹/› placé en dessous des coups proposés. */
+  /* Historique ‹/› placé en dessous des coups proposés, dans une zone de hauteur
+     fixe : masquer la nav ne fait plus « remonter » tout le reste. */
   body.screen-adventure.is-adv-board-view #advHistory {
     order: 3;
     display: flex;
@@ -4018,6 +4061,7 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     justify-content: center;
     gap: 8px;
     margin: 0;
+    min-height: 40px;
   }
 
   /* Groupe ‹ — › masquable : la touche historique, elle, reste visible. */
@@ -4062,16 +4106,18 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     font-weight: 700;
   }
 
-  /* Touche « historique » intégrée à la barre, hors de l'échiquier. */
+  /* Touche « historique » compacte, à gauche de la jauge d'éval. */
   body.screen-adventure.is-adv-board-view .adv-hist-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 26px;
+    min-height: 26px;
     padding: 0;
     border: 1px solid var(--line-strong);
-    border-radius: 9px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
     color: var(--soft);
     cursor: pointer;
@@ -4079,8 +4125,8 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   }
 
   body.screen-adventure.is-adv-board-view .adv-hist-toggle svg {
-    width: 19px;
-    height: 19px;
+    width: 16px;
+    height: 16px;
   }
 
   /* Mise en avant quand l'historique est affiché (état actif). */

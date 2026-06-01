@@ -6647,9 +6647,13 @@ function renderAdvMovesStrip() {
   }
   host.replaceChildren();
   const game = state.game;
-  const playable = Boolean(game && game.status === 'playing' && game.chess.turn() === 'w' && !game.locked && game.historyView == null);
-  const edges = playable && game.phase === 'opening' ? getExpectedWhiteBookEdges() : [];
-  for (const edge of edges) {
+  const reviewing = Boolean(game && game.historyView != null);
+  const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
+
+  // 1) Coups blancs jouables (selectionnables) pendant l'ouverture.
+  const whitePlayable = inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
+  const whiteEdges = whitePlayable ? getExpectedWhiteBookEdges() : [];
+  for (const edge of whiteEdges) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'adv-move-key';
@@ -6659,9 +6663,35 @@ function renderAdvMovesStrip() {
       `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
     host.append(btn);
   }
+
+  // 2) Reponses de Stockfish encore dans la theorie : touches "fantomes" non
+  //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
+  let ghosts = [];
+  if (!whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
+    ghosts = buildOpponentBookCandidates(getBlackBookEdges());
+  }
+  for (const cand of ghosts) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'adv-move-key is-ghost';
+    btn.disabled = true;
+    btn.setAttribute('aria-disabled', 'true');
+    const prob = `<span class="adv-move-key-prob">${escapeHtml(formatPercent(cand.probability))}</span>`;
+    if (cand.type === 'free') {
+      btn.classList.add('is-ghost-free');
+      btn.innerHTML = `<span class="adv-move-key-san">Imprevu</span>${prob}`;
+    } else {
+      const san = cand.edge.san;
+      btn.innerHTML =
+        `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
+        `<span class="adv-move-key-san">${escapeHtml(san)}</span>${prob}`;
+    }
+    host.append(btn);
+  }
   // Zone réservée en permanence : quand aucun coup de livre n'est dispo (au tour de
   // Stockfish, ou hors livre), on garde la place avec un libellé — l'échiquier ne bouge plus.
-  if (!edges.length) {
+  const hasContent = whiteEdges.length || ghosts.length;
+  if (!hasContent) {
     const ph = document.createElement('span');
     ph.className = 'adv-moves-placeholder';
     ph.textContent =
@@ -6672,7 +6702,7 @@ function renderAdvMovesStrip() {
           : ' ';
     host.append(ph);
   }
-  host.classList.toggle('is-empty', edges.length === 0);
+  host.classList.toggle('is-empty', !hasContent);
 }
 
 // Rafraîchit la barre portable (libellé de vue + barreau de coups + feuille d'analyse ouverte).
@@ -7096,7 +7126,8 @@ function bindAdventureEvents() {
   if (movesStrip) {
     movesStrip.addEventListener('click', (event) => {
       const btn = event.target.closest('.adv-move-key');
-      if (btn) {
+      // Les touches « fantômes » (réponses de Stockfish) n'ont pas d'UCI : non jouables.
+      if (btn && !btn.disabled && btn.dataset.uci) {
         submitHumanMove(btn.dataset.uci);
       }
     });

@@ -290,11 +290,7 @@
         </div>
 
         <div id="detailInfoContent" class="detail-info-content">
-          <div id="liveEvalBar" class="live-eval-bar" aria-label="Barre d'évaluation">
-            <div id="liveEvalBarFill" class="live-eval-bar-fill"></div>
-            <div class="live-eval-bar-tick" aria-hidden="true"></div>
-          </div>
-          <div id="advHistory" class="adv-history" aria-label="Historique des coups">
+          <div class="adv-eval-row">
             <button id="advHistToggle" class="adv-hist-toggle" type="button" aria-label="Afficher ou masquer l'historique" title="Historique des coups">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
@@ -302,13 +298,19 @@
                 <path d="M12 7v5l4 2"></path>
               </svg>
             </button>
+            <div id="liveEvalBar" class="live-eval-bar" aria-label="Barre d'évaluation">
+              <div id="liveEvalBarFill" class="live-eval-bar-fill"></div>
+              <div class="live-eval-bar-tick" aria-hidden="true"></div>
+            </div>
+          </div>
+          <div id="advMovesStrip" class="adv-moves-strip" aria-label="Coups possibles"></div>
+          <div id="advHistory" class="adv-history" aria-label="Historique des coups">
             <div id="advHistNav" class="adv-hist-nav-group">
               <button id="advHistPrev" class="adv-hist-nav" type="button" aria-label="Position précédente">‹</button>
               <span id="advHistLabel" class="adv-hist-label">—</span>
               <button id="advHistNext" class="adv-hist-nav" type="button" aria-label="Position suivante">›</button>
             </div>
           </div>
-          <div id="advMovesStrip" class="adv-moves-strip" aria-label="Coups possibles"></div>
           <dl class="eval-grid">
             <div>
               <dt>Évaluation</dt>
