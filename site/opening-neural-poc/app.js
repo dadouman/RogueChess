@@ -3467,6 +3467,8 @@ function updateAdvBoardFeedback() {
   if (!game || !board) {
     return;
   }
+  // Bandeau au-dessus de l'échiquier : contexte de la partie en cours.
+  renderAdvBoardTop();
   // Aura coral en phase libre (mode boss : trouve l'échec et mat)
   board.classList.toggle('is-free-phase', game.phase === 'free' && game.status === 'playing');
   if (!caption) {
@@ -3482,6 +3484,71 @@ function updateAdvBoardFeedback() {
     // Phase libre : objectif visuel
     const isMate = isAdventureRun() && state.advRun?.kind === 'boss';
     caption.textContent = isMate ? '⚔️ Trouve l\'échec et mat' : '⚡ Phase libre';
+  }
+}
+
+/** Profondeur (en demi-coups) de la plus longue ligne de livre restant à partir
+ *  du noeud courant — sert à annoncer « encore N coups à découvrir ». */
+function advRemainingBookPlies() {
+  const startId = state.game?.currentNodeId;
+  if (!startId) {
+    return 0;
+  }
+  const memo = new Map();
+  const visiting = new Set();
+  const depthFrom = (nodeId) => {
+    if (memo.has(nodeId)) {
+      return memo.get(nodeId);
+    }
+    if (visiting.has(nodeId)) {
+      return 0; // garde-fou contre les transpositions cycliques
+    }
+    visiting.add(nodeId);
+    const node = getNode(nodeId);
+    let best = 0;
+    for (const edgeId of node?.outgoing ?? []) {
+      const edge = getEdge(edgeId);
+      if (edge) {
+        best = Math.max(best, 1 + depthFrom(edge.to));
+      }
+    }
+    visiting.delete(nodeId);
+    memo.set(nodeId, best);
+    return best;
+  };
+  return depthFrom(startId);
+}
+
+/** Texte du bandeau au-dessus de l'échiquier (vue joueur aventure) :
+ *  ouverture → nom de la ligne / coups restants ; sinon → Stockfish affronté. */
+function advBoardTopText() {
+  const game = state.game;
+  if (!game || game.status !== 'playing') {
+    return '';
+  }
+  const run = state.advRun;
+  // Boss : on annonce le Stockfish en face.
+  if (run?.kind === 'boss') {
+    const profile = getStockfishLevelProfile(run.bossLevel);
+    const strength = profile.elo ? `${profile.elo} Elo` : 'force max';
+    return `♟︎ Boss N${profile.level} · ${profile.label} · ${strength}`;
+  }
+  // Leçon / ouverture : combien de coups de livre restent à découvrir.
+  if (game.phase === 'opening') {
+    const remaining = advRemainingBookPlies();
+    if (remaining <= 0) {
+      return '📖 Fin de la ligne — sors du livre';
+    }
+    return `📖 Ouverture · encore ${remaining} coup${remaining > 1 ? 's' : ''} à découvrir`;
+  }
+  // Phase libre hors boss (ex. exploration) : objectif générique.
+  return '⚡ Phase libre';
+}
+
+function renderAdvBoardTop() {
+  const el = document.querySelector('#advBoardTop');
+  if (el) {
+    el.textContent = advBoardTopText();
   }
 }
 

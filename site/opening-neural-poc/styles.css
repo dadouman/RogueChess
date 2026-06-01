@@ -3229,6 +3229,11 @@ body.screen-adventure:not(.is-adv-board-view) .adv-board-caption {
   display: none;
 }
 
+/* Bandeau de contexte au-dessus de l'échiquier (visible seulement en portable). */
+.adv-board-top {
+  display: none;
+}
+
 /* =====================================================================
    Mode aventure · vue échiquier (is-adv-board-view)
    Permute les colonnes : panneau aventure gauche, échiquier centre,
@@ -3925,11 +3930,34 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
+  /* Colonne simple et serrée : on abandonne la grille « desktop » (qui centrait
+     l'échiquier dans une grande ligne et laissait un vide en dessous). */
   body.screen-adventure.is-adv-board-view .detail-panel {
-    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 10px 4px;
+    overflow: visible;
   }
 
   body.screen-adventure.is-adv-board-view .detail-heading {
+    display: none;
+  }
+
+  /* Bandeau de contexte juste au-dessus de l'échiquier. */
+  body.screen-adventure.is-adv-board-view .adv-board-top {
+    display: block;
+    order: 0;
+    margin: 0;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--soft);
+    letter-spacing: 0.01em;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-board-top:empty {
     display: none;
   }
 
@@ -3953,15 +3981,27 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
+  /* Rail d'infos serré sous l'échiquier : barre d'éval « collée », puis coups,
+     puis historique. */
+  body.screen-adventure.is-adv-board-view #detailInfoContent {
+    gap: 10px;
+  }
+
+  body.screen-adventure.is-adv-board-view #liveEvalBar {
+    order: 1;
+    margin: 0;
+  }
+
   /* Coups jouables en 1er niveau, dans une zone dédiée de hauteur fixe : l'échiquier
      ne bouge plus quand les coups apparaissent/disparaissent (tour de Stockfish). */
   body.screen-adventure.is-adv-board-view #advMovesStrip {
+    order: 2;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin: 6px 0 0;
+    margin: 0;
     min-height: 60px;
   }
 
@@ -3970,13 +4010,14 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     border-radius: 12px;
   }
 
-  /* Historique ‹/› sous la barre d'éval. */
+  /* Historique ‹/› placé en dessous des coups proposés. */
   body.screen-adventure.is-adv-board-view #advHistory {
+    order: 3;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin: 6px 0 0;
+    margin: 0;
   }
 
   /* Groupe ‹ — › masquable : la touche historique, elle, reste visible. */
