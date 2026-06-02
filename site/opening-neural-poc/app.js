@@ -33,7 +33,7 @@ const STOCKFISH_LEVELS = {
 const VICTORY_CINEMATIC_TRIGGER_CP = 200;  // +2.00 : seuil de déclenchement
 const VICTORY_CINEMATIC_KEEP_CP = 150;     // si l'avantage retombe sous +1.50, on rend la main
 const VICTORY_CINEMATIC_DEPTH = 10;        // profondeur d'analyse pendant la conversion
-const VICTORY_CINEMATIC_MAX_PLIES = 24;    // garde-fou : ~12 coups complets max
+const VICTORY_CINEMATIC_MAX_PLIES = 36;    // garde-fou : ~18 coups complets max
 const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
@@ -5212,6 +5212,7 @@ async function runVictoryConversion() {
   const profile = getStockfishLevelProfile();
   let mateFound = null;
 
+  try {
   for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
     if (state.game !== game || game.status !== 'playing') {
       return; // partie changée ou terminée ailleurs
@@ -5289,13 +5290,28 @@ async function runVictoryConversion() {
     }
   }
 
-  // Fin de la conversion : on rend la main au joueur.
+  // Fin de la conversion : on déverrouille et on rend la main — jamais au trait noir.
   if (state.game !== game) {
     return;
   }
   game.victoryCinematic = false;
   setGameLocked(false);
   game.freeRoundPending = false;
+  if (game.status !== 'playing') {
+    return;
+  }
+
+  // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
+  // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
+  // Blancs au lieu de laisser le joueur bloqué.
+  if (game.chess.turn() === 'b') {
+    game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
+    renderGamePanel();
+    renderGameDetails();
+    await advanceOpponentTurn();
+    return;
+  }
+
   if (mateFound) {
     const x = mateMovesFromCp(mateFound.cpWhite);
     game.message = `Position gagnante : mat en ${x}. À toi de conclure !`;
@@ -5304,6 +5320,21 @@ async function runVictoryConversion() {
   }
   renderGamePanel();
   renderGameDetails();
+  } catch (err) {
+    // Sécurité : une erreur du moteur (timeout…) ne doit jamais bloquer le joueur.
+    if (state.game === game) {
+      game.victoryCinematic = false;
+      setGameLocked(false);
+      if (game.status === 'playing') {
+        game.message = 'Conversion interrompue. À toi de jouer.';
+        renderGamePanel();
+        renderGameDetails();
+        if (game.chess.turn() === 'b') {
+          await advanceOpponentTurn();
+        }
+      }
+    }
+  }
 }
 
 function getGameRawPathToCurrentNode() {
@@ -6786,9 +6817,16 @@ function renderAdvAnalyseSheet() {
   }
   const evalDl = document.querySelector('#advSheetEval');
   if (evalDl) {
+    // Quand un mat forcé est en vue, on remplace « Moyenne future » par le nombre
+    // de coups avant le mat (info clé après la conversion automatique).
+    const cp = game?.currentEvalCp;
+    const mateMoves = isMateScore(cp) ? mateMovesFromCp(cp) : null;
+    const secondRow = mateMoves
+      ? ['Mat en', `${mateMoves} coup${mateMoves > 1 ? 's' : ''}`]
+      : ['Moyenne future', document.querySelector('#nodeFuture')?.textContent ?? '-'];
     const rows = [
       ['Évaluation', document.querySelector('#nodeEval')?.textContent ?? '-'],
-      ['Moyenne future', document.querySelector('#nodeFuture')?.textContent ?? '-'],
+      secondRow,
       ['Trait', document.querySelector('#nodeTurn')?.textContent ?? '-']
     ];
     evalDl.replaceChildren();
@@ -6914,6 +6952,11 @@ function advHistoryGoto(index) {
   const total = advHistoryLength();
   game.historyView = index == null || index >= total ? null : clamp(index, 0, total);
   game.selectedSquare = null;
+  // Revoir la partie via ‹/› doit fonctionner même après la fin : on désactive la
+  // revue libre (qui sinon impose sa position à l'échiquier) tant qu'on navigue.
+  if (game.historyView != null && game.freeReview?.active) {
+    game.freeReview.active = false;
+  }
   renderGameDetails();
 }
 
