@@ -4277,4 +4277,112 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     height: auto;
     min-height: calc(100dvh - 66px);
   }
+
+  /* === Carte d'aventure compacte (téléphone) ===
+     On remplace la longue liste verticale par des grilles 2 colonnes de tuiles,
+     plus lisibles d'un coup d'œil, et on resserre le résumé. */
+  .adv-map-panel {
+    padding: 14px;
+    gap: 12px;
+    max-height: 94vh;
+  }
+
+  .adv-map-header h2 {
+    font-size: 20px;
+  }
+
+  .adv-map-summary {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .adv-brain-ring {
+    width: 84px;
+    height: 84px;
+  }
+
+  .adv-brain-ring-core {
+    width: 64px;
+    height: 64px;
+  }
+
+  .adv-brain-ring-core strong {
+    font-size: 18px;
+  }
+
+  .adv-map-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  .adv-map-stats div {
+    padding: 7px 9px;
+  }
+
+  .adv-map-stats dd {
+    font-size: 15px;
+  }
+
+  /* Le niveau joueur (temps de jeu) ressort. */
+  .adv-map-stats div.is-player {
+    border-color: var(--cyan);
+    background: rgba(117, 231, 232, 0.1);
+  }
+
+  .adv-act {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .adv-act-head strong {
+    font-size: 15px;
+  }
+
+  .adv-act-head p {
+    font-size: 11px;
+  }
+
+  /* Étapes en tuiles : node au-dessus, libellé court dessous, 2 colonnes. */
+  #advAct1Stages,
+  #advAct2Stages {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .adv-stage {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    min-height: 0;
+    padding: 9px 6px;
+    gap: 5px;
+  }
+
+  .adv-stage:hover:not(:disabled) {
+    transform: none;
+  }
+
+  .adv-stage-node {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .adv-stage-info {
+    justify-items: center;
+  }
+
+  .adv-stage-info strong {
+    font-size: 11px;
+    line-height: 1.15;
+  }
+
+  .adv-stage-info span {
+    display: none;
+  }
+
+  .adv-stage-stars {
+    font-size: 10px;
+  }
 }

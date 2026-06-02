@@ -4304,6 +4304,10 @@ function applyFreeMove(move, label) {
 }
 
 function appendGameMove(move, label) {
+  // Temps de jeu : chaque demi-coup joué en Aventure fait grimper le niveau du joueur.
+  if (state.screen === 'adventure' && state.adventure) {
+    state.adventure.movesPlayed = (state.adventure.movesPlayed || 0) + 1;
+  }
   const parsedMoveNumber = Number(move.before?.split(/\s+/)[5] ?? 1);
   const moveNumber = Number.isFinite(parsedMoveNumber) ? parsedMoveNumber : 1;
   const prefix = move.color === 'w' ? `${moveNumber}.` : `${moveNumber}...`;
@@ -6531,7 +6535,8 @@ function createAdventureState() {
     lessons: {},
     bosses: {},
     highestBoss: 0,
-    act2Announced: false
+    act2Announced: false,
+    movesPlayed: 0 // temps de jeu : total de demi-coups joués (toutes parties)
   };
 }
 
@@ -6549,6 +6554,7 @@ function loadAdventure() {
     base.bosses = data.bosses && typeof data.bosses === 'object' ? data.bosses : {};
     base.highestBoss = Number(data.highestBoss) || 0;
     base.act2Announced = Boolean(data.act2Announced);
+    base.movesPlayed = Number(data.movesPlayed) || 0;
   } catch {
     return createAdventureState();
   }
@@ -6568,7 +6574,8 @@ function saveAdventure() {
         lessons: state.adventure.lessons,
         bosses: state.adventure.bosses,
         highestBoss: state.adventure.highestBoss,
-        act2Announced: state.adventure.act2Announced
+        act2Announced: state.adventure.act2Announced,
+        movesPlayed: state.adventure.movesPlayed || 0
       })
     );
   } catch {
@@ -6601,6 +6608,26 @@ function advBrainProgress() {
     level += 1;
   }
   return { level, into: remaining, span: advLevelSpan(level) };
+}
+
+// Niveau « joueur » (temps de jeu) : grimpe à chaque coup, de plus en plus lentement.
+// Purement cosmétique pour l'instant, c'est un témoin d'engagement.
+function advPlayerMoves() {
+  return state.adventure?.movesPlayed || 0;
+}
+
+function advPlayerLevel(moves = advPlayerMoves()) {
+  return Math.floor(Math.sqrt(Math.max(0, moves))) + 1;
+}
+
+// Progression vers le niveau joueur suivant (pour une éventuelle barre).
+function advPlayerProgress() {
+  const moves = advPlayerMoves();
+  const level = advPlayerLevel(moves);
+  const floorMoves = (level - 1) * (level - 1); // sqrt inverse
+  const nextMoves = level * level;
+  const span = Math.max(1, nextMoves - floorMoves);
+  return { level, moves, into: moves - floorMoves, span };
 }
 
 function advBossXp(level) {
@@ -7291,7 +7318,7 @@ function updateHomeProgress() {
     return;
   }
   const progress = advBrainProgress();
-  el.textContent = `Cerveau Nv.${progress.level} · ${advCoveragePct()} % du cortex · ${state.adventure.highestBoss}/10 boss`;
+  el.textContent = `Joueur Nv.${advPlayerLevel()} · Cerveau Nv.${progress.level} · ${advCoveragePct()} % du cortex · ${state.adventure.highestBoss}/10 boss`;
 }
 
 function advResultButton(label, handler, primary = false) {
@@ -7503,10 +7530,11 @@ function renderAdventureMap() {
   if (ring) {
     ring.style.setProperty('--pct', String(coveragePct));
   }
+  const playerProg = advPlayerProgress();
   advSetText('#advRingValue', `${coveragePct} %`);
+  advSetText('#advStatPlayer', `Niv.${playerProg.level}`);
+  advSetText('#advStatPlaytime', `${playerProg.moves} coup${playerProg.moves > 1 ? 's' : ''}`);
   advSetText('#advStatLevel', String(progress.level));
-  advSetText('#advStatXp', String(Math.round(state.adventure.xp)));
-  advSetText('#advStatSynapse', `${coveragePct} %`);
   advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
 
   const act1 = document.querySelector('#advAct1Stages');
