@@ -7335,25 +7335,26 @@ function renderAdventureResult(el, game, run) {
       note.textContent = mated
         ? 'Le boss t’a maté. Rejoue la chute ci-dessous, puis relance l’attaque.'
         : `La position est passée sous ${formatEval(advDeficitThresholdCp(run.bossLevel))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
-      actions.append(advResultButton('Réessayer', () => launchBoss(run.bossLevel), true));
+      actions.append(advResultButton('🔁 Recommencer le boss', () => launchBoss(run.bossLevel), true));
     }
   } else if (run.trapsMode) {
     if (win) {
       heading.textContent = 'Piège livré !';
       note.textContent = `Échec et mat dans l'ouverture. Cortex à ${advCoveragePct()} %.`;
+      actions.append(advResultButton('Un autre piège ▸', () => launchTrapsLesson(), true));
     } else {
       heading.textContent = 'Piège manqué';
       note.textContent = 'Le piège n’a pas abouti. Réessaie de faire tomber Stockfish.';
+      actions.append(advResultButton('🔁 Recommencer', () => launchTrapsLesson(), true));
     }
-    actions.append(advResultButton('Un autre piège', () => launchTrapsLesson(), true));
   } else if (win) {
     heading.textContent = 'Ligne maîtrisée !';
     note.textContent = `Cortex illuminé à ${advCoveragePct()} %.`;
-    actions.append(advResultButton('Apprendre une autre ligne', () => launchLesson(), true));
+    actions.append(advResultButton('Apprendre une autre ligne ▸', () => launchLesson(), true));
   } else {
     heading.textContent = 'Ligne interrompue';
     note.textContent = 'Reprends une ligne du livre pour illuminer plus de neurones.';
-    actions.append(advResultButton('Reprendre une ligne', () => launchLesson(), true));
+    actions.append(advResultButton('🔁 Recommencer', () => launchLesson(), true));
   }
 
   actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));

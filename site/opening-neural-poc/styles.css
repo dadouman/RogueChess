@@ -4033,9 +4033,10 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     margin: 8px 0;
   }
 
-  /* En défaite : pas de texte sur l'échiquier, juste l'encadré rouge
-     (détails dispo sous la touche « Analyse »). */
-  body.is-game-lost.is-adv-board-view #adventurePanel #advResult {
+  /* En défaite : on garde un encadré rouge COMPACT avec un call-to-action
+     « Recommencer » pour rejouer tout de suite (les détails restent sous la
+     touche « Analyse »), on masque seulement le texte verbeux. */
+  body.is-game-lost.is-adv-board-view #adventurePanel #advResult p {
     display: none;
   }
 
