@@ -1097,6 +1097,16 @@ span.expected-pill {
   opacity: 0.92;
 }
 
+/* Couleur du coup : clair = coup blanc, sombre = coup noir. Le chemin (or) et le
+   meilleur coup (vert) gardent la priorité ; le reste indique blanc/noir. */
+.neural-edge.is-white-move:not(.is-best):not(.is-highlighted) {
+  stroke: rgba(247, 248, 242, 0.66);
+}
+
+.neural-edge.is-black-move:not(.is-best):not(.is-highlighted) {
+  stroke: rgba(58, 64, 52, 0.95);
+}
+
 /* Barreaux d'échelle : un par coup intermédiaire d'un arc compressé. */
 .edge-rung-group {
   cursor: help;
@@ -1116,6 +1126,15 @@ span.expected-pill {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   transition: stroke 120ms ease, stroke-width 120ms ease;
+}
+
+/* Coups intermédiaires colorés selon le camp qui joue (clair = blanc, sombre = noir). */
+.edge-rung-group.is-white-move .edge-rung {
+  stroke: rgba(247, 248, 242, 0.88);
+}
+
+.edge-rung-group.is-black-move .edge-rung {
+  stroke: rgba(120, 128, 110, 0.92);
 }
 
 .edge-rung-group.is-highlighted .edge-rung {
@@ -1181,6 +1200,26 @@ span.expected-pill {
   stroke: #ffffff;
 }
 
+/* Position actuelle dans le cerveau (« vous êtes ici ») : halo cyan pulsant,
+   toujours visible même si la position a déjà été parcourue. */
+.neural-node.is-current-position circle {
+  stroke: var(--cyan);
+  stroke-width: 3.4;
+  fill: #103033;
+}
+
+.neural-node.is-current-position .node-pulse {
+  stroke: var(--cyan);
+  stroke-width: 2.4;
+  opacity: 1;
+  animation: brain-here-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes brain-here-pulse {
+  0%, 100% { stroke-opacity: 0.3; transform: scale(1); }
+  50% { stroke-opacity: 0.9; transform: scale(1.22); }
+}
+
 .node-pulse {
   fill: none;
   stroke: rgba(255, 217, 102, 0.28);
@@ -1240,6 +1279,26 @@ span.expected-pill {
   display: block;
   color: var(--muted);
   line-height: 1.35;
+}
+
+/* Zoom « dans les lignes » actif : pastille d'aide pour dézoomer. */
+body.is-brain-focused .graph-stage::after {
+  content: '⤢ Touchez le fond pour dézoomer';
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(9, 14, 12, 0.92);
+  border: 1px solid var(--line-strong);
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* === Vue cerveau au doigt : aperçu (mini-échiquier + infos) du noeud sous le doigt === */

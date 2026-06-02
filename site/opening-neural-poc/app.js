@@ -1752,6 +1752,49 @@ function computeLayout(view) {
   return { width, height };
 }
 
+// Zoom « dans les lignes » (téléphone) : viewBox resserré autour du nœud ciblé, en
+// laissant de la place à droite pour voir ses continuations.
+function computeBrainFocusViewBox(focusId, fullW, fullH) {
+  const p = state.layout?.get(focusId);
+  if (!p) {
+    return null;
+  }
+  const zoom = 2.4;
+  const w = fullW / zoom;
+  const h = fullH / zoom;
+  let x = p.x - w * 0.32; // nœud à ~1/3 depuis la gauche, lignes vers la droite
+  let y = p.y - h / 2;
+  x = clamp(x, 0, Math.max(0, fullW - w));
+  y = clamp(y, 0, Math.max(0, fullH - h));
+  return `${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
+}
+
+// Positions (FEN + coup) de chaque demi-coup d'un arc compressé, rejouées depuis la source.
+function computeEdgeSequencePositions(edge) {
+  if (!edge?.isCompressed || !edge.sequence?.length) {
+    return [];
+  }
+  const source = getNode(edge.from);
+  if (!source?.fen) {
+    return [];
+  }
+  const probe = new Chess(source.fen);
+  const out = [];
+  for (const san of edge.sequence) {
+    let move = null;
+    try {
+      move = probe.move(san);
+    } catch {
+      move = null;
+    }
+    if (!move) {
+      break;
+    }
+    out.push({ fen: probe.fen(), san: move.san, from: move.from, to: move.to });
+  }
+  return out;
+}
+
 function brainOutlinePath(width, height) {
   const left = width * 0.09;
   const right = width * 0.91;
@@ -1838,9 +1881,11 @@ function renderGraph() {
   if (state.selectedSegment) {
     state.selectedSegment = view.edgesById.get(state.selectedSegment.id) ?? null;
   }
+  state.gameViewNodeId = null; // (re)calculé par syncGameGraphSelection si une partie suit le graphe
   if (shouldFollowGameInGraph()) {
     syncGameGraphSelection(view);
   }
+  state.scrubPoints = []; // points (nœuds + coups intermédiaires) défilables au doigt
   const { width, height } = computeLayout(view);
   const svg = elements.graphSvg;
   svg.replaceChildren();
@@ -1897,9 +1942,11 @@ function renderGraph() {
       'stroke-width': String(strokeWidth + 4.2),
       opacity: String(matches ? (isHighlighted ? 0.92 : 0.58) : 0.1)
     });
+    const moveSide = sourceNode?.raw?.sideToMove;
     const path = createSvgElement('path', {
       class: [
         'neural-edge',
+        moveSide === 'w' ? 'is-white-move' : moveSide === 'b' ? 'is-black-move' : '',
         edge.isBest ? 'is-best' : '',
         isForced ? 'is-forced' : '',
         isAdventureEdgeMastered(edge) ? 'is-mastered' : '',
@@ -1921,6 +1968,7 @@ function renderGraph() {
     if (edge.isCompressed && matches) {
       const cp = edgeControlPoints(edge);
       const moveCount = edge.sequence?.length ?? 0;
+      const seqPositions = computeEdgeSequencePositions(edge);
       if (cp && moveCount > 1) {
         for (let i = 0; i < moveCount; i += 1) {
           const pt = cubicBezierAt(cp, (i + 0.5) / moveCount);
@@ -1934,8 +1982,13 @@ function renderGraph() {
             x2: (pt.x + nx * half).toFixed(1),
             y2: (pt.y + ny * half).toFixed(1)
           };
+          const rungColor = moveColorAt(edge, i);
           const rungGroup = createSvgElement('g', {
-            class: ['edge-rung-group', isHighlighted ? 'is-highlighted' : ''].filter(Boolean).join(' ')
+            class: [
+              'edge-rung-group',
+              rungColor === 'w' ? 'is-white-move' : 'is-black-move',
+              isHighlighted ? 'is-highlighted' : ''
+            ].filter(Boolean).join(' ')
           });
           rungGroup.append(
             createSvgElement('line', { class: 'edge-rung-hit', ...coords }),
@@ -1945,6 +1998,22 @@ function renderGraph() {
           rungGroup.addEventListener('mouseenter', (event) => showRungTooltip(edge, moveIndex, event));
           rungGroup.addEventListener('mouseleave', hideTooltip);
           rungLayer.append(rungGroup);
+          // Point défilable au doigt : le coup intermédiaire (position reconstruite).
+          const seqPos = seqPositions[i];
+          if (seqPos) {
+            state.scrubPoints.push({
+              x: pt.x,
+              y: pt.y,
+              fen: seqPos.fen,
+              san: seqPos.san,
+              from: seqPos.from,
+              to: seqPos.to,
+              moveColor: rungColor,
+              label: `${seqPos.san} (${i + 1}/${moveCount})`,
+              eval: undefined,
+              nodeId: edge.to
+            });
+          }
         }
       }
     }
@@ -1956,6 +2025,19 @@ function renderGraph() {
     if (!point) {
       continue;
     }
+    // Point défilable au doigt pour ce nœud (mini-échiquier de la position).
+    state.scrubPoints.push({
+      x: point.x,
+      y: point.y,
+      fen: node.fen,
+      san: node.san,
+      from: node.from,
+      to: node.to,
+      moveColor: node.from ? (node.sideToMove === 'w' ? 'b' : 'w') : null,
+      label: node.id === 'root' ? 'Départ' : node.san,
+      eval: node.evaluation?.cpWhite,
+      nodeId: node.id
+    });
     const evalTone = clamp(((node.futureMeanCp ?? node.evaluation?.cpWhite ?? 0) + 250) / 500, 0, 1);
     const outgoing = viewNode.outgoing.length;
     const radius = node.id === 'root'
@@ -1971,6 +2053,7 @@ function renderGraph() {
         node.terminal ? 'is-terminal' : '',
         isAdventureMastered(node.id) ? 'is-mastered' : '',
         state.highlightedNodes.has(node.id) ? 'is-path' : '',
+        state.gameViewNodeId === node.id ? 'is-current-position' : '',
         state.selectedNodeId === node.id ? 'is-selected' : '',
         !matches ? 'is-muted' : ''
       ]
@@ -1999,8 +2082,8 @@ function renderGraph() {
     // Pastille « au trait » : blanche si les Blancs choisissent l'embranchement, sombre si les Noirs.
     const turnPip = createSvgElement('circle', {
       class: 'node-turn-pip',
-      cy: String(-(radius + 4)),
-      r: outgoing > 1 ? '4' : '3.2'
+      cy: String(-(radius + 5)),
+      r: outgoing > 1 ? '5.4' : '4.2'
     });
     group.append(pulse, circle, turnPip, label);
     group.addEventListener('mouseenter', (event) => showNodeTooltip(node, event));
@@ -2010,10 +2093,21 @@ function renderGraph() {
         suppressNextGraphClick = false;
         return;
       }
+      // Téléphone (vue cerveau) : taper un nœud zoome dans ses lignes ; re-taper dézoome.
+      if (isBrainScrubContext()) {
+        state.brainFocus = state.brainFocus === node.id ? null : node.id;
+      }
       selectNode(node.id, { clearPath: false });
     });
     nodeLayer.append(group);
   }
+
+  // Zoom « dans les lignes » : on resserre le viewBox autour du nœud ciblé (téléphone).
+  const focusBox = state.brainFocus ? computeBrainFocusViewBox(state.brainFocus, width, height) : null;
+  if (focusBox) {
+    svg.setAttribute('viewBox', focusBox);
+  }
+  document.body.classList.toggle('is-brain-focused', Boolean(focusBox));
 
   renderDetails();
 }
@@ -2076,6 +2170,20 @@ let suppressNextGraphClick = false;
 
 function bindBrainScrubEvents() {
   elements.graphSvg?.addEventListener('pointerdown', onBrainPointerDown);
+  // Taper le fond (hors nœud/arc) dézoome la vue cerveau.
+  elements.graphSvg?.addEventListener('click', (event) => {
+    if (suppressNextGraphClick) {
+      return;
+    }
+    if (
+      state.brainFocus &&
+      !event.target.closest?.('.neural-node') &&
+      !event.target.closest?.('.neural-edge')
+    ) {
+      state.brainFocus = null;
+      renderGraph();
+    }
+  });
 }
 
 // Actif quand le graphe est la vue principale « cerveau » de l'Aventure.
@@ -2131,12 +2239,33 @@ function onBrainPointerMove(event) {
     showBrainScrub(true);
   }
   event.preventDefault();
-  const id = graphNearestNode(event.clientX, event.clientY);
-  if (id && id !== brainScrub.lastId) {
-    brainScrub.lastId = id;
-    updateBrainScrub(id);
+  const point = graphNearestScrubPoint(event.clientX, event.clientY);
+  const key = point?.fen;
+  if (point && key !== brainScrub.lastId) {
+    brainScrub.lastId = key;
+    updateBrainScrub(point);
     navigator.vibrate?.(8); // retour haptique (Android) si supporté
   }
+}
+
+// Point défilable (nœud ou coup intermédiaire) le plus proche du doigt.
+function graphNearestScrubPoint(clientX, clientY) {
+  const svg = elements.graphSvg;
+  const ctm = svg?.getScreenCTM?.();
+  if (!ctm || !state.scrubPoints?.length) {
+    return null;
+  }
+  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+  let best = null;
+  let bestDist = Infinity;
+  for (const sp of state.scrubPoints) {
+    const d = Math.hypot(sp.x - pt.x, sp.y - pt.y);
+    if (d < bestDist) {
+      bestDist = d;
+      best = sp;
+    }
+  }
+  return best;
 }
 
 function onBrainPointerUp(event) {
@@ -2168,27 +2297,29 @@ function showBrainScrub(show) {
   }
 }
 
-function updateBrainScrub(id) {
-  const node = getNode(id);
-  if (!node) {
+function updateBrainScrub(point) {
+  if (!point) {
     return;
   }
   const boardEl = document.querySelector('#brainScrubBoard');
   if (boardEl) {
     renderBoard(
-      { id: `scrub-${id}`, fen: node.fen, from: node.from, to: node.to, san: node.san },
+      { id: `scrub-${point.fen}`, fen: point.fen, from: point.from, to: point.to, san: point.san },
       boardEl
     );
   }
   const title = document.querySelector('#brainScrubTitle');
   if (title) {
-    title.textContent = node.id === 'root' ? 'Départ' : node.san || node.id;
+    title.textContent = point.label || point.san || '—';
   }
   const meta = document.querySelector('#brainScrubMeta');
   if (meta) {
-    meta.textContent = `Éval ${formatEval(node.evaluation?.cpWhite)} · ${sideLabel(node.sideToMove)} au trait`;
+    const colorTxt =
+      point.moveColor === 'w' ? '⬜ Coup blanc' : point.moveColor === 'b' ? '⬛ Coup noir' : 'Position de départ';
+    const evalTxt = point.eval != null ? ` · Éval ${formatEval(point.eval)}` : '';
+    meta.textContent = `${colorTxt}${evalTxt}`;
   }
-  highlightScrubNode(id);
+  highlightScrubNode(point.nodeId);
 }
 
 function highlightScrubNode(id) {
@@ -3391,6 +3522,7 @@ function toggleViewMode() {
 function setAdvViewMode(mode) {
   state.advViewMode = mode === 'board' ? 'board' : 'brain';
   showBrainScrub(false); // l'aperçu au doigt ne persiste pas d'une vue à l'autre
+  state.brainFocus = null; // le zoom du cerveau ne persiste pas d'une vue à l'autre
   document.body.classList.toggle('is-adv-board-view', state.advViewMode === 'board');
   const btn = document.querySelector('#advViewToggle');
   if (btn) {
@@ -5484,6 +5616,8 @@ function syncGameGraphSelection(view) {
   const containingSegment = findCurrentViewSegment(view, currentId, rawPath);
   const currentNode = getNode(currentId);
   const currentLabel = currentId === 'root' ? 'départ' : currentNode?.san ?? currentId;
+  // Nœud du graphe correspondant à la position en cours de la partie (« vous êtes ici »).
+  state.gameViewNodeId = containingSegment ? containingSegment.to : directNode ? currentId : null;
   if (containingSegment) {
     state.selectedNodeId = containingSegment.to;
     state.selectedSegment = containingSegment;
