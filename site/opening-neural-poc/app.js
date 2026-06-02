@@ -3539,6 +3539,10 @@ function advBoardTopText() {
     return '🎬 Conversion automatique vers le mat…';
   }
   const run = state.advRun;
+  // Mode Pièges : on annonce l'objectif « livre le mat ».
+  if (run?.trapsMode && game.phase === 'opening') {
+    return '🎯 Piège : fais tomber Stockfish et mate-le';
+  }
   // Boss : on annonce le Stockfish en face.
   if (run?.kind === 'boss') {
     const profile = getStockfishLevelProfile(run.bossLevel);
@@ -3836,11 +3840,63 @@ function buildLiveBookEdgesForNode(nodeId, color = null, { legalInCurrentGame = 
   return scored.map((item) => item.edge);
 }
 
+// Un nœud terminal sur un mat livré par les Blancs (cœur d'un piège d'ouverture).
+function isWhiteMateBookNode(node) {
+  return Boolean(node?.terminal) && (node?.evaluation?.cpWhite ?? 0) >= MATE_SCORE_CP - 1000;
+}
+
+let trapReachCache = null;
+
+// Le sous-arbre issu de ce nœud mène-t-il à un mat des Blancs ? (mémoïsé par livre)
+function bookNodeReachesMate(nodeId) {
+  if (!trapReachCache) {
+    trapReachCache = new Map();
+  }
+  const visiting = new Set();
+  const walk = (id) => {
+    if (trapReachCache.has(id)) {
+      return trapReachCache.get(id);
+    }
+    if (visiting.has(id)) {
+      return false; // garde anti-cycle (transpositions)
+    }
+    visiting.add(id);
+    const node = getNode(id);
+    let reaches = isWhiteMateBookNode(node);
+    if (!reaches && node) {
+      for (const edgeId of node.outgoing) {
+        const edge = getEdge(edgeId);
+        if (edge && walk(edge.to)) {
+          reaches = true;
+          break;
+        }
+      }
+    }
+    visiting.delete(id);
+    trapReachCache.set(id, reaches);
+    return reaches;
+  };
+  return walk(nodeId);
+}
+
+// Y a-t-il au moins une ligne de piège (mat) dans tout le livre ?
+function bookHasTrapLines() {
+  return (state.data?.nodes ?? []).some((node) => isWhiteMateBookNode(node));
+}
+
 function getExpectedWhiteBookEdges() {
   if (!state.game || state.game.phase !== 'opening') {
     return [];
   }
-  return getRawOutgoingEdges(state.game.currentNodeId, 'w').filter(isEdgeLegalInGame);
+  const edges = getRawOutgoingEdges(state.game.currentNodeId, 'w').filter(isEdgeLegalInGame);
+  // Mode Pièges : on guide le joueur vers les coups qui mènent au mat.
+  if (state.advRun?.trapsMode && edges.length > 1) {
+    const trapEdges = edges.filter((edge) => bookNodeReachesMate(edge.to));
+    if (trapEdges.length) {
+      return trapEdges;
+    }
+  }
+  return edges;
 }
 
 function getExpectedWhiteBookArrows() {
@@ -3870,6 +3926,14 @@ function getOpponentBookEdgesForRun() {
   const edges = getBlackBookEdges();
   if (!isAdventureLesson() || edges.length <= 1) {
     return edges;
+  }
+  // Mode Pièges : on oriente l'adversaire vers les lignes qui finissent sur un mat
+  // (il « tombe » dans le piège), en alternant les pièges déjà vus.
+  if (state.advRun?.trapsMode) {
+    const trapEdges = edges.filter((edge) => bookNodeReachesMate(edge.to));
+    const pool = trapEdges.length ? trapEdges : edges;
+    const freshTraps = pool.filter((edge) => !isAdventureEdgeMastered(edge));
+    return freshTraps.length ? freshTraps : pool;
   }
   const fresh = edges.filter((edge) => !isAdventureEdgeMastered(edge));
   return fresh.length ? fresh : edges;
@@ -4817,7 +4881,12 @@ async function submitOpeningMove(input) {
     adventureOnCorrectWhiteBook(result.edge);
   }
   if (!isExplorationMode() && state.game.chess.isCheckmate()) {
-    finishCampaignByMate();
+    // Mat dans le livre : en leçon/pièges c'est un succès de leçon, sinon fin de campagne.
+    if (isAdventureLesson()) {
+      adventureOnTrapSolved();
+    } else {
+      finishCampaignByMate();
+    }
     return;
   }
   state.game.message = isExplorationMode()
@@ -6171,6 +6240,7 @@ function resetHighlight() {
 
 function setGraphData(data, selectedPathLabel = 'Aucun chemin sélectionné') {
   state.data = data;
+  trapReachCache = null; // le cache « mène à un mat » dépend du livre courant
   state.nodesById = new Map(state.data.nodes.map((node) => [node.id, node]));
   state.edgesById = new Map(state.data.edges.map((edge) => [edge.id, edge]));
   state.nodesByFen = new Map(state.data.nodes.map((node) => [node.fen, node]));
@@ -6595,6 +6665,22 @@ function adventureOnLessonReachedFree() {
   finishGame('won', `Ligne maîtrisée ! Cortex illuminé à ${advCoveragePct()} %.`);
 }
 
+// Mat livré dans l'ouverture pendant une leçon (typiquement un piège) : succès de la
+// leçon, et non fin de campagne.
+function adventureOnTrapSolved() {
+  const run = state.advRun;
+  if (run) {
+    run.completed = true;
+  }
+  triggerBrainSurge();
+  finishGame(
+    'won',
+    state.advRun?.trapsMode
+      ? `Piège réussi ! Échec et mat dans l'ouverture. Cortex à ${advCoveragePct()} %.`
+      : `Mat dans l'ouverture ! Cortex à ${advCoveragePct()} %.`
+  );
+}
+
 function adventureOnGameFinished(result) {
   const run = state.advRun;
   if (!state.adventure || !run) {
@@ -6749,6 +6835,37 @@ function launchLesson() {
   if (state.game) {
     state.game.message =
       'Suis le livre : chaque bon coup allume un neurone. Va jusqu’au bout de la ligne.';
+  }
+  renderAdventureHud();
+  focusAdvInput();
+}
+
+// Catégorie « Pièges » : débloquée une fois toutes les lignes apprises (100 % du
+// cortex = dernière leçon validée) et seulement si le livre contient des mats.
+function advTrapsUnlocked() {
+  return Boolean(state.adventure?.lessons?.l4) && bookHasTrapLines();
+}
+
+function launchTrapsLesson() {
+  if (!advTrapsUnlocked()) {
+    return;
+  }
+  state.advRun = {
+    kind: 'lesson',
+    trapsMode: true,
+    streak: 0,
+    wrongMoves: 0,
+    bookMoves: 0,
+    completed: false
+  };
+  state.playMode = 'challenge';
+  closeAdventureMap();
+  setViewMode('brain');
+  setAdvViewMode('board');
+  startNewGame(FIRST_LEVEL_NUMBER);
+  if (state.game) {
+    state.game.message =
+      'Mode Pièges : suis la ligne, fais tomber Stockfish dans le piège et livre le mat !';
   }
   renderAdventureHud();
   focusAdvInput();
@@ -7086,6 +7203,15 @@ function renderAdventureResult(el, game, run) {
         : `La position est passée sous ${formatEval(advDeficitThresholdCp(run.bossLevel))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
       actions.append(advResultButton('Réessayer', () => launchBoss(run.bossLevel), true));
     }
+  } else if (run.trapsMode) {
+    if (win) {
+      heading.textContent = 'Piège livré !';
+      note.textContent = `Échec et mat dans l'ouverture. Cortex à ${advCoveragePct()} %.`;
+    } else {
+      heading.textContent = 'Piège manqué';
+      note.textContent = 'Le piège n’a pas abouti. Réessaie de faire tomber Stockfish.';
+    }
+    actions.append(advResultButton('Un autre piège', () => launchTrapsLesson(), true));
   } else if (win) {
     heading.textContent = 'Ligne maîtrisée !';
     note.textContent = `Cortex illuminé à ${advCoveragePct()} %.`;
@@ -7265,6 +7391,24 @@ function renderAdventureMap() {
           cls: done ? 'is-done' : isCurrent ? 'is-current' : '',
           disabled: false,
           onClick: () => launchLesson()
+        })
+      );
+    }
+    // Catégorie « Pièges » : débloquée une fois toutes les lignes apprises.
+    if (bookHasTrapLines()) {
+      const trapsUnlocked = advTrapsUnlocked();
+      act1.append(
+        makeAdventureStageRow({
+          icon: trapsUnlocked ? '🎯' : '🔒',
+          title: 'Pièges d’ouverture',
+          desc: trapsUnlocked
+            ? 'Fais tomber Stockfish et livre le mat'
+            : 'Verrouillé : illumine 100 % du cortex',
+          stars: 0,
+          showStars: false,
+          cls: trapsUnlocked ? '' : 'is-locked',
+          disabled: !trapsUnlocked,
+          onClick: () => launchTrapsLesson()
         })
       );
     }
