@@ -35,6 +35,43 @@ const VICTORY_CINEMATIC_KEEP_CP = 150;     // si l'avantage retombe sous +1.50, 
 const VICTORY_CINEMATIC_DEPTH = 10;        // profondeur d'analyse pendant la conversion
 const VICTORY_CINEMATIC_MAX_PLIES = 36;    // garde-fou : ~18 coups complets max
 const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
+// Niveaux de difficulté Aventure : chaque niveau active un sous-ensemble d'aides.
+//  - moveChoices : coups suggérés (touches + indices dorés du bon coup)
+//  - legalDots   : points (cases légales) quand on sélectionne une pièce
+//  - evaluation  : barre / chiffres d'évaluation
+//  - takeback    : retour arrière (annuler son dernier coup)
+const ADV_DIFFICULTIES = [
+  {
+    id: 'tres-facile',
+    label: 'Très facile',
+    icon: '🍼',
+    desc: 'Coups suggérés, cases légales, évaluation et retour arrière.',
+    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: true }
+  },
+  {
+    id: 'facile',
+    label: 'Facile',
+    icon: '🙂',
+    desc: 'Coups suggérés, cases légales et évaluation.',
+    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: false }
+  },
+  {
+    id: 'normal',
+    label: 'Normal',
+    icon: '⚔️',
+    desc: 'Cases légales uniquement.',
+    aids: { moveChoices: false, legalDots: true, evaluation: false, takeback: false }
+  },
+  {
+    id: 'difficile',
+    label: 'Difficile',
+    icon: '🔥',
+    desc: 'Aucune aide.',
+    aids: { moveChoices: false, legalDots: false, evaluation: false, takeback: false }
+  }
+];
+const DEFAULT_ADV_DIFFICULTY = 'facile';
+const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
 const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
   p: 100,
@@ -2615,7 +2652,8 @@ function renderBoard(node, container = elements.boardPreview) {
     legalTargets,
     bookTargets,
     openingBookMode,
-    checkSquare
+    checkSquare,
+    aids: advAids()
   };
   rows.forEach((row, rankIndex) => {
     let fileIndex = 0;
@@ -2879,9 +2917,13 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
   const squareName = `${'abcdefgh'[fileIndex]}${8 - rankIndex}`;
   const pieceColor = piece ? (piece === piece.toUpperCase() ? 'w' : 'b') : null;
   const selectable = options.interactive && pieceColor === options.playableColor;
-  const target = options.legalTargets?.has(squareName);
-  const bookTarget = target && options.bookTargets?.has(squareName);
-  const offbookTarget = target && options.openingBookMode && !bookTarget;
+  const aids = options.aids ?? FULL_AIDS;
+  // « point vert » : on n'affiche les cases légales que si l'aide est active.
+  const target = Boolean(options.legalTargets?.has(squareName)) && aids.legalDots;
+  // « choix du coup » : l'indice doré du bon coup (et le gris hors-livre) n'apparaît
+  // que si l'aide est active ; sinon toutes les cases légales sont des points neutres.
+  const bookTarget = target && aids.moveChoices && options.bookTargets?.has(squareName);
+  const offbookTarget = target && aids.moveChoices && options.openingBookMode && !bookTarget;
   const square = document.createElement('div');
   square.className = [
     'board-square',
@@ -3198,17 +3240,18 @@ function startBoardDragVisual(from) {
   board.querySelector(`[data-square="${from}"]`)?.classList.add('is-selected');
   // Mêmes indicateurs qu'au clic : en ouverture, points dorés (coup de livre) vs gris
   // (légal mais hors livre), anneau pour les captures.
+  const aids = advAids();
   const bookTargets = getBookTargetsFromSquare(from);
   const openingBookMode = isOpeningBookChoiceActive();
   for (const mv of chess?.moves({ square: from, verbose: true }) ?? []) {
     const el = board.querySelector(`[data-square="${mv.to}"]`);
-    if (!el) {
-      continue;
+    if (!el || !aids.legalDots) {
+      continue; // « point vert » désactivé : aucun indicateur (le coup reste jouable)
     }
     el.classList.add('is-target');
-    if (bookTargets.has(mv.to)) {
+    if (aids.moveChoices && bookTargets.has(mv.to)) {
       el.classList.add('is-book-target');
-    } else if (openingBookMode) {
+    } else if (aids.moveChoices && openingBookMode) {
       el.classList.add('is-offbook-target');
     }
     if (mv.captured) {
@@ -6536,7 +6579,8 @@ function createAdventureState() {
     bosses: {},
     highestBoss: 0,
     act2Announced: false,
-    movesPlayed: 0 // temps de jeu : total de demi-coups joués (toutes parties)
+    movesPlayed: 0, // temps de jeu : total de demi-coups joués (toutes parties)
+    difficulty: DEFAULT_ADV_DIFFICULTY
   };
 }
 
@@ -6555,6 +6599,9 @@ function loadAdventure() {
     base.highestBoss = Number(data.highestBoss) || 0;
     base.act2Announced = Boolean(data.act2Announced);
     base.movesPlayed = Number(data.movesPlayed) || 0;
+    base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
+      ? data.difficulty
+      : DEFAULT_ADV_DIFFICULTY;
   } catch {
     return createAdventureState();
   }
@@ -6575,7 +6622,8 @@ function saveAdventure() {
         bosses: state.adventure.bosses,
         highestBoss: state.adventure.highestBoss,
         act2Announced: state.adventure.act2Announced,
-        movesPlayed: state.adventure.movesPlayed || 0
+        movesPlayed: state.adventure.movesPlayed || 0,
+        difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
       })
     );
   } catch {
@@ -6628,6 +6676,130 @@ function advPlayerProgress() {
   const nextMoves = level * level;
   const span = Math.max(1, nextMoves - floorMoves);
   return { level, moves, into: moves - floorMoves, span };
+}
+
+// --- Difficulté Aventure : aides modulables ---
+
+function advDifficultyById(id) {
+  return (
+    ADV_DIFFICULTIES.find((d) => d.id === id) ||
+    ADV_DIFFICULTIES.find((d) => d.id === DEFAULT_ADV_DIFFICULTY)
+  );
+}
+
+function advCurrentDifficulty() {
+  return advDifficultyById(state.adventure?.difficulty || DEFAULT_ADV_DIFFICULTY);
+}
+
+// Aides actives : selon la difficulté en Aventure, complètes ailleurs (Atelier).
+function advAids() {
+  return state.screen === 'adventure' ? advCurrentDifficulty().aids : FULL_AIDS;
+}
+
+// Classes sur <body> pour piloter l'affichage (éval, touches, retour arrière) en CSS.
+function applyDifficultyClasses() {
+  const aids = advAids();
+  document.body.classList.toggle('aid-no-eval', !aids.evaluation);
+  document.body.classList.toggle('aid-no-choices', !aids.moveChoices);
+  document.body.classList.toggle('aid-takeback', Boolean(aids.takeback));
+}
+
+function setAdvDifficulty(id) {
+  if (!state.adventure || !ADV_DIFFICULTIES.some((d) => d.id === id)) {
+    return;
+  }
+  state.adventure.difficulty = id;
+  saveAdventure();
+  applyDifficultyClasses();
+  if (state.game) {
+    renderGameDetails();
+  }
+  renderAdventureMap();
+}
+
+// Retour arrière (très facile) : annule ton dernier coup complet (le tien + la réponse)
+// pour rejouer la position. Disponible seulement à ton tour, hors verrou.
+function advTakeBack() {
+  const game = state.game;
+  if (!game || !advAids().takeback || game.status !== 'playing' || game.locked) {
+    return;
+  }
+  if (game.chess.turn() !== 'w' || game.chess.history().length < 2) {
+    return;
+  }
+  game.chess.undo(); // réponse de l'adversaire
+  game.chess.undo(); // ton coup
+  game.historyView = null;
+  game.selectedSquare = null;
+  game.freeReview.active = false;
+  const verbose = game.chess.history({ verbose: true });
+  game.lastMove = verbose[verbose.length - 1] ?? null;
+  game.moveLog = game.moveLog.slice(2); // retire les 2 coups les plus récents (en tête)
+  if (game.freeReviewMoves.length > 2) {
+    game.freeReviewMoves = game.freeReviewMoves.slice(0, -2);
+    game.freeReview.index = game.freeReviewMoves.length - 1;
+  }
+  const lastReview = game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const node = getGameNodeByFen();
+  if (node) {
+    game.currentNodeId = node.id;
+    setGameGraphPathToNode(node.id);
+    game.currentEvalCp = node.evaluation?.cpWhite ?? lastReview?.afterEvalCp ?? game.currentEvalCp;
+  } else if (lastReview && Number.isFinite(lastReview.afterEvalCp)) {
+    game.currentEvalCp = lastReview.afterEvalCp;
+  }
+  if (Number.isFinite(game.freeRemaining) && game.objective?.target) {
+    game.freeRemaining = Math.min(game.objective.target, game.freeRemaining + 1);
+  }
+  game.freeRoundPending = false;
+  game.message = '↶ Coup annulé. Rejoue ta réponse.';
+  renderGamePanel();
+  renderGameDetails();
+}
+
+// Sélecteur de difficulté (carte d'aventure) : 4 niveaux, le courant en surbrillance.
+function renderAdvDifficulty() {
+  const host = document.querySelector('#advDifficultyButtons');
+  if (!host) {
+    return;
+  }
+  const current = advCurrentDifficulty();
+  host.replaceChildren();
+  for (const diff of ADV_DIFFICULTIES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `adv-diff-btn${diff.id === current.id ? ' is-active' : ''}`;
+    btn.setAttribute('aria-pressed', diff.id === current.id ? 'true' : 'false');
+    btn.innerHTML =
+      `<span class="adv-diff-ico" aria-hidden="true">${diff.icon}</span>` +
+      `<span class="adv-diff-label">${escapeHtml(diff.label)}</span>`;
+    btn.addEventListener('click', () => setAdvDifficulty(diff.id));
+    host.append(btn);
+  }
+  const desc = document.querySelector('#advDifficultyDesc');
+  if (desc) {
+    desc.textContent = current.desc;
+  }
+}
+
+// Bouton « Annuler » (retour arrière) : actif seulement si l'aide est dispo et qu'un
+// coup complet peut être repris.
+function renderAdvTakeBack() {
+  const btn = document.querySelector('#advTakeBack');
+  if (!btn) {
+    return;
+  }
+  const game = state.game;
+  const canUndo = Boolean(
+    advAids().takeback &&
+      game &&
+      game.status === 'playing' &&
+      !game.locked &&
+      game.historyView == null &&
+      game.chess.turn() === 'w' &&
+      game.chess.history().length >= 2
+  );
+  btn.disabled = !canUndo;
 }
 
 function advBossXp(level) {
@@ -6901,6 +7073,7 @@ function setScreen(screen) {
   document.body.classList.toggle('screen-home', screen === 'home');
   document.body.classList.toggle('screen-creative', screen === 'creative');
   document.body.classList.toggle('screen-adventure', screen === 'adventure');
+  applyDifficultyClasses(); // aides selon la difficulté (Aventure) ou complètes (Atelier)
   if (screen !== 'adventure') {
     closeAdventureMap();
   }
@@ -7140,10 +7313,13 @@ function renderAdvMovesStrip() {
   const game = state.game;
   const reviewing = Boolean(game && game.historyView != null);
   const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
+  // « choix du coup » : aide désactivée aux niveaux Normal/Difficile → le joueur
+  // joue de lui-même sur l'échiquier (les touches et fantômes disparaissent).
+  const showChoices = advAids().moveChoices;
 
   // 1) Coups blancs jouables (selectionnables) pendant l'ouverture.
   const whitePlayable = inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
-  const whiteEdges = whitePlayable ? getExpectedWhiteBookEdges() : [];
+  const whiteEdges = whitePlayable && showChoices ? getExpectedWhiteBookEdges() : [];
   for (const edge of whiteEdges) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -7158,7 +7334,7 @@ function renderAdvMovesStrip() {
   // 2) Reponses de Stockfish encore dans la theorie : touches "fantomes" non
   //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
   let ghosts = [];
-  if (!whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
+  if (showChoices && !whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
     ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
   }
   for (const cand of ghosts) {
@@ -7185,7 +7361,11 @@ function renderAdvMovesStrip() {
   if (!hasContent) {
     const ph = document.createElement('span');
     ph.className = 'adv-moves-placeholder';
-    ph.textContent = game?.victoryCinematic
+    const yourTurnNoAid =
+      !showChoices && game?.status === 'playing' && game.chess.turn() === 'w' && !game.locked;
+    ph.textContent = yourTurnNoAid
+      ? 'À toi de jouer sur l’échiquier'
+      : game?.victoryCinematic
       ? 'Conversion automatique en cours…'
       : game?.status === 'playing' && game.chess.turn() === 'b'
         ? 'Au tour de Stockfish…'
@@ -7209,6 +7389,7 @@ function updateAdvMobileBar() {
   }
   renderAdvMovesStrip();
   renderAdvHistory();
+  renderAdvTakeBack();
   if (document.querySelector('#advAnalyseSheet')?.classList.contains('is-open')) {
     renderAdvAnalyseSheet();
   }
@@ -7536,6 +7717,7 @@ function renderAdventureMap() {
   advSetText('#advStatPlaytime', `${playerProg.moves} coup${playerProg.moves > 1 ? 's' : ''}`);
   advSetText('#advStatLevel', String(progress.level));
   advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
+  renderAdvDifficulty();
 
   const act1 = document.querySelector('#advAct1Stages');
   if (act1) {
@@ -7638,6 +7820,7 @@ function bindAdventureEvents() {
   bind('#advHistPrev', () => advHistoryStep(-1));
   bind('#advHistNext', () => advHistoryStep(1));
   bind('#advHistToggle', toggleAdvHistory);
+  bind('#advTakeBack', advTakeBack);
   // Feuille d'analyse : fermeture (croix / backdrop)
   const sheet = document.querySelector('#advAnalyseSheet');
   if (sheet) {

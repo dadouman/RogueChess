@@ -3034,6 +3034,90 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   white-space: nowrap;
 }
 
+/* === Sélecteur de difficulté (aides) === */
+.adv-difficulty {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.adv-difficulty-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.adv-diff-btn {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 9px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.adv-diff-btn .adv-diff-ico {
+  font-size: 18px;
+}
+
+.adv-diff-btn.is-active {
+  border-color: var(--cyan);
+  background: rgba(117, 231, 232, 0.14);
+  color: var(--text);
+}
+
+.adv-difficulty-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* === Aides masquées selon la difficulté === */
+/* Évaluation cachée (Normal / Difficile). */
+body.aid-no-eval #liveEvalBar {
+  visibility: hidden;
+}
+
+body.aid-no-eval #advSheetEval {
+  display: none;
+}
+
+/* Retour arrière : bouton « Annuler » visible seulement en Très facile. */
+.adv-takeback {
+  display: none;
+}
+
+body.aid-takeback.screen-adventure.is-adv-board-view .adv-takeback {
+  order: 2;
+  display: block;
+  width: 100%;
+  margin: 0;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+body.aid-takeback.screen-adventure.is-adv-board-view .adv-takeback:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* =====================================================================
    Toasts dopamine
    ===================================================================== */

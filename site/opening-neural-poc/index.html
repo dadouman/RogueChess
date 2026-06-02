@@ -304,6 +304,7 @@
             </div>
           </div>
           <div id="advMovesStrip" class="adv-moves-strip" aria-label="Coups possibles"></div>
+          <button id="advTakeBack" class="adv-takeback" type="button">↶ Annuler le coup</button>
           <div id="advHistory" class="adv-history" aria-label="Historique des coups">
             <div id="advHistNav" class="adv-hist-nav-group">
               <button id="advHistPrev" class="adv-hist-nav" type="button" aria-label="Position précédente">‹</button>
@@ -404,6 +405,12 @@
             <div><dt>Puissance</dt><dd id="advStatPower">N0</dd></div>
           </dl>
         </div>
+
+        <section class="adv-difficulty">
+          <span class="kicker">Difficulté · aides affichées</span>
+          <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
+          <p id="advDifficultyDesc" class="adv-difficulty-desc"></p>
+        </section>
 
         <div class="adv-map-acts">
           <section class="adv-act">
