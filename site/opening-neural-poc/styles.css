@@ -4028,9 +4028,29 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
     display: none;
   }
 
+  /* Encadré de résultat ancré en bas (zone du pouce) : le CTA « Recommencer »
+     est ainsi à portée immédiate pour rejouer tout de suite. */
   body.screen-adventure.is-adv-board-view #adventurePanel #advResult {
     display: block;
-    margin: 8px 0;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 74px; /* juste au-dessus de la barre d'actions fixe (66px) */
+    z-index: 30;
+    margin: 0;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    animation: adv-result-rise 240ms ease-out;
+  }
+
+  @keyframes adv-result-rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Boutons CTA un peu plus grands pour le pouce. */
+  body.screen-adventure.is-adv-board-view #advResult .adv-result-actions button {
+    min-height: 46px;
+    font-size: 13px;
   }
 
   /* En défaite : on garde un encadré rouge COMPACT avec un call-to-action
