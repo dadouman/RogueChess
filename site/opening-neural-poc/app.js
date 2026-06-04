@@ -40,34 +40,36 @@ const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 //  - legalDots   : points (cases légales) quand on sélectionne une pièce
 //  - evaluation  : barre / chiffres d'évaluation
 //  - takeback    : retour arrière (annuler son dernier coup)
+// Les cases légales (« points verts ») restent affichées partout : les masquer
+// n'ajoute aucune difficulté. Les niveaux se distinguent par les autres aides.
 const ADV_DIFFICULTIES = [
   {
     id: 'tres-facile',
     label: 'Très facile',
     icon: '🍼',
-    desc: 'Coups suggérés, cases légales, évaluation et retour arrière.',
+    desc: 'Coups suggérés, évaluation et retour arrière (cases légales toujours visibles).',
     aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: true }
   },
   {
     id: 'facile',
     label: 'Facile',
     icon: '🙂',
-    desc: 'Coups suggérés, cases légales et évaluation.',
+    desc: 'Coups suggérés et évaluation (cases légales toujours visibles).',
     aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: false }
   },
   {
     id: 'normal',
     label: 'Normal',
     icon: '⚔️',
-    desc: 'Cases légales uniquement.',
-    aids: { moveChoices: false, legalDots: true, evaluation: false, takeback: false }
+    desc: 'Évaluation seule (cases légales toujours visibles).',
+    aids: { moveChoices: false, legalDots: true, evaluation: true, takeback: false }
   },
   {
     id: 'difficile',
     label: 'Difficile',
     icon: '🔥',
-    desc: 'Aucune aide.',
-    aids: { moveChoices: false, legalDots: false, evaluation: false, takeback: false }
+    desc: 'Aucune aide (cases légales toujours visibles).',
+    aids: { moveChoices: false, legalDots: true, evaluation: false, takeback: false }
   }
 ];
 const DEFAULT_ADV_DIFFICULTY = 'facile';
@@ -3855,7 +3857,8 @@ function createInitialGameState(level = state.campaignLevel) {
     cinematic: null,
     cinematicTimer: null,
     victoryCinematic: false, // conversion automatique vers le mat en cours
-    victoryConverted: false  // déjà déclenchée une fois pour cette partie
+    victoryConverted: false, // déjà déclenchée une fois pour cette partie
+    takebackLocked: false    // verrou après un retour arrière « dernière chance »
   };
 }
 
@@ -6721,7 +6724,7 @@ function setAdvDifficulty(id) {
 // pour rejouer la position. Disponible seulement à ton tour, hors verrou.
 function advTakeBack() {
   const game = state.game;
-  if (!game || !advAids().takeback || game.status !== 'playing' || game.locked) {
+  if (!game || !advAids().takeback || game.takebackLocked || game.status !== 'playing' || game.locked) {
     return;
   }
   if (game.chess.turn() !== 'w' || game.chess.history().length < 2) {
@@ -6753,6 +6756,65 @@ function advTakeBack() {
   }
   game.freeRoundPending = false;
   game.message = '↶ Coup annulé. Rejoue ta réponse.';
+  renderGamePanel();
+  renderGameDetails();
+}
+
+// Retour arrière « dernière chance » (très facile) : quand la défaite est prononcée,
+// on revient au dernier coup du joueur pour tenter de renverser la partie. Une seule
+// fois : ensuite le retour arrière est verrouillé pour cette partie.
+function advUndoDefeat() {
+  const game = state.game;
+  if (!game || !advAids().takeback || game.takebackLocked || game.status === 'won') {
+    return;
+  }
+  const chess = game.chess;
+  if (chess.history().length === 0) {
+    return;
+  }
+  // Annule jusqu'au trait des Blancs (au moins un demi-coup) : on retire le coup
+  // perdant (et la réponse adverse si c'est elle qui a scellé la défaite).
+  let undone = 0;
+  while (chess.history().length > 0 && (undone === 0 || chess.turn() !== 'w')) {
+    chess.undo();
+    undone += 1;
+  }
+  clearGameCinematic();
+  document.body.classList.remove('is-game-lost');
+  game.status = 'playing';
+  game.locked = false;
+  game.takebackLocked = true; // une seule dernière chance
+  game.historyView = null;
+  game.selectedSquare = null;
+  game.freeReview.active = false;
+  game.failureFen = null;
+  game.failureEvaluation = null;
+  game.defeatComment = '';
+  const verbose = chess.history({ verbose: true });
+  game.lastMove = verbose[verbose.length - 1] ?? null;
+  game.moveLog = game.moveLog.slice(undone);
+  if (game.freeReviewMoves.length > undone) {
+    game.freeReviewMoves = game.freeReviewMoves.slice(0, -undone);
+    game.freeReview.index = game.freeReviewMoves.length - 1;
+  }
+  const lastReview = game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const node = getGameNodeByFen();
+  if (node) {
+    game.currentNodeId = node.id;
+    setGameGraphPathToNode(node.id);
+    game.currentEvalCp = node.evaluation?.cpWhite ?? lastReview?.afterEvalCp ?? game.currentEvalCp;
+  } else if (lastReview && Number.isFinite(lastReview.afterEvalCp)) {
+    game.currentEvalCp = lastReview.afterEvalCp;
+  }
+  if (Number.isFinite(game.freeRemaining) && game.objective?.target) {
+    game.freeRemaining = Math.min(game.objective.target, game.freeRemaining + 1);
+  }
+  game.freeRoundPending = false;
+  const resultEl = document.querySelector('#advResult');
+  if (resultEl) {
+    resultEl.hidden = true;
+  }
+  game.message = '↶ Dernière chance ! Rejoue ce coup pour renverser la partie.';
   renderGamePanel();
   renderGameDetails();
 }
@@ -6793,6 +6855,7 @@ function renderAdvTakeBack() {
   const canUndo = Boolean(
     advAids().takeback &&
       game &&
+      !game.takebackLocked &&
       game.status === 'playing' &&
       !game.locked &&
       game.historyView == null &&
@@ -7565,6 +7628,15 @@ function renderAdventureResult(el, game, run) {
     actions.append(advResultButton('🔁 Recommencer', () => launchLesson(), true));
   }
 
+  // Très facile : « dernière chance » pour annuler la défaite et tenter de renverser.
+  const canComeback =
+    game.status === 'lost' &&
+    advAids().takeback &&
+    !game.takebackLocked &&
+    game.chess.history().length > 0;
+  if (canComeback) {
+    actions.prepend(advResultButton('↶ Revenir en arrière', () => advUndoDefeat(), true));
+  }
   actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
   el.append(heading, stars, note, actions);
 }
