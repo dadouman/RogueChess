@@ -3029,6 +3029,53 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   white-space: nowrap;
 }
 
+/* === Niveau joueur : pastille discrète, le cadre est une jauge de progression === */
+.adv-player-badge {
+  display: none;
+}
+
+body.screen-adventure.is-adv-board-view .adv-player-badge {
+  display: grid;
+  place-items: center;
+  position: fixed;
+  top: 7px;
+  left: 7px;
+  z-index: 26;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: conic-gradient(
+    var(--cyan) calc(var(--xp-pct, 0) * 1%),
+    rgba(255, 255, 255, 0.14) 0
+  );
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  transition: background 500ms ease;
+}
+
+.adv-player-badge span {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #11150e;
+  color: var(--cyan);
+  font-size: 15px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+body.screen-adventure.is-adv-board-view .adv-player-badge.is-levelup {
+  animation: player-levelup 0.9s ease-out;
+}
+
+@keyframes player-levelup {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(117, 231, 232, 0.6); }
+  40% { transform: scale(1.3); box-shadow: 0 0 0 10px rgba(117, 231, 232, 0); }
+  100% { transform: scale(1); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+}
+
 /* === Sélecteur de difficulté (aides) === */
 .adv-difficulty {
   display: grid;

@@ -4363,8 +4363,8 @@ function applyFreeMove(move, label) {
 }
 
 function appendGameMove(move, label) {
-  // Temps de jeu : chaque demi-coup joué en Aventure fait grimper le niveau du joueur.
-  if (state.screen === 'adventure' && state.adventure) {
+  // Temps de jeu : on ne compte que les coups BLANCS (ceux du joueur).
+  if (state.screen === 'adventure' && state.adventure && move.color === 'w') {
     state.adventure.movesPlayed = (state.adventure.movesPlayed || 0) + 1;
   }
   const parsedMoveNumber = Number(move.before?.split(/\s+/)[5] ?? 1);
@@ -4575,6 +4575,11 @@ function recordFreeReviewMove({
   const game = state.game;
   if (!game || !move || !Number.isFinite(beforeEvalCp) || !evaluation) {
     return null;
+  }
+
+  // XP joueur : seuls les coups blancs comptent, pondérés par leur qualité.
+  if (move.color === 'w' && Number.isFinite(evaluation.cpWhite)) {
+    advAwardPlayerXp(evaluation.cpWhite - beforeEvalCp);
   }
 
   ensureReviewTree(game);
@@ -6596,7 +6601,8 @@ function createAdventureState() {
     bosses: {},
     highestBoss: 0,
     act2Announced: false,
-    movesPlayed: 0, // temps de jeu : total de demi-coups joués (toutes parties)
+    movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
+    playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
     difficulty: DEFAULT_ADV_DIFFICULTY
   };
 }
@@ -6616,6 +6622,7 @@ function loadAdventure() {
     base.highestBoss = Number(data.highestBoss) || 0;
     base.act2Announced = Boolean(data.act2Announced);
     base.movesPlayed = Number(data.movesPlayed) || 0;
+    base.playerXp = Number(data.playerXp) || 0;
     base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
       ? data.difficulty
       : DEFAULT_ADV_DIFFICULTY;
@@ -6640,6 +6647,7 @@ function saveAdventure() {
         highestBoss: state.adventure.highestBoss,
         act2Announced: state.adventure.act2Announced,
         movesPlayed: state.adventure.movesPlayed || 0,
+        playerXp: state.adventure.playerXp || 0,
         difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
       })
     );
@@ -6675,24 +6683,49 @@ function advBrainProgress() {
   return { level, into: remaining, span: advLevelSpan(level) };
 }
 
-// Niveau « joueur » (temps de jeu) : grimpe à chaque coup, de plus en plus lentement.
-// Purement cosmétique pour l'instant, c'est un témoin d'engagement.
+// Niveau « joueur » : XP gagnée sur les coups BLANCS, pondérée par leur qualité.
+// Courbe croissante (de plus en plus d'XP par niveau). Témoin d'engagement.
+const PLAYER_XP_BASE = 10; // coup correct
+const PLAYER_XP_STEP = 45; // XP cumulée pour atteindre le niveau L = STEP·(L-1)²
+
 function advPlayerMoves() {
   return state.adventure?.movesPlayed || 0;
 }
 
-function advPlayerLevel(moves = advPlayerMoves()) {
-  return Math.floor(Math.sqrt(Math.max(0, moves))) + 1;
+function advPlayerXp() {
+  return state.adventure?.playerXp || 0;
 }
 
-// Progression vers le niveau joueur suivant (pour une éventuelle barre).
+// XP d'un coup blanc : gaffe (perte > 1 en éval) = 0, coup brillant (gain > 1) = double.
+function advMoveXp(deltaCp) {
+  if (!Number.isFinite(deltaCp) || deltaCp <= -100) {
+    return 0;
+  }
+  if (deltaCp >= 100) {
+    return PLAYER_XP_BASE * 2;
+  }
+  return PLAYER_XP_BASE;
+}
+
+function advAwardPlayerXp(deltaCp) {
+  if (state.screen !== 'adventure' || !state.adventure) {
+    return;
+  }
+  state.adventure.playerXp = (state.adventure.playerXp || 0) + advMoveXp(deltaCp);
+}
+
+function advPlayerLevel(xp = advPlayerXp()) {
+  return Math.floor(Math.sqrt(Math.max(0, xp) / PLAYER_XP_STEP)) + 1;
+}
+
+// Progression vers le niveau joueur suivant (pour la jauge).
 function advPlayerProgress() {
-  const moves = advPlayerMoves();
-  const level = advPlayerLevel(moves);
-  const floorMoves = (level - 1) * (level - 1); // sqrt inverse
-  const nextMoves = level * level;
-  const span = Math.max(1, nextMoves - floorMoves);
-  return { level, moves, into: moves - floorMoves, span };
+  const xp = advPlayerXp();
+  const level = advPlayerLevel(xp);
+  const floorXp = PLAYER_XP_STEP * (level - 1) * (level - 1);
+  const nextXp = PLAYER_XP_STEP * level * level;
+  const span = Math.max(1, nextXp - floorXp);
+  return { level, xp, moves: advPlayerMoves(), into: xp - floorXp, span };
 }
 
 // --- Difficulté Aventure : aides modulables ---
@@ -6877,6 +6910,36 @@ function renderAdvTakeBack() {
       game.chess.history().length >= 2
   );
   btn.disabled = !canUndo;
+}
+
+// Pastille « niveau joueur » : le numéro + le cadre-jauge (progression vers le niveau
+// suivant). Flash + toast quand le niveau monte.
+let lastPlayerLevelShown = 0;
+function renderAdvPlayerBadge() {
+  const badge = document.querySelector('#advPlayerBadge');
+  if (!badge) {
+    return;
+  }
+  const prog = advPlayerProgress();
+  const pct = clamp((prog.into / prog.span) * 100, 0, 100);
+  badge.style.setProperty('--xp-pct', pct.toFixed(1));
+  const lvlEl = document.querySelector('#advPlayerBadgeLevel');
+  if (lvlEl) {
+    lvlEl.textContent = String(prog.level);
+  }
+  badge.title = `Niveau joueur ${prog.level} · ${prog.xp} XP`;
+  if (lastPlayerLevelShown && prog.level > lastPlayerLevelShown) {
+    badge.classList.remove('is-levelup');
+    void badge.offsetWidth; // relance l'animation
+    badge.classList.add('is-levelup');
+    showAdventureToast({
+      icon: '⬆️',
+      title: `Niveau joueur ${prog.level} !`,
+      text: 'Tu montes en puissance.',
+      kind: 'levelup'
+    });
+  }
+  lastPlayerLevelShown = prog.level;
 }
 
 function advBossXp(level) {
@@ -7467,6 +7530,7 @@ function updateAdvMobileBar() {
   renderAdvMovesStrip();
   renderAdvHistory();
   renderAdvTakeBack();
+  renderAdvPlayerBadge();
   if (document.querySelector('#advAnalyseSheet')?.classList.contains('is-open')) {
     renderAdvAnalyseSheet();
   }
