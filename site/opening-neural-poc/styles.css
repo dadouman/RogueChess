@@ -1229,24 +1229,19 @@ span.expected-pill {
 /* Pastille « au trait » : qui choisit l'embranchement à ce noeud.
    Blanc = les Blancs jouent ; sombre = les Noirs jouent. Les contours
    assurent la lisibilité des deux sur le fond foncé du graphe. */
-.neural-node .node-turn-pip {
-  stroke-width: 1.2;
+.neural-node .node-turn-ring {
+  fill: none;
+  stroke-width: 2.6;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
-.neural-node.is-white-turn .node-turn-pip {
-  fill: #f5f6f0;
-  stroke: rgba(12, 14, 10, 0.85);
+.neural-node.is-white-turn .node-turn-ring {
+  stroke: #f5f6f0;
 }
 
-.neural-node.is-black-turn .node-turn-pip {
-  fill: #14160f;
-  stroke: rgba(245, 246, 240, 0.92);
-}
-
-.neural-node.is-branch .node-turn-pip {
-  stroke-width: 1.5;
+.neural-node.is-black-turn .node-turn-ring {
+  stroke: #12140d;
 }
 
 .graph-tooltip {
@@ -3118,6 +3113,13 @@ body.aid-takeback.screen-adventure.is-adv-board-view .adv-takeback:disabled {
   cursor: default;
 }
 
+/* Fin de partie : on retire le bandeau « choix du coup » (et le retour arrière en
+   ligne) pour laisser la place au call-to-action ancré en bas. */
+body.is-game-over.screen-adventure.is-adv-board-view #advMovesStrip,
+body.is-game-over.screen-adventure.is-adv-board-view .adv-takeback {
+  display: none;
+}
+
 /* =====================================================================
    Toasts dopamine
    ===================================================================== */
@@ -3367,8 +3369,10 @@ body.is-brain-surge .brain-outline {
   display: none;
 }
 
-body:not(.screen-adventure) .adv-board-caption,
-body.screen-adventure:not(.is-adv-board-view) .adv-board-caption {
+/* Bandeau flottant retiré : il chevauchait les pièces (le roi sur la 1re rangée,
+   pendant l'ouverture…). L'info de phase/objectif est portée par le bandeau du haut
+   et l'animation « Stockfish réfléchit ». */
+.adv-board-caption {
   display: none;
 }
 

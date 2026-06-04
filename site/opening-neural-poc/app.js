@@ -2118,13 +2118,14 @@ function renderGraph() {
       label.setAttribute('opacity', '0');
     }
 
-    // Pastille « au trait » : blanche si les Blancs choisissent l'embranchement, sombre si les Noirs.
-    const turnPip = createSvgElement('circle', {
-      class: 'node-turn-pip',
-      cy: String(-(radius + 5)),
-      r: outgoing > 1 ? '5.4' : '4.2'
+    // Anneau « au trait » À L'INTÉRIEUR du nœud : clair = les Blancs jouent le prochain
+    // coup, sombre = les Noirs. La couleur est ainsi portée par le nœud lui-même.
+    const turnRing = createSvgElement('circle', {
+      class: 'node-turn-ring',
+      r: String(Math.max(2.5, radius - 2.8)),
+      fill: 'none'
     });
-    group.append(pulse, circle, turnPip, label);
+    group.append(pulse, circle, turnRing, label);
     group.addEventListener('mouseenter', (event) => showNodeTooltip(node, event));
     group.addEventListener('mouseleave', hideTooltip);
     group.addEventListener('click', () => {
@@ -2736,6 +2737,10 @@ function maybeAnimateGameMove(container, node) {
     return;
   }
   container.dataset.lastMoveKey = moveKey;
+  if (skipNextMoveAnim) {
+    skipNextMoveAnim = false; // glisser-déposer : la pièce est déjà à destination
+    return;
+  }
   animateBoardMove(container, from, to);
 }
 
@@ -3124,6 +3129,7 @@ function selectBoardSquare(squareName) {
 
 let boardDrag = null;
 let suppressNextBoardClick = false;
+let skipNextMoveAnim = false; // coup joué par glisser-déposer : on saute l'animation de glissade
 
 function bindBoardDragEvents() {
   const board = elements.boardPreview;
@@ -3221,8 +3227,12 @@ function onBoardPointerUp(event) {
   const targetEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.board-square');
   const to = targetEl && elements.boardPreview.contains(targetEl) ? targetEl.dataset.square : null;
 
-  if (to && to !== drag.from && attemptBoardMove(drag.from, to)) {
-    return; // coup joué : le re-rendu efface les surbrillances
+  if (to && to !== drag.from) {
+    skipNextMoveAnim = true; // la pièce a déjà glissé à la main : pas de ré-animation
+    if (attemptBoardMove(drag.from, to)) {
+      return; // coup joué : le re-rendu efface les surbrillances
+    }
+    skipNextMoveAnim = false; // coup refusé : rien n'a bougé
   }
   clearDragTargets(); // drop annulé : nettoie sans re-rendre
 }
@@ -3734,7 +3744,10 @@ function advBoardTopText() {
     }
     return `📖 Ouverture · encore ${remaining} coup${remaining > 1 ? 's' : ''} à découvrir`;
   }
-  // Phase libre hors boss (ex. exploration) : objectif générique.
+  // Phase libre : objectif de mat pour un boss, sinon générique.
+  if (run?.kind === 'boss' || isMateObjective(game)) {
+    return '⚔️ Trouve l’échec et mat';
+  }
   return '⚡ Phase libre';
 }
 
@@ -4828,7 +4841,7 @@ function clearGameCinematic() {
 function startNewGame(level = state.campaignLevel) {
   clearGameCinematic();
   setEngineThinking(false);
-  document.body.classList.remove('is-game-lost');
+  document.body.classList.remove('is-game-lost', 'is-game-over');
   if (state.playMode === 'challenge') {
     state.campaignLevel = Math.max(FIRST_LEVEL_NUMBER, level);
   }
@@ -5362,6 +5375,7 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   }
   setEngineThinking(false);
   document.body.classList.toggle('is-game-lost', result === 'lost');
+  document.body.classList.toggle('is-game-over', result === 'won' || result === 'lost');
   game.status = result;
   game.locked = false;
   game.victoryCinematic = false;
@@ -6780,7 +6794,7 @@ function advUndoDefeat() {
     undone += 1;
   }
   clearGameCinematic();
-  document.body.classList.remove('is-game-lost');
+  document.body.classList.remove('is-game-lost', 'is-game-over');
   game.status = 'playing';
   game.locked = false;
   game.takebackLocked = true; // une seule dernière chance
@@ -7650,8 +7664,6 @@ function renderAdventureHud() {
   advSetText('#advBrainLevel', String(progress.level));
   advSetText('#advXpLabel', `${Math.round(progress.into)} / ${progress.span} XP`);
   advSetWidth('#advXpFill', progress.span ? (progress.into / progress.span) * 100 : 0);
-  advSetText('#advSynapseValue', `${coveragePct} %`);
-  advSetWidth('#advSynapseFill', coveragePct);
   advSetText('#advPowerValue', `N${state.adventure.highestBoss} / N10`);
   advSetWidth('#advPowerFill', state.adventure.highestBoss * 10);
 
