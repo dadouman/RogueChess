@@ -4519,6 +4519,52 @@ function formatEvalDelta(deltaCp) {
   return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
 }
 
+// L — Verdicts type Lichess (sur les coups BLANCS, ceux du joueur), selon la
+// perte d'évaluation par rapport au meilleur coup.
+const MOVE_VERDICTS = {
+  good: { label: 'Bon', short: '✓', cls: 'good' },
+  inaccuracy: { label: 'Imprécision', short: '?!', cls: 'inaccuracy' },
+  mistake: { label: 'Erreur', short: '?', cls: 'mistake' },
+  blunder: { label: 'Gaffe', short: '??', cls: 'blunder' },
+  book: { label: 'Livre', short: '📖', cls: 'book' }
+};
+const MOVE_VERDICT_LOSS = { inaccuracy: 50, mistake: 100, blunder: 200 };
+
+function advMoveVerdict(entry) {
+  if (!entry || entry.color !== 'w') {
+    return null;
+  }
+  if (entry.phase === 'opening') {
+    return { key: 'book', ...MOVE_VERDICTS.book };
+  }
+  if (entry.phase !== 'free') {
+    return null; // suite Stockfish / variantes d'analyse : pas de verdict joueur
+  }
+  if (!Number.isFinite(entry.beforeEvalCp) || !Number.isFinite(entry.afterEvalCp)) {
+    return null;
+  }
+  const loss = entry.beforeEvalCp - entry.afterEvalCp; // perte d'éval côté blanc
+  let key = 'good';
+  if (loss >= MOVE_VERDICT_LOSS.blunder) {
+    key = 'blunder';
+  } else if (loss >= MOVE_VERDICT_LOSS.mistake) {
+    key = 'mistake';
+  } else if (loss >= MOVE_VERDICT_LOSS.inaccuracy) {
+    key = 'inaccuracy';
+  }
+  return { key, loss, ...MOVE_VERDICTS[key] };
+}
+
+// Meilleur coup qui était disponible avant ce coup (1er coup de la PV du parent).
+function advReviewBestAlternative(entry) {
+  const parent = getReviewParent(entry);
+  const pv = parent?.pv;
+  if (!pv) {
+    return '';
+  }
+  return String(pv).trim().split(/\s+/)[0] || '';
+}
+
 function buildReviewMoveAnalysis(entry) {
   if (entry.phase === 'start') {
     return entry.analysis;
@@ -4587,7 +4633,18 @@ function buildReviewMoveAnalysis(entry) {
   const humanEvalText = humanEval
     ? ` Lecture humaine: ${humanEval.sentence}${adviceText}`
     : '';
-  return `${verdict} ${evalText}${thresholdText}${statusText}${humanEvalText}${pvText}`;
+  // L : préfixe catégoriel (Lichess) + meilleur coup disponible sur une faute.
+  const moveVerdict = advMoveVerdict(entry);
+  const verdictPrefix =
+    moveVerdict && moveVerdict.key !== 'book' && moveVerdict.key !== 'good'
+      ? `${moveVerdict.label}. `
+      : '';
+  const bestAlt =
+    moveVerdict && ['inaccuracy', 'mistake', 'blunder'].includes(moveVerdict.key)
+      ? advReviewBestAlternative(entry)
+      : '';
+  const bestAltText = bestAlt ? ` Meilleur coup : ${bestAlt}.` : '';
+  return `${verdictPrefix}${verdict} ${evalText}${thresholdText}${statusText}${humanEvalText}${pvText}${bestAltText}`;
 }
 
 function ensureReviewTree(game = state.game) {
@@ -6489,8 +6546,15 @@ function renderFreeReviewPanel() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = entry.index === activeEntry.index ? 'is-active' : '';
+    // L : badge de verdict (bon/imprécision/erreur/gaffe) sur les coups du joueur.
+    const verdict = advMoveVerdict(entry);
+    const badge = verdict
+      ? `<i class="move-verdict is-${verdict.cls}" title="${escapeHtml(verdict.label)}">${escapeHtml(
+          verdict.short
+        )}</i>`
+      : '';
     button.innerHTML = `
-      <span>${escapeHtml(entry.text)}</span>
+      <span>${escapeHtml(entry.text)}${badge}</span>
       <em>${escapeHtml(entry.branchLabel || formatEval(entry.afterEvalCp))}</em>
     `;
     button.addEventListener('click', () => setFreeReviewIndex(entry.index));

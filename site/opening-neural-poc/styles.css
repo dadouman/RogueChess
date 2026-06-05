@@ -909,6 +909,45 @@ span.expected-pill {
   font-variant-numeric: tabular-nums;
 }
 
+/* L — Badge de verdict type Lichess (sur les coups du joueur). */
+.move-verdict {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 900;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: middle;
+  color: #11150e;
+}
+
+.move-verdict.is-good {
+  background: rgba(120, 220, 140, 0.9);
+}
+
+.move-verdict.is-inaccuracy {
+  background: rgba(255, 214, 120, 0.92);
+}
+
+.move-verdict.is-mistake {
+  background: rgba(255, 162, 92, 0.95);
+}
+
+.move-verdict.is-blunder {
+  background: rgba(255, 104, 104, 0.95);
+  color: #fff;
+}
+
+.move-verdict.is-book {
+  background: rgba(180, 190, 205, 0.6);
+}
+
 .action-grid button:first-child {
   background: linear-gradient(180deg, var(--green-action-top), var(--green-action-bottom));
   color: white;
