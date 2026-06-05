@@ -1573,6 +1573,96 @@ body.is-brain-focused .graph-stage::after {
   }
 }
 
+/* === Échec et mat : le roi vaincu se renverse + flash sur l'échiquier === */
+/* Case du roi maté : halo soutenu (rouge si on perd, doré si on gagne). */
+.board-square.is-mated {
+  position: relative;
+  z-index: 3;
+}
+
+.is-mate-loss .board-square.is-mated {
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 64, 64, 0.95) 0%,
+    rgba(214, 36, 36, 0.55) 58%,
+    transparent 76%
+  );
+}
+
+.is-mate-win .board-square.is-mated {
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 214, 120, 0.95) 0%,
+    rgba(232, 176, 60, 0.5) 58%,
+    transparent 76%
+  );
+}
+
+/* Le roi maté bascule (animation « roi qui tombe »), une seule fois, puis reste couché. */
+.board-square.is-mated img {
+  transform-origin: 50% 92%;
+  animation: king-topple 1s cubic-bezier(0.2, 0.7, 0.3, 1) 0.15s both;
+}
+
+@keyframes king-topple {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  55% {
+    transform: rotate(82deg) translateY(0);
+  }
+  70% {
+    transform: rotate(70deg) translateY(0);
+  }
+  100% {
+    transform: rotate(76deg) translateY(6%);
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45)) grayscale(0.35) brightness(0.86);
+  }
+}
+
+/* Flash bref sur tout l'échiquier au moment du mat. */
+.board-preview.is-checkmate-board::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: board-mate-flash 1.1s ease-out 1 both;
+}
+
+.board-preview.is-mate-win.is-checkmate-board::after {
+  background: radial-gradient(circle at center, rgba(255, 214, 120, 0.55), transparent 70%);
+}
+
+.board-preview.is-mate-loss.is-checkmate-board::after {
+  background: radial-gradient(circle at center, rgba(255, 70, 70, 0.5), transparent 70%);
+}
+
+@keyframes board-mate-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-square.is-mated img {
+    animation: none;
+    transform: rotate(76deg);
+  }
+  .board-preview.is-checkmate-board::after {
+    animation: none;
+  }
+}
+
 /* Défaite : on garde uniquement un encadré rouge autour de l'échiquier
    (la description part dans la feuille « Analyse »). */
 body.is-game-lost #boardPreview {

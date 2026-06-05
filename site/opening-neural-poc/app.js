@@ -2630,6 +2630,28 @@ function kingInCheckSquare(fen) {
   return null;
 }
 
+// Case du roi maté (uniquement si la position est un échec et mat), pour l'animation
+// de fin de partie : le roi vaincu se renverse. Renvoie null si pas de mat.
+function matedKingSquare(fen) {
+  try {
+    const probe = new Chess(fen);
+    if (!probe.isCheckmate()) {
+      return null;
+    }
+    const turn = probe.turn(); // le camp maté est celui au trait
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.type === 'k' && cell.color === turn) {
+          return cell.square;
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas d'animation de mat */
+  }
+  return null;
+}
+
 function renderBoard(node, container = elements.boardPreview) {
   const [boardPart] = node.fen.split(' ');
   const rows = boardPart.split('/');
@@ -2644,9 +2666,17 @@ function renderBoard(node, container = elements.boardPreview) {
   const bookTargets =
     selectedSquare && openingBookMode ? getBookTargetsFromSquare(selectedSquare) : new Set();
   const checkSquare = kingInCheckSquare(node.fen);
+  const matedSquare = matedKingSquare(node.fen);
+  // Le camp maté est celui au trait dans la FEN. Le joueur joue les Blancs : roi
+  // noir maté = victoire (flash doré), roi blanc maté = défaite (flash rouge).
+  const matedSide = matedSquare ? node.fen.split(' ')[1] : null;
   container.replaceChildren();
   container.classList.toggle('is-game-board', interactive);
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
+  // L'échiquier qui affiche un mat porte la classe pour le flash de fin de partie.
+  container.classList.toggle('is-checkmate-board', Boolean(matedSquare));
+  container.classList.toggle('is-mate-win', matedSide === 'b');
+  container.classList.toggle('is-mate-loss', matedSide === 'w');
 
   const squareOptions = {
     interactive,
@@ -2656,6 +2686,7 @@ function renderBoard(node, container = elements.boardPreview) {
     bookTargets,
     openingBookMode,
     checkSquare,
+    matedSquare,
     aids: advAids()
   };
   rows.forEach((row, rankIndex) => {
@@ -2944,6 +2975,7 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     offbookTarget ? 'is-offbook-target' : '',
     target && piece ? 'is-capture-target' : '',
     squareName === options.checkSquare ? 'is-check' : '',
+    squareName === options.matedSquare ? 'is-mated' : '',
     squareName === options.selectedSquare ? 'is-selected' : ''
   ]
     .filter(Boolean)
@@ -4363,8 +4395,15 @@ function applyFreeMove(move, label) {
 }
 
 function appendGameMove(move, label) {
-  // Temps de jeu : on ne compte que les coups BLANCS (ceux du joueur).
-  if (state.screen === 'adventure' && state.adventure && move.color === 'w') {
+  // Temps de jeu : on ne compte que les coups BLANCS réellement joués par le
+  // joueur. La conversion automatique vers le mat (coups générés par le moteur)
+  // ne doit pas gonfler le compteur.
+  if (
+    state.screen === 'adventure' &&
+    state.adventure &&
+    move.color === 'w' &&
+    label !== 'Conversion auto'
+  ) {
     state.adventure.movesPlayed = (state.adventure.movesPlayed || 0) + 1;
   }
   const parsedMoveNumber = Number(move.before?.split(/\s+/)[5] ?? 1);
@@ -4577,8 +4616,14 @@ function recordFreeReviewMove({
     return null;
   }
 
-  // XP joueur : seuls les coups blancs comptent, pondérés par leur qualité.
-  if (move.color === 'w' && Number.isFinite(evaluation.cpWhite)) {
+  // XP joueur : seuls les VRAIS coups blancs du joueur comptent, pondérés par
+  // leur qualité. On exclut la suite de défaite (engine-line) et l'exploration
+  // post-partie (analysis), qui ne sont pas des coups joués par l'humain.
+  if (
+    move.color === 'w' &&
+    Number.isFinite(evaluation.cpWhite) &&
+    (phase === 'free' || phase === 'opening')
+  ) {
     advAwardPlayerXp(evaluation.cpWhite - beforeEvalCp);
   }
 
@@ -4618,7 +4663,7 @@ function recordFreeReviewMove({
   return entry;
 }
 
-function appendDefeatLineReview(fen, evaluation) {
+function appendDefeatLineReview(fen, evaluation, lineUci = null) {
   const game = state.game;
   if (!game || game.defeatLineRecorded || !evaluation?.pvUci?.length) {
     return;
@@ -4629,7 +4674,12 @@ function appendDefeatLineReview(fen, evaluation) {
   let beforeEvalCp = evaluation.cpWhite;
   const addedEntries = [];
 
-  for (const uci of evaluation.pvUci.slice(0, 7)) {
+  // B : on enregistre toute la suite de défaite (prolongée jusqu'au mat ou
+  // au minimum de demi-coups) pour pouvoir la rejouer au ralenti. À défaut de
+  // ligne explicite, on retombe sur la PV brute (compat).
+  const recordedLine =
+    lineUci && lineUci.length ? lineUci : evaluation.pvUci.slice(0, DEFEAT_LINE_MAX_PLIES);
+  for (const uci of recordedLine) {
     const beforeFen = chess.fen();
     const move = playUciOnChess(chess, uci);
     if (!move) {
@@ -5393,14 +5443,14 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     game.message = `${game.message} Les flèches indiquent les coups d'ouverture attendus.`;
   }
   const startsCinematic = result === 'lost' && failureFen && failureEvaluation?.pvUci?.length;
-  if (startsCinematic) {
-    appendDefeatLineReview(failureFen, failureEvaluation);
-  }
   if (game.freeReviewMoves.length) {
     game.freeReview.index = game.freeReviewMoves.length - 1;
     game.freeReview.active = !startsCinematic;
   }
   if (startsCinematic) {
+    // K+B : la suite de défaite est prolongée (≥ DEFEAT_LINE_MIN_PLIES ou
+    // jusqu'au mat), enregistrée dans l'historique puis animée. Asynchrone car
+    // la prolongation peut interroger Stockfish.
     startDeficitCinematic(failureFen, failureEvaluation, game.defeatComment);
   }
   if (state.screen === 'adventure') {
@@ -5408,20 +5458,95 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   }
 }
 
-function startDeficitCinematic(fen, evaluation, defeatComment = '') {
-  clearGameCinematic();
+// Défaite : on déroule la punition jusqu'au mat ou au moins ce nombre de demi-coups,
+// pour bien faire « constater » la défaite (K). Plafond de sécurité pour éviter
+// une séquence interminable.
+const DEFEAT_LINE_MIN_PLIES = 10;
+const DEFEAT_LINE_MAX_PLIES = 20;
+
+// Construit la suite de défaite en UCI : on consomme d'abord la PV Stockfish
+// (sans coût moteur), puis on prolonge avec les meilleurs coups jusqu'au mat ou
+// au minimum de demi-coups si la PV est trop courte.
+async function buildDefeatLineUci(fen, evaluation) {
   const chess = new Chess(fen);
-  state.game.cinematic = {
+  const line = [];
+  for (const uci of evaluation.pvUci || []) {
+    if (line.length >= DEFEAT_LINE_MAX_PLIES) {
+      return line;
+    }
+    if (!playUciOnChess(chess, uci)) {
+      break;
+    }
+    line.push(uci);
+    if (chess.isGameOver()) {
+      return line;
+    }
+  }
+  if (line.length >= DEFEAT_LINE_MIN_PLIES || chess.isGameOver()) {
+    return line;
+  }
+  // PV trop courte et pas encore terminale : on prolonge avec Stockfish.
+  try {
+    const evaluator = await ensureStockfishReady(false);
+    while (line.length < DEFEAT_LINE_MAX_PLIES && !chess.isGameOver()) {
+      const res = await evaluator.evaluate(chess.fen());
+      const best = res?.bestMove;
+      if (!best || !playUciOnChess(chess, best)) {
+        break;
+      }
+      line.push(best);
+      if (chess.isCheckmate()) {
+        break;
+      }
+      // Une fois le minimum atteint, on ne prolonge que si un mat se profile.
+      if (line.length >= DEFEAT_LINE_MIN_PLIES && !isMateScore(res.cpWhite)) {
+        break;
+      }
+    }
+  } catch {
+    /* Moteur indisponible : on garde la PV récupérée. */
+  }
+  return line;
+}
+
+async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
+  clearGameCinematic();
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const line = await buildDefeatLineUci(fen, evaluation);
+  if (state.game !== game) {
+    return; // partie changée pendant le calcul de la prolongation
+  }
+  // B : on enregistre toute la suite dans l'historique (rejeu au ralenti).
+  if (line.length) {
+    appendDefeatLineReview(fen, evaluation, line);
+  }
+  if (!line.length) {
+    // Pas de suite jouable : on rend simplement la main à la revue.
+    if (game.freeReviewMoves.length) {
+      game.freeReview.active = true;
+      game.freeReview.index = game.freeReviewMoves.length - 1;
+    }
+    renderGameDetails();
+    renderGamePanel();
+    return;
+  }
+  const chess = new Chess(fen);
+  game.cinematic = {
     active: true,
     chess,
-    moves: evaluation.pvUci.slice(0, 7),
+    moves: line,
     index: 0,
     lastMove: null
   };
-  state.game.message = defeatComment
-    ? `${defeatComment} La ligne Stockfish défile: ${evaluation.pv || 'suite forcée'}.`
-    : `Déficit à ${formatEval(evaluation.cpWhite)}. La ligne Stockfish défile: ${evaluation.pv || 'suite forcée'}.`;
-  state.game.cinematicTimer = setInterval(() => {
+  game.message = defeatComment
+    ? `${defeatComment} La punition de Stockfish se déroule…`
+    : `Déficit à ${formatEval(evaluation.cpWhite)}. La punition de Stockfish se déroule…`;
+  renderGameDetails();
+  renderGamePanel();
+  game.cinematicTimer = setInterval(() => {
     const cinematic = state.game?.cinematic;
     if (!cinematic || cinematic.index >= cinematic.moves.length) {
       clearGameCinematic();
