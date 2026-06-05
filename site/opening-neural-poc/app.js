@@ -5598,9 +5598,9 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     game.freeReview.active = !startsCinematic;
   }
   if (startsCinematic) {
-    // K+B : la suite de défaite est prolongée (≥ DEFEAT_LINE_MIN_PLIES ou
-    // jusqu'au mat), enregistrée dans l'historique puis animée. Asynchrone car
-    // la prolongation peut interroger Stockfish.
+    // K+B : la suite de défaite est déroulée jusqu'au mat réel (ou au plafond),
+    // enregistrée dans l'historique puis animée. Asynchrone car la prolongation
+    // peut interroger Stockfish.
     startDeficitCinematic(failureFen, failureEvaluation, game.defeatComment);
   }
   if (state.screen === 'adventure') {
@@ -5608,15 +5608,14 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   }
 }
 
-// Défaite : on déroule la punition jusqu'au mat ou au moins ce nombre de demi-coups,
-// pour bien faire « constater » la défaite (K). Plafond de sécurité pour éviter
-// une séquence interminable.
-const DEFEAT_LINE_MIN_PLIES = 10;
-const DEFEAT_LINE_MAX_PLIES = 20;
+// Défaite : on déroule la punition jusqu'au MAT RÉEL (les deux camps jouent au
+// mieux), pour vraiment « faire constater » la défaite (K). Plafond de sécurité
+// élevé pour éviter une séquence interminable si le mat n'arrive pas.
+const DEFEAT_LINE_MAX_PLIES = 30;
 
 // Construit la suite de défaite en UCI : on consomme d'abord la PV Stockfish
-// (sans coût moteur), puis on prolonge avec les meilleurs coups jusqu'au mat ou
-// au minimum de demi-coups si la PV est trop courte.
+// (sans coût moteur), puis on prolonge avec les meilleurs coups jusqu'à l'échec
+// et mat (ou le plafond). On ne s'arrête jamais avant la fin réelle de la ligne.
 async function buildDefeatLineUci(fen, evaluation) {
   const chess = new Chess(fen);
   const line = [];
@@ -5629,13 +5628,14 @@ async function buildDefeatLineUci(fen, evaluation) {
     }
     line.push(uci);
     if (chess.isGameOver()) {
-      return line;
+      return line; // la PV mène déjà au mat / à la nulle
     }
   }
-  if (line.length >= DEFEAT_LINE_MIN_PLIES || chess.isGameOver()) {
+  if (line.length >= DEFEAT_LINE_MAX_PLIES || chess.isGameOver()) {
     return line;
   }
-  // PV trop courte et pas encore terminale : on prolonge avec Stockfish.
+  // La PV ne va pas jusqu'au bout : on prolonge avec Stockfish jusqu'au mat réel
+  // (ou au plafond), des deux côtés, pour montrer la défaite consommée.
   try {
     const evaluator = await ensureStockfishReady(false);
     while (line.length < DEFEAT_LINE_MAX_PLIES && !chess.isGameOver()) {
@@ -5645,13 +5645,6 @@ async function buildDefeatLineUci(fen, evaluation) {
         break;
       }
       line.push(best);
-      if (chess.isCheckmate()) {
-        break;
-      }
-      // Une fois le minimum atteint, on ne prolonge que si un mat se profile.
-      if (line.length >= DEFEAT_LINE_MIN_PLIES && !isMateScore(res.cpWhite)) {
-        break;
-      }
     }
   } catch {
     /* Moteur indisponible : on garde la PV récupérée. */
