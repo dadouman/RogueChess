@@ -482,6 +482,34 @@
       </div>
     </div>
 
+    <!-- Revue d'une partie historique : échiquier rejouable + analyse a posteriori -->
+    <div id="advGameReview" class="game-review" hidden aria-label="Revue de partie">
+      <div class="game-review-panel">
+        <header class="game-review-head">
+          <div>
+            <span class="kicker">Revue de partie</span>
+            <strong id="advReviewTitle">Partie</strong>
+          </div>
+          <button id="advReviewClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+        </header>
+        <dl class="game-review-meta">
+          <div><dt>Résultat</dt><dd id="advReviewResult">—</dd></div>
+          <div><dt>Ouverture</dt><dd id="advReviewOpening">—</dd></div>
+          <div><dt>Précision</dt><dd id="advReviewAccuracy">—</dd></div>
+        </dl>
+        <div id="advReviewBoard" class="board-preview" aria-label="Échiquier de la revue"></div>
+        <div class="game-review-nav">
+          <button id="advReviewFirst" type="button" aria-label="Début">«</button>
+          <button id="advReviewPrev" type="button" aria-label="Coup précédent">‹</button>
+          <span id="advReviewPly" class="game-review-ply">0 / 0</span>
+          <button id="advReviewNext" type="button" aria-label="Coup suivant">›</button>
+          <button id="advReviewLast" type="button" aria-label="Fin">»</button>
+        </div>
+        <p id="advReviewComment" class="game-review-comment"></p>
+        <ol id="advReviewMoves" class="game-review-moves"></ol>
+      </div>
+    </div>
+
     <!-- Niveau joueur : pastille discrète en haut, le cadre fait jauge de progression -->
     <div id="advPlayerBadge" class="adv-player-badge" aria-label="Niveau joueur" style="--xp-pct: 0">
       <span id="advPlayerBadgeLevel">1</span>

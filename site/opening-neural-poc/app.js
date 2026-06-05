@@ -2788,7 +2788,9 @@ function renderBoard(node, container = elements.boardPreview) {
   const from = node.from;
   const to = node.to;
   const interactive = isBoardInteractive(container);
-  const openingArrows = getOpeningBoardArrows();
+  // Les flèches d'ouverture (liées à la partie en cours) ne s'affichent que sur
+  // le plateau de jeu principal — pas sur les aperçus (scrub, revue de partie).
+  const openingArrows = container === elements.boardPreview ? getOpeningBoardArrows() : [];
   const selectedSquare = interactive ? state.game.selectedSquare : null;
   const legalTargets = selectedSquare ? getLegalTargetsFromSquare(selectedSquare) : new Set();
   const playableColor = interactive ? getPlayableBoardColor() : null;
@@ -8103,6 +8105,29 @@ function advOpeningSignature(game) {
 }
 
 // M — Enregistre une partie terminée dans l'historique persistant.
+// Coups joués (avec évals) d'une partie, version compacte persistable, pour la
+// revue + analyse a posteriori. Construite depuis freeReviewMoves à la fin.
+const ADV_MAX_REVIEW_MOVES = 160;
+function buildGameReviewMoves(game) {
+  const entries = (game?.freeReviewMoves || []).filter((e) => e.phase && e.phase !== 'start');
+  return entries.slice(0, ADV_MAX_REVIEW_MOVES).map((entry) => {
+    const best =
+      entry.color === 'w' && (entry.phase === 'free' || entry.phase === 'opening')
+        ? String(getReviewParent(entry)?.pv || '')
+            .trim()
+            .split(/\s+/)[0] || ''
+        : '';
+    return {
+      san: entry.san,
+      color: entry.color,
+      phase: entry.phase,
+      before: Number.isFinite(entry.beforeEvalCp) ? Math.round(entry.beforeEvalCp) : null,
+      after: Number.isFinite(entry.afterEvalCp) ? Math.round(entry.afterEvalCp) : null,
+      best
+    };
+  });
+}
+
 function advRecordGame(result) {
   const game = state.game;
   const run = state.advRun;
@@ -8125,6 +8150,7 @@ function advRecordGame(result) {
     openingKey: opening.key,
     openingLabel: opening.label,
     lineSans: opening.sans, // suite d'ouverture complète (N : préfixe de ligne)
+    moves: buildGameReviewMoves(game), // revue + analyse a posteriori
     plies,
     mate: Boolean(game.chess?.isCheckmate?.()),
     difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
@@ -8322,18 +8348,194 @@ function renderAdvGameHistory() {
     list.replaceChildren();
     for (const g of stats.games.slice(0, 12)) {
       const li = document.createElement('li');
-      li.className = `adv-history-row is-${g.result}`;
+      const reviewable = Array.isArray(g.moves) && g.moves.length > 0;
+      li.className = `adv-history-row is-${g.result}${reviewable ? ' is-reviewable' : ''}`;
       const icon = g.result === 'won' ? '✅' : '❌';
       const mateBadge = g.mate ? '<span class="adv-history-mate">mat</span>' : '';
+      const chevron = reviewable ? '<span class="adv-history-chevron" aria-hidden="true">▸</span>' : '';
       li.innerHTML = `
         <span class="adv-history-result">${icon}</span>
         <span class="adv-history-main">
           <b>${escapeHtml(advFormatGameOpponent(g))}</b>${mateBadge}
           <i>${escapeHtml(g.openingLabel || 'Hors livre')}</i>
         </span>
-        <span class="adv-history-meta">${g.plies} c · ${advFormatRelativeTime(g.ts)}</span>`;
+        <span class="adv-history-meta">${g.plies} c · ${advFormatRelativeTime(g.ts)}</span>${chevron}`;
+      if (reviewable) {
+        li.setAttribute('role', 'button');
+        li.setAttribute('tabindex', '0');
+        li.setAttribute('aria-label', `Revoir la partie : ${advFormatGameOpponent(g)}`);
+        li.addEventListener('click', () => openGameReview(g));
+        li.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openGameReview(g);
+          }
+        });
+      }
       list.append(li);
     }
+  }
+}
+
+// === Revue d'une partie historique : échiquier rejouable + analyse a posteriori ===
+function advStoredVerdict(move) {
+  return advMoveVerdict({
+    color: move.color,
+    phase: move.phase,
+    beforeEvalCp: move.before,
+    afterEvalCp: move.after
+  });
+}
+
+// Précision : part des coups BLANCS du joueur sans faute (bon / livre).
+function advGameAccuracy(moves) {
+  const whiteMoves = (moves || []).filter(
+    (m) => m.color === 'w' && (m.phase === 'free' || m.phase === 'opening')
+  );
+  if (!whiteMoves.length) {
+    return null;
+  }
+  let clean = 0;
+  for (const m of whiteMoves) {
+    const verdict = advStoredVerdict(m);
+    if (verdict && (verdict.key === 'good' || verdict.key === 'book')) {
+      clean += 1;
+    }
+  }
+  return Math.round((clean / whiteMoves.length) * 100);
+}
+
+function buildStoredMoveComment(move) {
+  const verdict = advStoredVerdict(move);
+  const label =
+    verdict && verdict.key !== 'good' && verdict.key !== 'book' ? `${verdict.label}. ` : '';
+  const evalTxt =
+    move.before != null && move.after != null
+      ? `Éval ${formatEval(move.before)} → ${formatEval(move.after)}.`
+      : '';
+  const best =
+    move.best && verdict && ['inaccuracy', 'mistake', 'blunder'].includes(verdict.key)
+      ? ` Meilleur coup : ${move.best}.`
+      : '';
+  return `${label}${evalTxt}${best}`.trim() || 'Coup joué.';
+}
+
+function openGameReview(game) {
+  if (!game || !Array.isArray(game.moves) || !game.moves.length) {
+    return;
+  }
+  const chess = new Chess();
+  const positions = [{ fen: chess.fen(), from: '', to: '', san: 'Départ', moveIndex: -1 }];
+  for (let i = 0; i < game.moves.length; i += 1) {
+    let move = null;
+    try {
+      move = chess.move(game.moves[i].san);
+    } catch {
+      move = null;
+    }
+    if (!move) {
+      break; // SAN illisible : on s'arrête là (sécurité)
+    }
+    positions.push({ fen: chess.fen(), from: move.from, to: move.to, san: move.san, moveIndex: i });
+  }
+  state.gameReview = { game, positions, index: positions.length - 1 };
+  const overlay = document.querySelector('#advGameReview');
+  if (overlay) {
+    overlay.hidden = false;
+  }
+  renderGameReview();
+}
+
+function closeGameReview() {
+  state.gameReview = null;
+  const overlay = document.querySelector('#advGameReview');
+  if (overlay) {
+    overlay.hidden = true;
+  }
+}
+
+function gameReviewStep(delta) {
+  const review = state.gameReview;
+  if (!review) {
+    return;
+  }
+  if (delta === 'first') {
+    review.index = 0;
+  } else if (delta === 'last') {
+    review.index = review.positions.length - 1;
+  } else {
+    review.index = clamp(review.index + delta, 0, review.positions.length - 1);
+  }
+  renderGameReview();
+}
+
+function gameReviewGoTo(positionIndex) {
+  const review = state.gameReview;
+  if (!review) {
+    return;
+  }
+  review.index = clamp(positionIndex, 0, review.positions.length - 1);
+  renderGameReview();
+}
+
+function renderGameReview() {
+  const review = state.gameReview;
+  if (!review) {
+    return;
+  }
+  const game = review.game;
+  advSetText('#advReviewTitle', `${advFormatGameOpponent(game)} · ${advFormatRelativeTime(game.ts)}`);
+
+  const resultEl = document.querySelector('#advReviewResult');
+  if (resultEl) {
+    resultEl.textContent =
+      game.result === 'won' ? (game.mate ? 'Victoire (mat)' : 'Victoire') : 'Défaite';
+    resultEl.className = game.result === 'won' ? 'is-won' : 'is-lost';
+  }
+  advSetText('#advReviewOpening', game.openingLabel || 'Hors livre');
+  const accuracy = advGameAccuracy(game.moves);
+  advSetText('#advReviewAccuracy', accuracy == null ? '—' : `${accuracy} %`);
+
+  const position = review.positions[review.index];
+  const boardEl = document.querySelector('#advReviewBoard');
+  if (boardEl && position) {
+    renderBoard(
+      { id: 'review', fen: position.fen, from: position.from, to: position.to, san: position.san },
+      boardEl
+    );
+  }
+  advSetText('#advReviewPly', `${review.index} / ${review.positions.length - 1}`);
+
+  const comment = document.querySelector('#advReviewComment');
+  if (comment) {
+    const move = position && position.moveIndex >= 0 ? game.moves[position.moveIndex] : null;
+    comment.textContent = move ? buildStoredMoveComment(move) : 'Position de départ.';
+  }
+
+  const list = document.querySelector('#advReviewMoves');
+  if (list) {
+    list.replaceChildren();
+    game.moves.forEach((move, index) => {
+      const li = document.createElement('li');
+      const isActive = position && position.moveIndex === index;
+      li.className = `game-review-move${isActive ? ' is-active' : ''}`;
+      const verdict = advStoredVerdict(move);
+      const badge = verdict
+        ? `<i class="move-verdict is-${verdict.cls}" title="${escapeHtml(verdict.label)}">${escapeHtml(
+            verdict.short
+          )}</i>`
+        : '';
+      const moveNo = Math.floor(index / 2) + 1;
+      const prefix = move.color === 'w' ? `${moveNo}.` : `${moveNo}…`;
+      const evalTxt = move.after != null ? formatEval(move.after) : '';
+      li.innerHTML =
+        `<span class="game-review-move-san">${escapeHtml(prefix)} ${escapeHtml(move.san)}${badge}</span>` +
+        `<em>${escapeHtml(evalTxt)}</em>`;
+      li.addEventListener('click', () => gameReviewGoTo(index + 1));
+      list.append(li);
+    });
+    const activeEl = list.querySelector('.game-review-move.is-active');
+    activeEl?.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -9162,6 +9364,35 @@ function bindAdventureEvents() {
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
+  // Revue d'une partie historique : navigation + fermeture.
+  bind('#advReviewClose', closeGameReview);
+  bind('#advReviewFirst', () => gameReviewStep('first'));
+  bind('#advReviewPrev', () => gameReviewStep(-1));
+  bind('#advReviewNext', () => gameReviewStep(1));
+  bind('#advReviewLast', () => gameReviewStep('last'));
+  const reviewOverlay = document.querySelector('#advGameReview');
+  if (reviewOverlay) {
+    reviewOverlay.addEventListener('click', (event) => {
+      if (event.target === reviewOverlay) {
+        closeGameReview(); // clic sur le fond ferme la revue
+      }
+    });
+  }
+  // Clavier : flèches pour naviguer dans la revue, Échap pour fermer.
+  window.addEventListener('keydown', (event) => {
+    if (!state.gameReview) {
+      return;
+    }
+    if (event.key === 'Escape') {
+      closeGameReview();
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      gameReviewStep(-1);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      gameReviewStep(1);
+    }
+  });
   const customClockInput = document.querySelector('#advTimeCustomInput');
   if (customClockInput) {
     // U : cadence personnalisée (validée à la perte de focus / Entrée).

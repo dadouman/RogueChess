@@ -3347,13 +3347,28 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
 
 .adv-history-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 7px 10px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.025);
   border-left: 3px solid transparent;
+}
+
+.adv-history-row.is-reviewable {
+  cursor: pointer;
+}
+
+.adv-history-row.is-reviewable:hover,
+.adv-history-row.is-reviewable:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.adv-history-chevron {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .adv-history-row.is-won {
@@ -3408,6 +3423,178 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   color: var(--muted);
   text-align: right;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* === Revue d'une partie historique (échiquier rejouable + analyse) === */
+.game-review {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 4vw, 40px);
+  background: rgba(8, 10, 8, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.game-review[hidden] {
+  display: none;
+}
+
+.game-review-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  width: min(100%, 460px);
+  max-height: 92vh;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background:
+    radial-gradient(80% 60% at 50% -10%, rgba(255, 217, 102, 0.08), transparent 60%),
+    rgba(18, 22, 19, 0.98);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
+}
+
+.game-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.game-review-head strong {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.game-review-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.game-review-meta div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.game-review-meta dt {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.game-review-meta dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-review-meta dd.is-won {
+  color: #78dc8c;
+}
+
+.game-review-meta dd.is-lost {
+  color: #ff7a7a;
+}
+
+#advReviewBoard {
+  width: 100%;
+  max-width: 360px;
+  justify-self: center;
+}
+
+.game-review-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.game-review-nav button {
+  min-width: 42px;
+  padding: 6px 10px;
+}
+
+.game-review-ply {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 66px;
+  text-align: center;
+}
+
+.game-review-comment {
+  margin: 0;
+  min-height: 17px;
+  font-size: 12px;
+  color: var(--soft);
+}
+
+.game-review-moves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.game-review-move {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.game-review-move:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.game-review-move.is-active {
+  background: rgba(117, 231, 232, 0.14);
+  border-color: rgba(117, 231, 232, 0.5);
+}
+
+.game-review-move-san {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.game-review-move em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--gold);
   font-variant-numeric: tabular-nums;
 }
 
