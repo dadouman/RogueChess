@@ -76,6 +76,51 @@ const ADV_DIFFICULTIES = [
 ];
 const DEFAULT_ADV_DIFFICULTY = 'facile';
 const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
+
+// U — Cadences : pendule des deux côtés. baseMs = temps total par camp ;
+// meanMs = temps moyen consommé par Stockfish à chaque coup. Le temps réel
+// consommé par Stockfish suit une loi normale d'écart-type σ = meanMs × 2.
+const TIME_CONTROLS = [
+  { id: 'off', label: 'Sans horloge', icon: '∞', baseMs: 0, meanMs: 0 },
+  { id: 'bullet', label: 'Bullet 2′', icon: '🚅', baseMs: 120000, meanMs: 1000 },
+  { id: 'blitz', label: 'Blitz 5′', icon: '⚡', baseMs: 300000, meanMs: 3000 },
+  { id: 'normal', label: 'Rapide 10′', icon: '⏱️', baseMs: 600000, meanMs: 6000 }
+];
+const DEFAULT_TIME_CONTROL = 'off';
+
+function getTimeControlConfig(id) {
+  return TIME_CONTROLS.find((tc) => tc.id === id) || TIME_CONTROLS[0];
+}
+
+// Tirage gaussien (Box-Muller).
+function gaussianRandom(mean, sd) {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Temps consommé par Stockfish pour un coup : loi normale (moyenne meanMs,
+// σ = meanMs × 2), bornée à un minimum positif.
+function sampleStockfishMoveTime(tc) {
+  if (!tc || tc.meanMs <= 0) {
+    return 0;
+  }
+  return Math.max(150, gaussianRandom(tc.meanMs, tc.meanMs * 2));
+}
+
+// Format horloge : mm:ss au-dessus de 20 s, s.d en dessous (pression du temps).
+function formatClock(ms) {
+  const clamped = Math.max(0, ms || 0);
+  if (clamped >= 20000) {
+    const totalSec = Math.ceil(clamped / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+  return `${(clamped / 1000).toFixed(1)}`;
+}
 const STANDARD_START_FEN = new Chess().fen();
 const MATERIAL_VALUES_CP = {
   p: 100,
@@ -3995,8 +4040,106 @@ function createInitialGameState(level = state.campaignLevel) {
     gameRecorded: false,     // M : partie déjà ajoutée à l'historique
     replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
     revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
-    finalMateLives: 0        // S : retours « dernière chance » en phase finale du mat
+    finalMateLives: 0,       // S : retours « dernière chance » en phase finale du mat
+    clock: makeInitialClock() // U : pendule des deux camps (null si sans horloge)
   };
+}
+
+// U — Construit l'état d'horloge initial pour une partie d'aventure (null si la
+// cadence est « sans horloge » ou hors aventure).
+function makeInitialClock() {
+  const tc = getTimeControlConfig(state.adventure?.timeControl);
+  if (state.screen !== 'adventure' || tc.id === 'off') {
+    return null;
+  }
+  return { control: tc.id, w: tc.baseMs, b: tc.baseMs, lastTickTs: null };
+}
+
+let clockTimer = null;
+
+function startClockTicker() {
+  if (clockTimer) {
+    return;
+  }
+  clockTimer = setInterval(tickClock, 200);
+}
+
+// Décompte temps réel de l'horloge du joueur quand c'est à lui de jouer.
+// L'horloge de Stockfish, elle, est décrémentée d'un échantillon (loi normale)
+// à chaque coup adverse (cf. deductStockfishClock).
+function tickClock() {
+  const game = state.game;
+  if (!game?.clock) {
+    return;
+  }
+  if (game.status !== 'playing') {
+    game.clock.lastTickTs = null;
+    return;
+  }
+  const playerToMove =
+    game.chess.turn() === 'w' && !game.locked && !game.cinematic && game.historyView == null;
+  if (playerToMove) {
+    const now = performance.now();
+    if (game.clock.lastTickTs != null) {
+      game.clock.w = Math.max(0, game.clock.w - (now - game.clock.lastTickTs));
+    }
+    game.clock.lastTickTs = now;
+    if (game.clock.w <= 0) {
+      game.clock.w = 0;
+      renderClocks();
+      finishGame('lost', '⏰ Temps écoulé : tu perds au temps.');
+      return;
+    }
+  } else {
+    game.clock.lastTickTs = null; // horloge du joueur en pause hors de son tour
+  }
+  renderClocks();
+}
+
+// Décrémente l'horloge de Stockfish du temps « réfléchi » (loi normale). Renvoie
+// true s'il tombe au temps (la partie est alors gagnée par le joueur).
+function deductStockfishClock(game) {
+  if (!game?.clock) {
+    return false;
+  }
+  const tc = getTimeControlConfig(game.clock.control);
+  game.clock.b = Math.max(0, game.clock.b - sampleStockfishMoveTime(tc));
+  if (game.clock.b <= 0) {
+    game.clock.b = 0;
+    renderClocks();
+    finishGame('won', '⏰ Stockfish tombe au temps — tu gagnes !');
+    return true;
+  }
+  renderClocks();
+  return false;
+}
+
+function renderClocks() {
+  const wrap = document.querySelector('#advClocks');
+  if (!wrap) {
+    return;
+  }
+  const game = state.game;
+  const clock = game?.clock;
+  const show =
+    Boolean(clock) &&
+    state.screen === 'adventure' &&
+    document.body.classList.contains('is-adv-board-view');
+  wrap.hidden = !show;
+  if (!show) {
+    return;
+  }
+  const playing = game.status === 'playing';
+  const whiteActive = playing && game.chess.turn() === 'w' && !game.locked && !game.cinematic;
+  const blackActive = playing && game.chess.turn() === 'b';
+  const whiteEl = document.querySelector('#advClockWhite');
+  const blackEl = document.querySelector('#advClockBlack');
+  advSetText('#advClockWhiteTime', formatClock(clock.w));
+  advSetText('#advClockBlackTime', formatClock(clock.b));
+  whiteEl?.classList.toggle('is-active', whiteActive);
+  blackEl?.classList.toggle('is-active', blackActive);
+  whiteEl?.classList.toggle('is-low', clock.w < 20000);
+  blackEl?.classList.toggle('is-low', clock.b < 20000);
 }
 
 function getGameNode() {
@@ -5493,6 +5636,9 @@ async function advanceOpponentTurn() {
       }
       applyGameEdge(edge);
       game.openingBlackMoves += 1;
+      if (deductStockfishClock(game)) {
+        return; // U : Stockfish tombe au temps
+      }
       game.message = `Les Noirs suivent le livre: ${edge.san} (${formatPercent(edge.probability)}).`;
       if (!getExpectedWhiteBookEdges().length) {
         enterFreePhase(
@@ -5553,6 +5699,9 @@ async function playStockfishBlackMove() {
   }
 
   applyFreeMove(move, `Stockfish ${stockfishLabel}`);
+  if (deductStockfishClock(game)) {
+    return; // U : Stockfish tombe au temps
+  }
   const afterEvaluation = await evaluator.evaluate(game.chess.fen());
   game.currentEvalCp = afterEvaluation.cpWhite;
   game.currentPv = afterEvaluation.pv;
@@ -6149,6 +6298,7 @@ function renderGameDetails() {
   if (!game) {
     return;
   }
+  renderClocks(); // U : maj de la pendule à chaque rendu de partie
 
   const boardNode = makeGameBoardNode();
   const reviewEntry = getActiveFreeReviewEntry();
@@ -6952,7 +7102,8 @@ function createAdventureState() {
     movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
     playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
     games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
-    difficulty: DEFAULT_ADV_DIFFICULTY
+    difficulty: DEFAULT_ADV_DIFFICULTY,
+    timeControl: DEFAULT_TIME_CONTROL // U : cadence de la pendule
   };
 }
 
@@ -6976,6 +7127,9 @@ function loadAdventure() {
     base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
       ? data.difficulty
       : DEFAULT_ADV_DIFFICULTY;
+    base.timeControl = TIME_CONTROLS.some((t) => t.id === data.timeControl)
+      ? data.timeControl
+      : DEFAULT_TIME_CONTROL;
   } catch {
     return createAdventureState();
   }
@@ -6999,7 +7153,8 @@ function saveAdventure() {
         movesPlayed: state.adventure.movesPlayed || 0,
         playerXp: state.adventure.playerXp || 0,
         games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
-        difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
+        difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY,
+        timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL
       })
     );
   } catch {
@@ -7321,6 +7476,46 @@ function renderAdvDifficulty() {
   if (desc) {
     desc.textContent = current.desc;
   }
+}
+
+// U — Sélecteur de cadence (carte) : sans horloge / bullet / blitz / rapide.
+function renderAdvTimeControl() {
+  const host = document.querySelector('#advTimeButtons');
+  if (!host) {
+    return;
+  }
+  const currentId = state.adventure?.timeControl || DEFAULT_TIME_CONTROL;
+  host.replaceChildren();
+  for (const tc of TIME_CONTROLS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `adv-diff-btn${tc.id === currentId ? ' is-active' : ''}`;
+    btn.setAttribute('aria-pressed', tc.id === currentId ? 'true' : 'false');
+    btn.innerHTML =
+      `<span class="adv-diff-ico" aria-hidden="true">${tc.icon}</span>` +
+      `<span class="adv-diff-label">${escapeHtml(tc.label)}</span>`;
+    btn.addEventListener('click', () => setAdvTimeControl(tc.id));
+    host.append(btn);
+  }
+  const desc = document.querySelector('#advTimeDesc');
+  if (desc) {
+    const tc = getTimeControlConfig(currentId);
+    desc.textContent =
+      tc.id === 'off'
+        ? 'Pas de pression du temps : joue à ton rythme.'
+        : `${Math.round(tc.baseMs / 60000)} min par camp · Stockfish ~${Math.round(
+            tc.meanMs / 1000
+          )} s/coup (σ ${Math.round((tc.meanMs * 2) / 1000)} s). Appliqué à la prochaine partie.`;
+  }
+}
+
+function setAdvTimeControl(id) {
+  if (!state.adventure || !TIME_CONTROLS.some((t) => t.id === id)) {
+    return;
+  }
+  state.adventure.timeControl = id;
+  saveAdventure();
+  renderAdvTimeControl();
 }
 
 // Bouton « Annuler » (retour arrière) : actif seulement si l'aide est dispo et qu'un
@@ -8511,6 +8706,7 @@ function renderAdventureMap() {
   advSetText('#advStatLevel', String(progress.level));
   advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
   renderAdvDifficulty();
+  renderAdvTimeControl();
   renderAdvGameHistory();
 
   const act1 = document.querySelector('#advAct1Stages');
@@ -8773,6 +8969,7 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
+  startClockTicker(); // U : démarre le décompte de la pendule
 }
 
 init().catch((error) => {

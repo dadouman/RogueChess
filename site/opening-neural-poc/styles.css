@@ -1441,6 +1441,59 @@ body.is-brain-focused .graph-stage::after {
   justify-items: center;
 }
 
+/* U — Pendule : overlay compact au coin haut-droit de l'échiquier. */
+.adv-clocks {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 8;
+  display: grid;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.adv-clock {
+  display: grid;
+  justify-items: end;
+  min-width: 66px;
+  padding: 3px 9px;
+  border-radius: 9px;
+  background: rgba(17, 21, 14, 0.84);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0.72;
+  transition: opacity 160ms ease, border-color 160ms ease;
+}
+
+.adv-clock.is-active {
+  opacity: 1;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--cyan), 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.adv-clock-name {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.adv-clock-time {
+  font-size: 19px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.05;
+}
+
+.adv-clock.is-low .adv-clock-time {
+  color: #ff8c6b;
+}
+
+.adv-clock.is-low.is-active .adv-clock-time {
+  color: #ff5a4d;
+}
+
 .board-zoom-button {
   position: absolute;
   top: 8px;

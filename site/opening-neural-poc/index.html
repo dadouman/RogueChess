@@ -283,6 +283,16 @@
             <span class="engine-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
           </div>
           <div id="advBoardCaption" class="adv-board-caption" aria-live="polite"></div>
+          <div id="advClocks" class="adv-clocks" hidden aria-label="Pendule">
+            <div id="advClockBlack" class="adv-clock">
+              <span class="adv-clock-name">Stockfish</span>
+              <b id="advClockBlackTime" class="adv-clock-time">--:--</b>
+            </div>
+            <div id="advClockWhite" class="adv-clock">
+              <span class="adv-clock-name">Toi</span>
+              <b id="advClockWhiteTime" class="adv-clock-time">--:--</b>
+            </div>
+          </div>
         </div>
 
         <div id="detailInfoContent" class="detail-info-content">
@@ -406,6 +416,12 @@
           <span class="kicker">Difficulté · aides affichées</span>
           <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
           <p id="advDifficultyDesc" class="adv-difficulty-desc"></p>
+        </section>
+
+        <section class="adv-difficulty">
+          <span class="kicker">Cadence · pendule</span>
+          <div id="advTimeButtons" class="adv-difficulty-buttons" role="group" aria-label="Cadence de jeu"></div>
+          <p id="advTimeDesc" class="adv-difficulty-desc"></p>
         </section>
 
         <div class="adv-map-acts">
