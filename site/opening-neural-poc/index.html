@@ -276,13 +276,6 @@
 
         <div class="board-shell">
           <button id="boardZoomButton" class="board-zoom-button" type="button">Agrandir</button>
-          <div id="boardPreview" class="board-preview" aria-label="Échiquier de la position"></div>
-          <div id="engineThinking" class="engine-thinking" aria-hidden="true">
-            <span class="engine-thinking-brain" aria-hidden="true">🧠</span>
-            <span class="engine-thinking-text">Stockfish réfléchit</span>
-            <span class="engine-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          </div>
-          <div id="advBoardCaption" class="adv-board-caption" aria-live="polite"></div>
           <div id="advClocks" class="adv-clocks" hidden aria-label="Pendule">
             <div id="advClockBlack" class="adv-clock">
               <span class="adv-clock-name">Stockfish</span>
@@ -293,6 +286,13 @@
               <b id="advClockWhiteTime" class="adv-clock-time">--:--</b>
             </div>
           </div>
+          <div id="boardPreview" class="board-preview" aria-label="Échiquier de la position"></div>
+          <div id="engineThinking" class="engine-thinking" aria-hidden="true">
+            <span class="engine-thinking-brain" aria-hidden="true">🧠</span>
+            <span class="engine-thinking-text">Stockfish réfléchit</span>
+            <span class="engine-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </div>
+          <div id="advBoardCaption" class="adv-board-caption" aria-live="polite"></div>
         </div>
 
         <div id="detailInfoContent" class="detail-info-content">
@@ -421,6 +421,11 @@
         <section class="adv-difficulty">
           <span class="kicker">Cadence · pendule</span>
           <div id="advTimeButtons" class="adv-difficulty-buttons" role="group" aria-label="Cadence de jeu"></div>
+          <div class="adv-time-custom">
+            <label for="advTimeCustomInput">🎛️ Perso :</label>
+            <input id="advTimeCustomInput" class="adv-time-custom-input" type="number" min="0.5" max="180" step="0.5" inputmode="decimal" aria-label="Minutes par camp (cadence personnalisée)" />
+            <span>min / camp</span>
+          </div>
           <p id="advTimeDesc" class="adv-difficulty-desc"></p>
         </section>
 

@@ -1441,27 +1441,29 @@ body.is-brain-focused .graph-stage::after {
   justify-items: center;
 }
 
-/* U — Pendule : overlay compact au coin haut-droit de l'échiquier. */
+/* U — Pendule : barre horizontale AU-DESSUS de l'échiquier (hors des cases,
+   donc plus de superposition). Stockfish à gauche, toi à droite. */
 .adv-clocks {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 8;
-  display: grid;
-  gap: 6px;
-  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 8px;
 }
 
 .adv-clock {
-  display: grid;
-  justify-items: end;
-  min-width: 66px;
-  padding: 3px 9px;
+  flex: 1 1 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
   border-radius: 9px;
   background: rgba(17, 21, 14, 0.84);
   border: 1px solid var(--line);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  opacity: 0.72;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  opacity: 0.68;
   transition: opacity 160ms ease, border-color 160ms ease;
 }
 
@@ -1472,14 +1474,14 @@ body.is-brain-focused .graph-stage::after {
 }
 
 .adv-clock-name {
-  font-size: 9px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted);
 }
 
 .adv-clock-time {
-  font-size: 19px;
+  font-size: 20px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -3566,6 +3568,42 @@ body.screen-adventure.is-adv-board-view .adv-player-badge.is-levelup {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+}
+
+/* La cadence a 5 options (dont « Perso ») : on laisse les boutons s'ajuster. */
+#advTimeButtons {
+  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+}
+
+/* U — Champ de cadence personnalisée (minutes par camp). */
+.adv-time-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.adv-time-custom.is-active {
+  color: var(--text);
+}
+
+.adv-time-custom-input {
+  width: 64px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.adv-time-custom.is-active .adv-time-custom-input {
+  border-color: var(--cyan);
 }
 
 .adv-diff-btn {

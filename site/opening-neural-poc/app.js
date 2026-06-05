@@ -84,11 +84,21 @@ const TIME_CONTROLS = [
   { id: 'off', label: 'Sans horloge', icon: '∞', baseMs: 0, meanMs: 0 },
   { id: 'bullet', label: 'Bullet 2′', icon: '🚅', baseMs: 120000, meanMs: 1000 },
   { id: 'blitz', label: 'Blitz 5′', icon: '⚡', baseMs: 300000, meanMs: 3000 },
-  { id: 'normal', label: 'Rapide 10′', icon: '⏱️', baseMs: 600000, meanMs: 6000 }
+  { id: 'normal', label: 'Rapide 10′', icon: '⏱️', baseMs: 600000, meanMs: 6000 },
+  { id: 'custom', label: 'Perso', icon: '🎛️', baseMs: 0, meanMs: 0 }
 ];
 const DEFAULT_TIME_CONTROL = 'off';
 
 function getTimeControlConfig(id) {
+  // Cadence personnalisée : durée librement réglée par le joueur (en minutes).
+  if (id === 'custom') {
+    const minutes = clamp(Number(state.adventure?.customClockMinutes) || 10, 0.5, 180);
+    const baseMs = Math.round(minutes * 60000);
+    // Temps moyen de réflexion de Stockfish dérivé de la cadence (~0,6 s/minute,
+    // cohérent avec bullet/blitz/rapide). σ = moyenne×2 comme partout.
+    const meanMs = Math.max(300, Math.round(minutes * 600));
+    return { id: 'custom', label: 'Perso', icon: '🎛️', baseMs, meanMs };
+  }
   return TIME_CONTROLS.find((tc) => tc.id === id) || TIME_CONTROLS[0];
 }
 
@@ -7254,6 +7264,7 @@ function createAdventureState() {
     games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
     difficulty: DEFAULT_ADV_DIFFICULTY,
     timeControl: DEFAULT_TIME_CONTROL, // U : cadence de la pendule
+    customClockMinutes: 10, // U : minutes/camp de la cadence personnalisée
     coins: 0,            // Boutique : pièces gagnées par victoire
     boostedLines: [],    // O : lignes d'ouverture surpondérées (achat boutique)
     threatsEnabled: false // R : aide « voir les menaces » activée
@@ -7283,6 +7294,7 @@ function loadAdventure() {
     base.timeControl = TIME_CONTROLS.some((t) => t.id === data.timeControl)
       ? data.timeControl
       : DEFAULT_TIME_CONTROL;
+    base.customClockMinutes = clamp(Number(data.customClockMinutes) || 10, 0.5, 180);
     base.coins = Math.max(0, Number(data.coins) || 0);
     base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
     base.threatsEnabled = Boolean(data.threatsEnabled);
@@ -7311,6 +7323,7 @@ function saveAdventure() {
         games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
         difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY,
         timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL,
+        customClockMinutes: state.adventure.customClockMinutes || 10,
         coins: state.adventure.coins || 0,
         boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
         threatsEnabled: Boolean(state.adventure.threatsEnabled)
@@ -7656,13 +7669,22 @@ function renderAdvTimeControl() {
     btn.addEventListener('click', () => setAdvTimeControl(tc.id));
     host.append(btn);
   }
+  // Champ de cadence personnalisée : synchronisé avec la valeur stockée.
+  const input = document.querySelector('#advTimeCustomInput');
+  if (input && document.activeElement !== input) {
+    input.value = String(state.adventure?.customClockMinutes ?? 10);
+  }
+  document.querySelector('.adv-time-custom')?.classList.toggle('is-active', currentId === 'custom');
+
   const desc = document.querySelector('#advTimeDesc');
   if (desc) {
     const tc = getTimeControlConfig(currentId);
+    const minutes = tc.baseMs / 60000;
+    const minutesLabel = Number.isInteger(minutes) ? minutes : minutes.toFixed(1);
     desc.textContent =
       tc.id === 'off'
         ? 'Pas de pression du temps : joue à ton rythme.'
-        : `${Math.round(tc.baseMs / 60000)} min par camp · Stockfish ~${Math.round(
+        : `${minutesLabel} min par camp · Stockfish ~${Math.round(
             tc.meanMs / 1000
           )} s/coup (σ ${Math.round((tc.meanMs * 2) / 1000)} s). Appliqué à la prochaine partie.`;
   }
@@ -7673,6 +7695,18 @@ function setAdvTimeControl(id) {
     return;
   }
   state.adventure.timeControl = id;
+  saveAdventure();
+  renderAdvTimeControl();
+}
+
+// U — Règle la cadence personnalisée (minutes par camp) et l'active.
+function setAdvCustomClock(minutesRaw) {
+  if (!state.adventure) {
+    return;
+  }
+  const minutes = clamp(Number(minutesRaw) || 10, 0.5, 180);
+  state.adventure.customClockMinutes = minutes;
+  state.adventure.timeControl = 'custom';
   saveAdventure();
   renderAdvTimeControl();
 }
@@ -9128,6 +9162,11 @@ function bindAdventureEvents() {
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
+  const customClockInput = document.querySelector('#advTimeCustomInput');
+  if (customClockInput) {
+    // U : cadence personnalisée (validée à la perte de focus / Entrée).
+    customClockInput.addEventListener('change', () => setAdvCustomClock(customClockInput.value));
+  }
   // Barre d'actions portable : Niveau / Analyse / Cerveau
   bind('#advBarMenu', openAdventureMap);
   bind('#advBarAnalyse', openAdvAnalyseSheet);
