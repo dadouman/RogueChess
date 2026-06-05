@@ -2750,6 +2750,28 @@ function matedKingSquare(fen) {
   return null;
 }
 
+// R (boutique) — Cases des pièces blanches attaquées par les Noirs (menaces),
+// affichées seulement quand c'est au joueur de jouer.
+function threatenedWhiteSquares(fen) {
+  const set = new Set();
+  try {
+    const probe = new Chess(fen);
+    if (probe.turn() !== 'w') {
+      return set;
+    }
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.color === 'w' && probe.isAttacked(cell.square, 'b')) {
+          set.add(cell.square);
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas de menaces */
+  }
+  return set;
+}
+
 function renderBoard(node, container = elements.boardPreview) {
   const [boardPart] = node.fen.split(' ');
   const rows = boardPart.split('/');
@@ -2775,6 +2797,9 @@ function renderBoard(node, container = elements.boardPreview) {
   const premovable = container === elements.boardPreview && isPremoveContext();
   const premoveFrom = state.game?.premove?.from ?? state.game?.premoveSelect ?? null;
   const premoveTo = state.game?.premove?.to ?? null;
+  // R : surbrillance des pièces blanches menacées (aide boutique débloquée).
+  const threatSquares =
+    interactive && advThreatsActive() ? threatenedWhiteSquares(node.fen) : new Set();
   container.replaceChildren();
   container.classList.toggle('is-game-board', interactive);
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
@@ -2796,6 +2821,7 @@ function renderBoard(node, container = elements.boardPreview) {
     premovable,
     premoveFrom,
     premoveTo,
+    threatSquares,
     aids: advAids()
   };
   rows.forEach((row, rankIndex) => {
@@ -3096,6 +3122,7 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     squareName === options.matedSquare ? 'is-mated' : '',
     squareName === options.premoveFrom ? 'is-premove-from' : '',
     squareName === options.premoveTo ? 'is-premove-to' : '',
+    options.threatSquares?.has(squareName) ? 'is-threat' : '',
     squareName === options.selectedSquare ? 'is-selected' : ''
   ]
     .filter(Boolean)
@@ -4496,6 +4523,14 @@ function getOpponentBookEdgesForRun() {
   const edges = getBlackBookEdges();
   if (edges.length <= 1) {
     return edges;
+  }
+  // O (boutique) : si des réponses prolongent une ligne surpondérée (achetée),
+  // on les privilégie pour que le joueur la rencontre et puisse la travailler.
+  if (advBoostedLines().length) {
+    const boosted = edges.filter((edge) => advNextSanContinuesBoosted(edge.san));
+    if (boosted.length) {
+      return boosted;
+    }
   }
   // N (boss) : on masque les réponses qui rejoueraient une ligne déjà gagnée,
   // pour pousser vers de la variété. Si tout est masqué, on relâche le filtre.
@@ -7218,7 +7253,10 @@ function createAdventureState() {
     playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
     games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
     difficulty: DEFAULT_ADV_DIFFICULTY,
-    timeControl: DEFAULT_TIME_CONTROL // U : cadence de la pendule
+    timeControl: DEFAULT_TIME_CONTROL, // U : cadence de la pendule
+    coins: 0,            // Boutique : pièces gagnées par victoire
+    boostedLines: [],    // O : lignes d'ouverture surpondérées (achat boutique)
+    threatsEnabled: false // R : aide « voir les menaces » activée
   };
 }
 
@@ -7245,6 +7283,9 @@ function loadAdventure() {
     base.timeControl = TIME_CONTROLS.some((t) => t.id === data.timeControl)
       ? data.timeControl
       : DEFAULT_TIME_CONTROL;
+    base.coins = Math.max(0, Number(data.coins) || 0);
+    base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
+    base.threatsEnabled = Boolean(data.threatsEnabled);
   } catch {
     return createAdventureState();
   }
@@ -7269,7 +7310,10 @@ function saveAdventure() {
         playerXp: state.adventure.playerXp || 0,
         games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
         difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY,
-        timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL
+        timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL,
+        coins: state.adventure.coins || 0,
+        boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
+        threatsEnabled: Boolean(state.adventure.threatsEnabled)
       })
     );
   } catch {
@@ -7631,6 +7675,105 @@ function setAdvTimeControl(id) {
   state.adventure.timeControl = id;
   saveAdventure();
   renderAdvTimeControl();
+}
+
+// === Boutique (rendu + achats) ===
+function renderAdvShop() {
+  if (!state.adventure) {
+    return;
+  }
+  advSetText('#advShopCoins', String(advCoins()));
+
+  // R — bascule « voir les menaces » (gratuite, débloquée après 3 boss).
+  const unlocked = advThreatsUnlocked();
+  const threatsBtn = document.querySelector('#advShopThreatsBtn');
+  if (threatsBtn) {
+    threatsBtn.disabled = !unlocked;
+    threatsBtn.textContent = !unlocked
+      ? `🔒 ${SHOP_THREATS_BOSS_UNLOCK} boss`
+      : state.adventure.threatsEnabled
+        ? 'Désactiver'
+        : 'Activer';
+    threatsBtn.classList.toggle('is-active', unlocked && Boolean(state.adventure.threatsEnabled));
+  }
+  const threatsDesc = document.querySelector('#advShopThreatsDesc');
+  if (threatsDesc) {
+    threatsDesc.textContent = unlocked
+      ? 'Surligne en rouge tes pièces attaquées par les Noirs.'
+      : `Débloqué après ${SHOP_THREATS_BOSS_UNLOCK} boss vaincus (actuel ${
+          state.adventure.highestBoss || 0
+        }).`;
+  }
+
+  // O — surpondérer une ligne déjà jouée (depuis l'historique).
+  const host = document.querySelector('#advShopLines');
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  const stats = advGameStats();
+  const lines = stats.byOpening.filter((o) => o.key && o.key !== 'hors-livre').slice(0, 6);
+  if (!lines.length) {
+    const empty = document.createElement('p');
+    empty.className = 'adv-shop-empty';
+    empty.textContent = 'Joue des parties pour débloquer des lignes à surpondérer.';
+    host.append(empty);
+    return;
+  }
+  for (const opening of lines) {
+    const sourceGame = stats.games.find(
+      (g) => g.openingKey === opening.key && Array.isArray(g.lineSans) && g.lineSans.length
+    );
+    const boosted = advLineIsBoosted(opening.key);
+    const row = document.createElement('div');
+    row.className = 'adv-shop-line';
+    const label = document.createElement('span');
+    label.textContent = opening.label;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'adv-ghost';
+    if (boosted) {
+      btn.textContent = '✓ surpondérée';
+      btn.disabled = true;
+    } else {
+      btn.textContent = `Booster (${SHOP_LINE_BOOST_COST}🪙)`;
+      btn.disabled = !sourceGame || advCoins() < SHOP_LINE_BOOST_COST;
+      if (sourceGame) {
+        btn.addEventListener('click', () =>
+          advBuyLineBoost(opening.key, opening.label, sourceGame.lineSans)
+        );
+      }
+    }
+    row.append(label, btn);
+    host.append(row);
+  }
+}
+
+function advToggleThreats() {
+  if (!state.adventure || !advThreatsUnlocked()) {
+    return;
+  }
+  state.adventure.threatsEnabled = !state.adventure.threatsEnabled;
+  saveAdventure();
+  renderAdvShop();
+  renderGameDetails();
+}
+
+function advBuyLineBoost(key, label, sans) {
+  if (
+    !state.adventure ||
+    advLineIsBoosted(key) ||
+    advCoins() < SHOP_LINE_BOOST_COST ||
+    !Array.isArray(sans)
+  ) {
+    return;
+  }
+  state.adventure.coins -= SHOP_LINE_BOOST_COST;
+  state.adventure.boostedLines = state.adventure.boostedLines || [];
+  state.adventure.boostedLines.push({ key, label, sans });
+  saveAdventure();
+  showAdventureToast({ icon: '📈', title: 'Ligne surpondérée', text: label, kind: null });
+  renderAdvShop();
 }
 
 // Bouton « Annuler » (retour arrière) : actif seulement si l'aide est dispo et qu'un
@@ -7997,6 +8140,63 @@ function advGameStats() {
   };
 }
 
+// === Boutique : monnaie « pièces », surpondération de ligne (O), menaces (R) ===
+const SHOP_LINE_BOOST_COST = 30;     // O : coût pour surpondérer une ligne d'ouverture
+const SHOP_THREATS_BOSS_UNLOCK = 3;  // R : « voir les menaces » débloqué après 3 boss
+
+// Récompense en pièces pour une victoire (boss = davantage selon le niveau).
+function advWinCoinReward(run) {
+  if (!run) {
+    return 0;
+  }
+  if (run.kind === 'boss') {
+    return 20 + (run.bossLevel || 1) * 5;
+  }
+  return run.trapsMode ? 8 : 5; // leçon / piège
+}
+
+function advCoins() {
+  return state.adventure?.coins || 0;
+}
+
+function advAwardCoins(amount) {
+  if (!state.adventure || amount <= 0) {
+    return;
+  }
+  state.adventure.coins = (state.adventure.coins || 0) + amount;
+}
+
+function advThreatsUnlocked() {
+  return (state.adventure?.highestBoss || 0) >= SHOP_THREATS_BOSS_UNLOCK;
+}
+
+function advThreatsActive() {
+  return Boolean(state.adventure?.threatsEnabled) && advThreatsUnlocked();
+}
+
+function advBoostedLines() {
+  return state.adventure?.boostedLines || [];
+}
+
+function advLineIsBoosted(key) {
+  return advBoostedLines().some((line) => line.key === key);
+}
+
+// O : un coup d'ouverture prolonge-t-il une ligne surpondérée (achat boutique) ?
+function advNextSanContinuesBoosted(nextSan, game = state.game) {
+  const boosted = advBoostedLines();
+  if (!boosted.length) {
+    return false;
+  }
+  const prefix = [...advCurrentOpeningSans(game), normalizeSanForCompare(nextSan)];
+  return boosted.some(
+    (line) =>
+      Array.isArray(line.sans) &&
+      line.sans.length >= prefix.length &&
+      prefix.every((san, index) => normalizeSanForCompare(line.sans[index]) === san)
+  );
+}
+
 // Libellé court de l'adversaire d'une partie enregistrée (M).
 function advFormatGameOpponent(g) {
   if (g.kind === 'boss') {
@@ -8109,6 +8309,15 @@ function adventureOnGameFinished(result) {
     return;
   }
   advRecordGame(result);
+  // Boutique : pièces gagnées à chaque victoire (boss/leçon/piège).
+  if (result === 'won' && !run.coinsAwarded) {
+    run.coinsAwarded = true;
+    const reward = advWinCoinReward(run);
+    if (reward > 0) {
+      advAwardCoins(reward);
+      showAdventureToast({ icon: '🪙', title: `+${reward} pièces`, text: 'À dépenser à la boutique.', kind: null });
+    }
+  }
   if (run.kind === 'boss') {
     if (result === 'won' && !run.resolved) {
       run.resolved = true;
@@ -8822,6 +9031,7 @@ function renderAdventureMap() {
   advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
   renderAdvDifficulty();
   renderAdvTimeControl();
+  renderAdvShop();
   renderAdvGameHistory();
 
   const act1 = document.querySelector('#advAct1Stages');
@@ -8917,6 +9127,7 @@ function bindAdventureEvents() {
   bind('#advMapButton', openAdventureMap);
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
+  bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Barre d'actions portable : Niveau / Analyse / Cerveau
   bind('#advBarMenu', openAdventureMap);
   bind('#advBarAnalyse', openAdvAnalyseSheet);
