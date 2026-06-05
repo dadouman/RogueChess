@@ -2814,6 +2814,7 @@ function renderBoard(node, container = elements.boardPreview) {
     interactive && advThreatsActive() ? threatenedWhiteSquares(node.fen) : new Set();
   container.replaceChildren();
   container.classList.toggle('is-game-board', interactive);
+  container.classList.toggle('is-premovable', premovable); // T : drag de prémouvement (touch-action)
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
   // L'échiquier qui affiche un mat porte la classe pour le flash de fin de partie.
   container.classList.toggle('is-checkmate-board', Boolean(matedSquare));
@@ -3457,7 +3458,11 @@ function onBoardPointerDown(event) {
     return; // bouton gauche / tactile uniquement
   }
   const board = elements.boardPreview;
-  if (!isBoardInteractive(board)) {
+  const interactive = isBoardInteractive(board);
+  // T : pendant la réflexion adverse, on peut glisser une pièce blanche pour
+  // armer un prémouvement (même si le plateau n'est pas « jouable »).
+  const premovable = !interactive && board === elements.boardPreview && isPremoveContext();
+  if (!interactive && !premovable) {
     return;
   }
   const squareEl = event.target.closest?.('.board-square');
@@ -3465,18 +3470,26 @@ function onBoardPointerDown(event) {
     return;
   }
   const from = squareEl.dataset.square;
-  const chess = getInteractiveChess();
-  const playableColor = getPlayableBoardColor();
-  const piece = chess?.get(from);
-  if (!chess || !playableColor || piece?.color !== playableColor) {
-    return; // on ne glisse que ses propres pièces
+  if (interactive) {
+    const chess = getInteractiveChess();
+    const playableColor = getPlayableBoardColor();
+    const piece = chess?.get(from);
+    if (!chess || !playableColor || piece?.color !== playableColor) {
+      return; // on ne glisse que ses propres pièces
+    }
+  } else {
+    const piece = state.game?.chess?.get(from);
+    if (!piece || piece.color !== 'w') {
+      return; // prémouvement : on ne glisse que ses propres pièces (Blanches)
+    }
   }
   boardDrag = {
     from,
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
-    started: false
+    started: false,
+    premove: premovable
   };
   window.addEventListener('pointermove', onBoardPointerMove);
   window.addEventListener('pointerup', onBoardPointerUp);
@@ -3542,6 +3555,10 @@ function onBoardPointerUp(event) {
   const to = targetEl && elements.boardPreview.contains(targetEl) ? targetEl.dataset.square : null;
 
   if (to && to !== drag.from) {
+    if (drag.premove) {
+      setPremoveFromDrag(drag.from, to); // T : drop pendant le tour adverse → prémouvement armé
+      return;
+    }
     skipNextMoveAnim = true; // la pièce a déjà glissé à la main : pas de ré-animation
     if (attemptBoardMove(drag.from, to)) {
       return; // coup joué : le re-rendu efface les surbrillances
@@ -3549,6 +3566,19 @@ function onBoardPointerUp(event) {
     skipNextMoveAnim = false; // coup refusé : rien n'a bougé
   }
   clearDragTargets(); // drop annulé : nettoie sans re-rendre
+}
+
+// T — Arme un prémouvement glissé (drop d'une pièce blanche pendant le tour adverse).
+function setPremoveFromDrag(from, to) {
+  const game = state.game;
+  if (!game || !isPremoveContext()) {
+    clearDragTargets();
+    return;
+  }
+  game.premove = { from, to };
+  game.premoveSelect = null;
+  game.message = `⚡ Prémouvement armé : ${from} → ${to}. Il se jouera dès ton tour.`;
+  renderGameDetails();
 }
 
 // Surbrillances de sélection/cibles posées directement sur les cases (sans re-rendu,
@@ -4038,6 +4068,14 @@ function advBoardTopText() {
   // Conversion automatique en cours : bandeau dédié au-dessus de l'échiquier.
   if (game.victoryCinematic) {
     return '🎬 Conversion automatique vers le mat…';
+  }
+  // T : pendant la réflexion adverse, on invite à préparer un prémouvement (et on
+  // affiche celui qui est armé). Il se jouera automatiquement dès ton tour.
+  if (isPremoveContext()) {
+    if (game.premove) {
+      return `⚡ Prémouvement armé : ${game.premove.from} → ${game.premove.to}`;
+    }
+    return '💡 Glisse une pièce pour préparer ton coup (prémouvement)';
   }
   const run = state.advRun;
   // Mode Pièges : on annonce l'objectif « livre le mat ».

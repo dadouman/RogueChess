@@ -1649,12 +1649,15 @@ body.is-brain-focused .graph-stage::after {
   will-change: left, top;
 }
 
-/* Sur le plateau jouable : pièces « attrapables » + pas de scroll/zoom tactile pendant le drag. */
-.board-preview.is-game-board .board-square {
+/* Sur le plateau jouable (et en prémouvement) : pièces « attrapables » + pas de
+   scroll/zoom tactile pendant le drag. */
+.board-preview.is-game-board .board-square,
+.board-preview.is-premovable .board-square {
   touch-action: none;
 }
 
-.board-preview.is-game-board .board-square img {
+.board-preview.is-game-board .board-square img,
+.board-preview.is-premovable .board-square img {
   cursor: grab;
 }
 
