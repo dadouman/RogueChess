@@ -3055,6 +3055,9 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
 
 .adv-map-panel {
   display: grid;
+  /* Colonne unique bornée à la largeur du panneau : minmax(0,...) empêche le
+     contenu large (grille de cadence, longs libellés) d'élargir toute la carte. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   width: min(100%, 1040px);
   max-height: 92vh;
@@ -3165,6 +3168,18 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   gap: 16px;
 }
 
+/* Toutes les grilles-cartes de la carte du cerveau sont bornées à la largeur de
+   leur conteneur : sans ça, un contenu large (long libellé, grille de boutons)
+   élargit toute la carte en mobile (colonne implicite = max-content). */
+.adv-act,
+.adv-act-head,
+.adv-shop,
+.adv-shop-item-info,
+.adv-shop-lines,
+.adv-games {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* === Boutique (pièces, menaces R, surpondération O) === */
 .adv-shop {
   display: grid;
@@ -3226,6 +3241,8 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
 }
 
 .adv-shop-line span {
+  min-width: 0;
+  flex: 1 1 auto;
   font-size: 12px;
   color: var(--text);
   overflow: hidden;
@@ -3570,9 +3587,11 @@ body.screen-adventure.is-adv-board-view .adv-player-badge.is-levelup {
   gap: 6px;
 }
 
-/* La cadence a 5 options (dont « Perso ») : on laisse les boutons s'ajuster. */
+/* La cadence a 5 options (dont « Perso ») : 4 par rangée, qui rétrécissent pour
+   tenir dans la largeur (minmax(0,...) évite tout débordement) ; la 5e passe à la
+   ligne. NE PAS utiliser de min de piste fixe ici : ça élargit toute la carte. */
 #advTimeButtons {
-  grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 /* U — Champ de cadence personnalisée (minutes par camp). */
