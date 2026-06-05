@@ -1888,6 +1888,34 @@ body.is-engine-thinking .board-preview::before {
   border-color: rgba(230, 221, 202, 0.52);
 }
 
+/* N — coup du livre menant à une ligne DÉJÀ GAGNÉE : pastille teintée cyan +
+   badge « ✓ » dans le coin. Le coup reste jouable (le joueur peut rejouer). */
+.board-square.is-won-book-target::before {
+  background: rgba(117, 231, 232, 0.82);
+  box-shadow:
+    0 0 0 2px rgba(16, 17, 15, 0.68),
+    0 0 12px rgba(117, 231, 232, 0.4);
+}
+
+.board-square.is-won-book-target.is-capture-target::before {
+  background: transparent;
+  border-color: rgba(117, 231, 232, 0.9);
+}
+
+.board-square.is-won-book-target::after {
+  content: "✓";
+  position: absolute;
+  top: 3%;
+  right: 6%;
+  z-index: 4;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 900;
+  color: #7de7e8;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+}
+
 .segment-explorer {
   display: grid;
   gap: 8px;

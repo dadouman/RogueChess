@@ -2665,6 +2665,8 @@ function renderBoard(node, container = elements.boardPreview) {
   const openingBookMode = interactive && isOpeningBookChoiceActive();
   const bookTargets =
     selectedSquare && openingBookMode ? getBookTargetsFromSquare(selectedSquare) : new Set();
+  const wonBookTargets =
+    selectedSquare && openingBookMode ? getWonBookTargetsFromSquare(selectedSquare) : new Set();
   const checkSquare = kingInCheckSquare(node.fen);
   const matedSquare = matedKingSquare(node.fen);
   // Le camp maté est celui au trait dans la FEN. Le joueur joue les Blancs : roi
@@ -2684,6 +2686,7 @@ function renderBoard(node, container = elements.boardPreview) {
     playableColor,
     legalTargets,
     bookTargets,
+    wonBookTargets,
     openingBookMode,
     checkSquare,
     matedSquare,
@@ -2962,6 +2965,8 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
   // que si l'aide est active ; sinon toutes les cases légales sont des points neutres.
   const bookTarget = target && aids.moveChoices && options.bookTargets?.has(squareName);
   const offbookTarget = target && aids.moveChoices && options.openingBookMode && !bookTarget;
+  // N : coup du livre menant à une ligne déjà gagnée → badge « ✓ gagné ».
+  const wonBookTarget = bookTarget && options.wonBookTargets?.has(squareName);
   const square = document.createElement('div');
   square.className = [
     'board-square',
@@ -2972,6 +2977,7 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     selectable ? 'is-selectable' : '',
     target ? 'is-target' : '',
     bookTarget ? 'is-book-target' : '',
+    wonBookTarget ? 'is-won-book-target' : '',
     offbookTarget ? 'is-offbook-target' : '',
     target && piece ? 'is-capture-target' : '',
     squareName === options.checkSquare ? 'is-check' : '',
@@ -3062,6 +3068,29 @@ function getBookTargetsFromSquare(square) {
   return new Set(
     getExpectedWhiteBookEdges()
       .filter((edge) => edge.uci.slice(0, 2) === square)
+      .map((edge) => edge.uci.slice(2, 4))
+  );
+}
+
+// N — Cases destination des coups blancs d'ouverture menant à une ligne déjà
+// gagnée (vs boss) : on les badge « ✓ gagné » sans les masquer (le joueur garde
+// le choix de rejouer cette ligne).
+function getWonBookTargetsFromSquare(square) {
+  if (
+    !state.game ||
+    !square ||
+    !isOpeningBookChoiceActive() ||
+    !isAdventureRun() ||
+    state.advRun?.kind !== 'boss' ||
+    !advWonBossLines().length
+  ) {
+    return new Set();
+  }
+  return new Set(
+    getExpectedWhiteBookEdges()
+      .filter(
+        (edge) => edge.uci.slice(0, 2) === square && advNextSanLeadsToWonLine(edge.san)
+      )
       .map((edge) => edge.uci.slice(2, 4))
   );
 }
@@ -3903,7 +3932,9 @@ function createInitialGameState(level = state.campaignLevel) {
     cinematicTimer: null,
     victoryCinematic: false, // conversion automatique vers le mat en cours
     victoryConverted: false, // déjà déclenchée une fois pour cette partie
-    takebackLocked: false    // verrou après un retour arrière « dernière chance »
+    takebackLocked: false,   // verrou après un retour arrière « dernière chance »
+    gameRecorded: false,     // M : partie déjà ajoutée à l'historique
+    replayWonLine: false     // N : le joueur a choisi de rejouer une ligne gagnée
   };
 }
 
@@ -4147,7 +4178,18 @@ function getBlackBookEdges() {
  */
 function getOpponentBookEdgesForRun() {
   const edges = getBlackBookEdges();
-  if (!isAdventureLesson() || edges.length <= 1) {
+  if (edges.length <= 1) {
+    return edges;
+  }
+  // N (boss) : on masque les réponses qui rejoueraient une ligne déjà gagnée,
+  // pour pousser vers de la variété. Si tout est masqué, on relâche le filtre.
+  if (advWonLineMaskingActive()) {
+    const fresh = edges.filter((edge) => !advNextSanLeadsToWonLine(edge.san));
+    if (fresh.length) {
+      return fresh;
+    }
+  }
+  if (!isAdventureLesson()) {
     return edges;
   }
   // Mode Pièges : on oriente l'adversaire vers les lignes qui finissent sur un mat
@@ -4167,6 +4209,52 @@ function normalizeSanForCompare(san) {
     .replace(/[!?]+$/g, '')
     .replace(/[+#]+$/g, '')
     .trim();
+}
+
+// N — Lignes d'ouverture déjà gagnées contre un boss (suite complète de SAN).
+// Sert à forcer la variété : Stockfish évite ces lignes, le joueur les voit badgées.
+function advWonBossLines() {
+  return (state.adventure?.games || [])
+    .filter(
+      (g) =>
+        g.result === 'won' &&
+        g.kind === 'boss' &&
+        Array.isArray(g.lineSans) &&
+        g.lineSans.length
+    )
+    .map((g) => g.lineSans);
+}
+
+// SAN d'ouverture déjà joués dans la partie en cours (les deux couleurs).
+function advCurrentOpeningSans(game = state.game) {
+  return (game?.freeReviewMoves || [])
+    .filter((entry) => entry.phase === 'opening')
+    .map((entry) => normalizeSanForCompare(entry.san));
+}
+
+// Vrai si prolonger l'ouverture courante par `nextSan` reste le préfixe d'au
+// moins une ligne déjà gagnée contre un boss.
+function advNextSanLeadsToWonLine(nextSan, game = state.game) {
+  const wonLines = advWonBossLines();
+  if (!wonLines.length) {
+    return false;
+  }
+  const prefix = [...advCurrentOpeningSans(game), normalizeSanForCompare(nextSan)];
+  return wonLines.some(
+    (line) =>
+      line.length >= prefix.length &&
+      prefix.every((san, index) => normalizeSanForCompare(line[index]) === san)
+  );
+}
+
+// N s'applique en arène (boss) : le concept de « ligne gagnée » vient des bosses.
+function advWonLineMaskingActive() {
+  return (
+    isAdventureRun() &&
+    state.advRun?.kind === 'boss' &&
+    !state.game?.replayWonLine &&
+    advWonBossLines().length > 0
+  );
 }
 
 function moveToUci(move) {
@@ -5126,6 +5214,11 @@ async function submitOpeningMove(input) {
   }
 
   state.game.expectedOpeningArrows = [];
+  // N : si le joueur choisit délibérément un coup qui mène à une ligne déjà
+  // gagnée (badgé), on relâche le masquage pour Stockfish sur le reste de la partie.
+  if (advNextSanLeadsToWonLine(result.edge.san)) {
+    state.game.replayWonLine = true;
+  }
   applyGameEdge(result.edge);
   if (state.screen === 'adventure') {
     adventureOnCorrectWhiteBook(result.edge);
@@ -7294,7 +7387,9 @@ function advOpeningSignature(game) {
   let label = '';
   let moveNo = 0;
   const whiteSans = [];
+  const sans = [];
   for (const entry of openingEntries) {
+    sans.push(entry.san);
     if (entry.color === 'w') {
       moveNo += 1;
       whiteSans.push(entry.san);
@@ -7305,7 +7400,8 @@ function advOpeningSignature(game) {
   }
   return {
     key: whiteSans.join(' ') || 'hors-livre',
-    label: label || 'Hors livre'
+    label: label || 'Hors livre',
+    sans // suite complète (deux couleurs) pour le préfixe des lignes (N)
   };
 }
 
@@ -7331,6 +7427,7 @@ function advRecordGame(result) {
     trapsMode: Boolean(run.trapsMode),
     openingKey: opening.key,
     openingLabel: opening.label,
+    lineSans: opening.sans, // suite d'ouverture complète (N : préfixe de ligne)
     plies,
     mate: Boolean(game.chess?.isCheckmate?.()),
     difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
