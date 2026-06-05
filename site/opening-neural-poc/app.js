@@ -3943,7 +3943,8 @@ function createInitialGameState(level = state.campaignLevel) {
     takebackLocked: false,   // verrou après un retour arrière « dernière chance »
     gameRecorded: false,     // M : partie déjà ajoutée à l'historique
     replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
-    revealLegalDots: false   // Q : cases légales révélées (Normal, après 5 s / erreur)
+    revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
+    finalMateLives: 0        // S : retours « dernière chance » en phase finale du mat
   };
 }
 
@@ -5756,6 +5757,11 @@ async function runVictoryConversion() {
   }
   game.victoryConverted = true;
   game.victoryCinematic = true;
+  // S : on entre dans la phase finale du mat → 3 « dernières chances » pour ne
+  // pas perdre toute la partie sur une seule bourde de conversion.
+  if (!game.finalMateLives) {
+    game.finalMateLives = 3;
+  }
   setGameLocked(true);
   game.message = 'Position gagnante : conversion automatique vers le mat…';
   renderGamePanel();
@@ -7170,7 +7176,14 @@ function advTakeBack() {
 // fois : ensuite le retour arrière est verrouillé pour cette partie.
 function advUndoDefeat() {
   const game = state.game;
-  if (!game || !advAids().takeback || game.takebackLocked || game.status === 'won') {
+  if (!game || game.status === 'won') {
+    return;
+  }
+  // Retour possible via l'aide « retour arrière » (une fois) OU une « vie » de la
+  // phase finale du mat (S), disponible quelle que soit la difficulté.
+  const hasNormalTakeback = advAids().takeback && !game.takebackLocked;
+  const hasFinalLife = (game.finalMateLives || 0) > 0;
+  if (!hasNormalTakeback && !hasFinalLife) {
     return;
   }
   const chess = game.chess;
@@ -7188,7 +7201,13 @@ function advUndoDefeat() {
   document.body.classList.remove('is-game-lost', 'is-game-over');
   game.status = 'playing';
   game.locked = false;
-  game.takebackLocked = true; // une seule dernière chance
+  // S : on consomme d'abord une « vie » de phase finale ; sinon on verrouille le
+  // retour arrière normal (une seule chance).
+  if (hasFinalLife) {
+    game.finalMateLives = Math.max(0, game.finalMateLives - 1);
+  } else {
+    game.takebackLocked = true;
+  }
   game.historyView = null;
   game.selectedSquare = null;
   game.freeReview.active = false;
@@ -7219,7 +7238,11 @@ function advUndoDefeat() {
   if (resultEl) {
     resultEl.hidden = true;
   }
-  game.message = '↶ Dernière chance ! Rejoue ce coup pour renverser la partie.';
+  game.message = hasFinalLife
+    ? `↶ Dernière chance ! Encore ${game.finalMateLives} vie${
+        game.finalMateLives > 1 ? 's' : ''
+      } pour conclure le mat. Rejoue ce coup.`
+    : '↶ Dernière chance ! Rejoue ce coup pour renverser la partie.';
   renderGamePanel();
   renderGameDetails();
 }
@@ -8272,14 +8295,19 @@ function renderAdventureResult(el, game, run) {
     actions.append(advResultButton('🔁 Recommencer', () => launchLesson(), true));
   }
 
-  // Très facile : « dernière chance » pour annuler la défaite et tenter de renverser.
+  // « Dernière chance » pour annuler la défaite : via l'aide retour arrière (une
+  // fois) OU une « vie » de la phase finale du mat (S, toutes difficultés).
+  const finalLives = game.finalMateLives || 0;
   const canComeback =
     game.status === 'lost' &&
-    advAids().takeback &&
-    !game.takebackLocked &&
-    game.chess.history().length > 0;
+    game.chess.history().length > 0 &&
+    ((advAids().takeback && !game.takebackLocked) || finalLives > 0);
   if (canComeback) {
-    actions.prepend(advResultButton('↶ Revenir en arrière', () => advUndoDefeat(), true));
+    const label =
+      finalLives > 0
+        ? `↶ Dernière chance (${finalLives} vie${finalLives > 1 ? 's' : ''})`
+        : '↶ Revenir en arrière';
+    actions.prepend(advResultButton(label, () => advUndoDefeat(), true));
   }
   actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
   el.append(heading, stars, note, actions);
