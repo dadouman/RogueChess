@@ -5285,6 +5285,7 @@ async function hydrateDefeatLineEvaluations(game, entries, initialCpWhite) {
         renderFreeReviewPanel();
       }
     }
+    advRefreshRecordedMoves(game); // évals finales → maj de la partie sauvegardée
   } catch (error) {
     for (const entry of entries) {
       if (entry.status === 'evaluating') {
@@ -6078,9 +6079,11 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
   if (state.game !== game) {
     return; // partie changée pendant le calcul de la prolongation
   }
-  // B : on enregistre toute la suite dans l'historique (rejeu au ralenti).
+  // B : on enregistre toute la suite dans l'historique (rejeu au ralenti) et on
+  // réintègre ces coups auto dans la partie sauvegardée (revue d'historique).
   if (line.length) {
     appendDefeatLineReview(fen, evaluation, line);
+    advRefreshRecordedMoves(game);
   }
   if (!line.length) {
     // Pas de suite jouable : on rend simplement la main à la revue.
@@ -6143,6 +6146,26 @@ function mateMovesFromCp(cpWhite) {
   return Math.max(1, Math.round(penalty / 12));
 }
 
+// Enregistre dans l'historique de revue un coup JOUÉ AUTOMATIQUEMENT (conversion
+// vers le mat ou suite de défaite) : phase « engine-line » → ni XP joueur ni
+// verdict, mais le coup apparaît bien dans la revue et la sauvegarde.
+function recordAutoMove(move, label, beforeFen, beforeEvalCp, afterEvalCp) {
+  if (!move) {
+    return;
+  }
+  const before = Number.isFinite(beforeEvalCp) ? beforeEvalCp : 0;
+  const after = Number.isFinite(afterEvalCp) ? afterEvalCp : before;
+  recordFreeReviewMove({
+    move,
+    label,
+    phase: 'engine-line',
+    beforeFen,
+    beforeEvalCp: before,
+    evaluation: { cpWhite: after, depth: 0, pv: '', pvUci: [] },
+    status: 'engine-line'
+  });
+}
+
 /**
  * Conversion « cinématique » de la phase libre. Dès que les Blancs dépassent +2,
  * on enchaîne automatiquement meilleurs coups blancs + défense Stockfish, en animant
@@ -6196,11 +6219,13 @@ async function runVictoryConversion() {
       if (!evalNow.bestMove) {
         break;
       }
+      const wBeforeFen = game.chess.fen();
       const wmove = playUciOnChess(game.chess, evalNow.bestMove);
       if (!wmove) {
         break;
       }
       applyFreeMove(wmove, 'Conversion auto');
+      recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
       game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
       renderGamePanel();
       renderGameDetails();
@@ -6222,6 +6247,8 @@ async function runVictoryConversion() {
       if (!search.bestMove) {
         break;
       }
+      const bBeforeFen = game.chess.fen();
+      const bBeforeEvalCp = game.currentEvalCp;
       const bmove = playUciOnChess(game.chess, search.bestMove);
       if (!bmove) {
         break;
@@ -6232,6 +6259,7 @@ async function runVictoryConversion() {
         return;
       }
       game.currentEvalCp = evalNow.cpWhite;
+      recordAutoMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`, bBeforeFen, bBeforeEvalCp, evalNow.cpWhite);
       game.currentPv = evalNow.pv;
       game.currentDepth = evalNow.depth;
       renderGamePanel();
@@ -8178,7 +8206,7 @@ function advRecordGame(result) {
     (e) => e.phase !== 'start' && e.phase !== 'engine-line'
   ).length;
   state.adventure.games = state.adventure.games || [];
-  state.adventure.games.unshift({
+  const record = {
     ts: Date.now(),
     result, // 'won' | 'lost'
     kind: run.kind, // 'lesson' | 'boss'
@@ -8192,9 +8220,22 @@ function advRecordGame(result) {
     plies,
     mate: Boolean(game.chess?.isCheckmate?.()),
     difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
-  });
+  };
+  state.adventure.games.unshift(record);
+  // La suite de défaite est ajoutée plus tard (asynchrone) : on garde un lien vers
+  // ce record pour y réintégrer les coups auto une fois la suite enregistrée.
+  game.recordRef = record;
   if (state.adventure.games.length > ADV_MAX_GAMES) {
     state.adventure.games.length = ADV_MAX_GAMES;
+  }
+}
+
+// Met à jour les coups sauvegardés du dernier record (ex. après l'ajout async de
+// la suite de défaite) pour que la revue d'historique inclue les coups auto.
+function advRefreshRecordedMoves(game) {
+  if (game?.recordRef && state.adventure?.games?.includes(game.recordRef)) {
+    game.recordRef.moves = buildGameReviewMoves(game);
+    saveAdventure();
   }
 }
 
