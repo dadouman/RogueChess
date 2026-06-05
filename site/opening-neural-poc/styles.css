@@ -1393,6 +1393,22 @@ body.is-brain-focused .graph-stage::after {
   opacity: 1;
 }
 
+/* G : toute la branche suivie pendant le scrub (racine → nœud courant) reste en
+   surbrillance cyan, le nœud courant (.is-scrub) restant le plus marqué. */
+.neural-edge.is-scrub-branch {
+  opacity: 0.95;
+}
+
+.neural-edge.is-scrub-branch:not(.is-best):not(.is-highlighted) {
+  stroke: var(--cyan);
+}
+
+.neural-node.is-scrub-branch .node-pulse {
+  stroke: rgba(117, 231, 232, 0.62);
+  stroke-width: 2;
+  opacity: 0.92;
+}
+
 .board-preview {
   position: relative;
   width: 100%;

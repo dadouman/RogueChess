@@ -1996,6 +1996,7 @@ function renderGraph() {
       ]
         .filter(Boolean)
         .join(' '),
+      'data-edge-id': edge.id, // G : surbrillance de la branche pendant le scrub
       d: pathD,
       'stroke-width': String(strokeWidth),
       opacity: String(matches ? edgeOpacity : 0.08)
@@ -2262,7 +2263,8 @@ function onBrainPointerDown(event) {
     startX: event.clientX,
     startY: event.clientY,
     started: false,
-    lastId: null
+    lastId: null,
+    branchNodeIds: null // G : branche actuellement suivie (collante)
   };
   window.addEventListener('pointermove', onBrainPointerMove);
   window.addEventListener('pointerup', onBrainPointerUp);
@@ -2281,17 +2283,21 @@ function onBrainPointerMove(event) {
     showBrainScrub(true);
   }
   event.preventDefault();
-  const point = graphNearestScrubPoint(event.clientX, event.clientY);
+  const point = graphNearestScrubPoint(event.clientX, event.clientY, brainScrub.branchNodeIds);
   const key = point?.fen;
   if (point && key !== brainScrub.lastId) {
     brainScrub.lastId = key;
+    // G : la branche suivie devient celle de ce point (racine → nœud courant).
+    brainScrub.branchNodeIds = brainBranchPath(point.nodeId).nodeIds;
     updateBrainScrub(point);
     navigator.vibrate?.(8); // retour haptique (Android) si supporté
   }
 }
 
-// Point défilable (nœud ou coup intermédiaire) le plus proche du doigt.
-function graphNearestScrubPoint(clientX, clientY) {
+// Point défilable (nœud ou coup intermédiaire) le plus proche du doigt. G : on
+// applique un bonus de distance aux points de la branche déjà suivie pour rester
+// dessus (au lieu de sauter vers une branche voisine au moindre mouvement).
+function graphNearestScrubPoint(clientX, clientY, branchNodeIds = null) {
   const svg = elements.graphSvg;
   const ctm = svg?.getScreenCTM?.();
   if (!ctm || !state.scrubPoints?.length) {
@@ -2299,15 +2305,47 @@ function graphNearestScrubPoint(clientX, clientY) {
   }
   const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
   let best = null;
-  let bestDist = Infinity;
+  let bestScore = Infinity;
   for (const sp of state.scrubPoints) {
-    const d = Math.hypot(sp.x - pt.x, sp.y - pt.y);
-    if (d < bestDist) {
-      bestDist = d;
+    let score = Math.hypot(sp.x - pt.x, sp.y - pt.y);
+    if (branchNodeIds && branchNodeIds.has(sp.nodeId)) {
+      score *= 0.5; // « collant » à la branche courante (hystérésis)
+    }
+    if (score < bestScore) {
+      bestScore = score;
       best = sp;
     }
   }
   return best;
+}
+
+// Chemin (nœuds + arcs) de la racine jusqu'au nœud donné : définit la « branche »
+// suivie pour le scrub (surbrillance + hystérésis).
+function brainBranchPath(nodeId) {
+  const view = state.view;
+  const nodeIds = new Set();
+  const edgeIds = new Set();
+  if (!view || !nodeId) {
+    return { nodeIds, edgeIds };
+  }
+  let current = nodeId;
+  let guard = 0;
+  while (current && !nodeIds.has(current) && guard < 300) {
+    guard += 1;
+    nodeIds.add(current);
+    const viewNode = view.nodesById.get(current);
+    const inEdgeId = viewNode?.incoming?.[0];
+    if (!inEdgeId) {
+      break;
+    }
+    edgeIds.add(inEdgeId);
+    const edge = view.edgesById.get(inEdgeId);
+    if (!edge) {
+      break;
+    }
+    current = edge.from;
+  }
+  return { nodeIds, edgeIds };
 }
 
 function onBrainPointerUp(event) {
@@ -2361,19 +2399,32 @@ function updateBrainScrub(point) {
     const evalTxt = point.eval != null ? ` · Éval ${formatEval(point.eval)}` : '';
     meta.textContent = `${colorTxt}${evalTxt}`;
   }
-  highlightScrubNode(point.nodeId);
+  highlightScrubBranch(point.nodeId);
 }
 
-function highlightScrubNode(id) {
+// G : met en surbrillance toute la branche suivie (nœuds + arcs de la racine au
+// nœud courant), avec le nœud courant accentué.
+function highlightScrubBranch(nodeId) {
   clearScrubNodeHighlight();
-  elements.graphSvg
-    ?.querySelector(`.neural-node[data-node-id="${CSS.escape(id)}"]`)
-    ?.classList.add('is-scrub');
+  const svg = elements.graphSvg;
+  if (!svg || !nodeId) {
+    return;
+  }
+  const { nodeIds, edgeIds } = brainBranchPath(nodeId);
+  for (const id of nodeIds) {
+    const el = svg.querySelector(`.neural-node[data-node-id="${CSS.escape(id)}"]`);
+    el?.classList.add(id === nodeId ? 'is-scrub' : 'is-scrub-branch');
+  }
+  for (const id of edgeIds) {
+    for (const el of svg.querySelectorAll(`.neural-edge[data-edge-id="${CSS.escape(id)}"]`)) {
+      el.classList.add('is-scrub-branch');
+    }
+  }
 }
 
 function clearScrubNodeHighlight() {
-  for (const el of elements.graphSvg?.querySelectorAll('.neural-node.is-scrub') ?? []) {
-    el.classList.remove('is-scrub');
+  for (const el of elements.graphSvg?.querySelectorAll('.is-scrub, .is-scrub-branch') ?? []) {
+    el.classList.remove('is-scrub', 'is-scrub-branch');
   }
 }
 
