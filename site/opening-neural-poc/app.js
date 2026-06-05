@@ -6706,6 +6706,7 @@ function populateControls() {
    Mode Aventure : cerveau RPG (apprentissage + domination Stockfish)
    ===================================================================== */
 const ADV_STORAGE_KEY = 'roguechess-adventure-v1';
+const ADV_MAX_GAMES = 60; // historique des parties conservées (M)
 const ADV_ACT2_UNLOCK = 0.5;
 const ADV_LESSONS = [
   { id: 'l1', target: 0.25, title: 'Premiers neurones', icon: '🌱' },
@@ -6728,6 +6729,7 @@ function createAdventureState() {
     act2Announced: false,
     movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
     playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
+    games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
     difficulty: DEFAULT_ADV_DIFFICULTY
   };
 }
@@ -6748,6 +6750,7 @@ function loadAdventure() {
     base.act2Announced = Boolean(data.act2Announced);
     base.movesPlayed = Number(data.movesPlayed) || 0;
     base.playerXp = Number(data.playerXp) || 0;
+    base.games = Array.isArray(data.games) ? data.games.slice(0, ADV_MAX_GAMES) : [];
     base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
       ? data.difficulty
       : DEFAULT_ADV_DIFFICULTY;
@@ -6773,6 +6776,7 @@ function saveAdventure() {
         act2Announced: state.adventure.act2Announced,
         movesPlayed: state.adventure.movesPlayed || 0,
         playerXp: state.adventure.playerXp || 0,
+        games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
         difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
       })
     );
@@ -7279,11 +7283,215 @@ function adventureOnTrapSolved() {
   );
 }
 
+// M — Signature de l'ouverture jouée : libellé PGN compact (« 1.e4 e5 2.Nf3 »)
+// pour l'affichage, et clé = enchaînement des coups BLANCS (le choix du joueur)
+// pour regrouper les parties par ouverture (et alimenter le masquage N).
+function advOpeningSignature(game) {
+  const openingEntries = (game?.freeReviewMoves || []).filter((e) => e.phase === 'opening');
+  if (!openingEntries.length) {
+    return { key: 'hors-livre', label: 'Hors livre' };
+  }
+  let label = '';
+  let moveNo = 0;
+  const whiteSans = [];
+  for (const entry of openingEntries) {
+    if (entry.color === 'w') {
+      moveNo += 1;
+      whiteSans.push(entry.san);
+      label += `${label ? ' ' : ''}${moveNo}.${entry.san}`;
+    } else {
+      label += ` ${entry.san}`;
+    }
+  }
+  return {
+    key: whiteSans.join(' ') || 'hors-livre',
+    label: label || 'Hors livre'
+  };
+}
+
+// M — Enregistre une partie terminée dans l'historique persistant.
+function advRecordGame(result) {
+  const game = state.game;
+  const run = state.advRun;
+  if (!state.adventure || !game || !run || game.gameRecorded) {
+    return;
+  }
+  game.gameRecorded = true;
+  const opening = advOpeningSignature(game);
+  const plies = (game.freeReviewMoves || []).filter(
+    (e) => e.phase !== 'start' && e.phase !== 'engine-line'
+  ).length;
+  state.adventure.games = state.adventure.games || [];
+  state.adventure.games.unshift({
+    ts: Date.now(),
+    result, // 'won' | 'lost'
+    kind: run.kind, // 'lesson' | 'boss'
+    bossLevel: run.kind === 'boss' ? run.bossLevel : null,
+    opponentLevel: advRunDifficultyLevel(),
+    trapsMode: Boolean(run.trapsMode),
+    openingKey: opening.key,
+    openingLabel: opening.label,
+    plies,
+    mate: Boolean(game.chess?.isCheckmate?.()),
+    difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
+  });
+  if (state.adventure.games.length > ADV_MAX_GAMES) {
+    state.adventure.games.length = ADV_MAX_GAMES;
+  }
+}
+
+// M — Agrégats victoires/défaites par adversaire et par ouverture.
+function advGameStats() {
+  const games = state.adventure?.games || [];
+  const byOpening = new Map();
+  const byOpponent = new Map();
+  let won = 0;
+  let lost = 0;
+  for (const g of games) {
+    const isWin = g.result === 'won';
+    if (isWin) won += 1;
+    else lost += 1;
+
+    const oKey = g.openingKey || 'hors-livre';
+    const o = byOpening.get(oKey) || { key: oKey, label: g.openingLabel || oKey, won: 0, lost: 0 };
+    if (isWin) o.won += 1;
+    else o.lost += 1;
+    byOpening.set(oKey, o);
+
+    const pKey = g.kind === 'boss' ? `boss-${g.bossLevel}` : `lesson-${g.opponentLevel}`;
+    const p = byOpponent.get(pKey) || {
+      key: pKey,
+      kind: g.kind,
+      level: g.kind === 'boss' ? g.bossLevel : g.opponentLevel,
+      won: 0,
+      lost: 0
+    };
+    if (isWin) p.won += 1;
+    else p.lost += 1;
+    byOpponent.set(pKey, p);
+  }
+  const sortByGames = (a, b) => b.won + b.lost - (a.won + a.lost);
+  return {
+    games,
+    won,
+    lost,
+    byOpening: [...byOpening.values()].sort(sortByGames),
+    byOpponent: [...byOpponent.values()].sort((a, b) => (a.level || 0) - (b.level || 0))
+  };
+}
+
+// Libellé court de l'adversaire d'une partie enregistrée (M).
+function advFormatGameOpponent(g) {
+  if (g.kind === 'boss') {
+    return `Boss N${g.bossLevel}`;
+  }
+  if (g.trapsMode) {
+    return `Piège · N${g.opponentLevel}`;
+  }
+  const profile = getStockfishLevelProfile(g.opponentLevel);
+  return profile?.label || `Leçon N${g.opponentLevel}`;
+}
+
+function advFormatOpponentGroup(p) {
+  if (p.kind === 'boss') {
+    return `Boss N${p.level}`;
+  }
+  const profile = getStockfishLevelProfile(p.level);
+  return profile?.label || `Leçon N${p.level}`;
+}
+
+// Date relative compacte pour l'historique.
+function advFormatRelativeTime(ts) {
+  const diff = Date.now() - (Number(ts) || 0);
+  if (diff < 60_000) {
+    return "à l'instant";
+  }
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) {
+    return `il y a ${mins} min`;
+  }
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) {
+    return `il y a ${hours} h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `il y a ${days} j`;
+}
+
+function makeAdvTallyChip(title, won, lost) {
+  const chip = document.createElement('span');
+  chip.className = 'adv-tally-chip';
+  const total = won + lost;
+  const rate = total ? Math.round((won / total) * 100) : 0;
+  chip.classList.toggle('is-positive', won > lost);
+  chip.classList.toggle('is-negative', lost > won);
+  chip.innerHTML = `<b>${title}</b><em>${won}–${lost}</em><i>${rate}%</i>`;
+  chip.title = `${title} : ${won} victoire(s), ${lost} défaite(s) — ${rate}% de réussite`;
+  return chip;
+}
+
+// M — Affiche l'historique des parties (tallies par adversaire/ouverture + liste).
+function renderAdvGameHistory() {
+  const stats = advGameStats();
+  const summary = document.querySelector('#advHistorySummary');
+  const tallies = document.querySelector('#advHistoryTallies');
+  const list = document.querySelector('#advHistoryList');
+
+  if (summary) {
+    summary.textContent = stats.games.length
+      ? `${stats.won} victoire${stats.won > 1 ? 's' : ''} · ${stats.lost} défaite${
+          stats.lost > 1 ? 's' : ''
+        } sur ${stats.games.length} partie${stats.games.length > 1 ? 's' : ''}.`
+      : "Aucune partie jouée pour l'instant.";
+  }
+
+  if (tallies) {
+    tallies.replaceChildren();
+    if (stats.byOpponent.length) {
+      const group = document.createElement('div');
+      group.className = 'adv-tally-group';
+      group.innerHTML = '<span class="adv-tally-label">Par adversaire</span>';
+      for (const p of stats.byOpponent) {
+        group.append(makeAdvTallyChip(advFormatOpponentGroup(p), p.won, p.lost));
+      }
+      tallies.append(group);
+    }
+    if (stats.byOpening.length) {
+      const group = document.createElement('div');
+      group.className = 'adv-tally-group';
+      group.innerHTML = '<span class="adv-tally-label">Par ouverture</span>';
+      for (const o of stats.byOpening.slice(0, 6)) {
+        group.append(makeAdvTallyChip(o.label, o.won, o.lost));
+      }
+      tallies.append(group);
+    }
+  }
+
+  if (list) {
+    list.replaceChildren();
+    for (const g of stats.games.slice(0, 12)) {
+      const li = document.createElement('li');
+      li.className = `adv-history-row is-${g.result}`;
+      const icon = g.result === 'won' ? '✅' : '❌';
+      const mateBadge = g.mate ? '<span class="adv-history-mate">mat</span>' : '';
+      li.innerHTML = `
+        <span class="adv-history-result">${icon}</span>
+        <span class="adv-history-main">
+          <b>${escapeHtml(advFormatGameOpponent(g))}</b>${mateBadge}
+          <i>${escapeHtml(g.openingLabel || 'Hors livre')}</i>
+        </span>
+        <span class="adv-history-meta">${g.plies} c · ${advFormatRelativeTime(g.ts)}</span>`;
+      list.append(li);
+    }
+  }
+}
+
 function adventureOnGameFinished(result) {
   const run = state.advRun;
   if (!state.adventure || !run) {
     return;
   }
+  advRecordGame(result);
   if (run.kind === 'boss') {
     if (result === 'won' && !run.resolved) {
       run.resolved = true;
@@ -7991,6 +8199,7 @@ function renderAdventureMap() {
   advSetText('#advStatLevel', String(progress.level));
   advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
   renderAdvDifficulty();
+  renderAdvGameHistory();
 
   const act1 = document.querySelector('#advAct1Stages');
   if (act1) {

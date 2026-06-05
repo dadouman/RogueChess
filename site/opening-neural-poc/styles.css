@@ -3006,6 +3006,156 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   gap: 16px;
 }
 
+/* === Historique des parties (M) === */
+.adv-games {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.adv-history-tallies {
+  display: grid;
+  gap: 10px;
+}
+
+.adv-tally-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-tally-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+
+.adv-tally-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.adv-tally-chip b {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.adv-tally-chip em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.adv-tally-chip i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.adv-tally-chip.is-positive {
+  border-color: rgba(120, 220, 140, 0.5);
+  background: rgba(120, 220, 140, 0.1);
+}
+
+.adv-tally-chip.is-negative {
+  border-color: rgba(255, 120, 120, 0.45);
+  background: rgba(255, 120, 120, 0.09);
+}
+
+.adv-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.adv-history-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 3px solid transparent;
+}
+
+.adv-history-row.is-won {
+  border-left-color: rgba(120, 220, 140, 0.7);
+}
+
+.adv-history-row.is-lost {
+  border-left-color: rgba(255, 120, 120, 0.6);
+}
+
+.adv-history-result {
+  font-size: 13px;
+}
+
+.adv-history-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.adv-history-main b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.adv-history-main i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.adv-history-mate {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(255, 214, 120, 0.18);
+  color: #ffd678;
+  font-weight: 700;
+}
+
+.adv-history-meta {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .adv-act {
   display: grid;
   align-content: start;
