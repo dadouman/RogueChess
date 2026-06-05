@@ -40,8 +40,9 @@ const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 //  - legalDots   : points (cases légales) quand on sélectionne une pièce
 //  - evaluation  : barre / chiffres d'évaluation
 //  - takeback    : retour arrière (annuler son dernier coup)
-// Les cases légales (« points verts ») restent affichées partout : les masquer
-// n'ajoute aucune difficulté. Les niveaux se distinguent par les autres aides.
+// Cases légales (« points verts ») : visibles aux niveaux faciles, masquées en
+// Normal mais révélées après 5 s de réflexion ou après une erreur (Q), et jamais
+// affichées en Difficile. Les niveaux se distinguent aussi par les autres aides.
 const ADV_DIFFICULTIES = [
   {
     id: 'tres-facile',
@@ -61,15 +62,16 @@ const ADV_DIFFICULTIES = [
     id: 'normal',
     label: 'Normal',
     icon: '⚔️',
-    desc: 'Évaluation seule (cases légales toujours visibles).',
-    aids: { moveChoices: false, legalDots: true, evaluation: true, takeback: false }
+    desc: 'Évaluation seule. Cases légales masquées, révélées après 5 s ou une erreur.',
+    aids: { moveChoices: false, legalDots: false, evaluation: true, takeback: false },
+    legalDotsRevealable: true
   },
   {
     id: 'difficile',
     label: 'Difficile',
     icon: '🔥',
-    desc: 'Aucune aide (cases légales toujours visibles).',
-    aids: { moveChoices: false, legalDots: true, evaluation: false, takeback: false }
+    desc: 'Aucune aide (cases légales jamais affichées).',
+    aids: { moveChoices: false, legalDots: false, evaluation: false, takeback: false }
   }
 ];
 const DEFAULT_ADV_DIFFICULTY = 'facile';
@@ -2710,6 +2712,12 @@ function renderBoard(node, container = elements.boardPreview) {
 
   renderBoardArrows(container, openingArrows);
 
+  // Q : sur le plateau de jeu interactif, arme le minuteur 5 s de révélation des
+  // cases légales (Normal). Les gardes internes évitent de le relancer en boucle.
+  if (interactive) {
+    maybeArmLegalDotsTimer();
+  }
+
   // Anime le glissement de la pièce du dernier coup (plateau de jeu uniquement).
   maybeAnimateGameMove(container, node);
 }
@@ -3934,7 +3942,8 @@ function createInitialGameState(level = state.campaignLevel) {
     victoryConverted: false, // déjà déclenchée une fois pour cette partie
     takebackLocked: false,   // verrou après un retour arrière « dernière chance »
     gameRecorded: false,     // M : partie déjà ajoutée à l'historique
-    replayWonLine: false     // N : le joueur a choisi de rejouer une ligne gagnée
+    replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
+    revealLegalDots: false   // Q : cases légales révélées (Normal, après 5 s / erreur)
   };
 }
 
@@ -5040,6 +5049,7 @@ function clearGameCinematic() {
 
 function startNewGame(level = state.campaignLevel) {
   clearGameCinematic();
+  resetLegalDotsReveal(); // Q : on repart cases masquées
   setEngineThinking(false);
   document.body.classList.remove('is-game-lost', 'is-game-over');
   if (state.playMode === 'challenge') {
@@ -5253,6 +5263,7 @@ async function submitOpeningMove(input) {
   const result = findMatchingBookEdge(input);
   if (!result.legal) {
     state.game.message = 'Coup illégal ou illisible. Essaie en SAN (Nf3) ou UCI (g1f3).';
+    revealLegalDotsNow();
     return;
   }
 
@@ -5266,6 +5277,7 @@ async function submitOpeningMove(input) {
     if (state.screen === 'adventure') {
       adventureOnWrongBook();
     }
+    revealLegalDotsNow(); // Q : erreur → on révèle les cases légales
     consumeLife(buildOpeningMismatchMessage(result.move));
     return;
   }
@@ -5277,6 +5289,7 @@ async function submitOpeningMove(input) {
     state.game.replayWonLine = true;
   }
   applyGameEdge(result.edge);
+  resetLegalDotsReveal(); // Q : coup joué → on remasque pour le tour suivant
   if (state.screen === 'adventure') {
     adventureOnCorrectWhiteBook(result.edge);
   }
@@ -5324,10 +5337,12 @@ async function submitFreeMove(input) {
   const move = tryMoveInput(state.game.chess, input);
   if (!move) {
     state.game.message = 'Coup libre illégal ou illisible.';
+    revealLegalDotsNow();
     return;
   }
 
   applyFreeMove(move, isExplorationMode() ? 'Exploration blanche' : 'Survie blanche');
+  resetLegalDotsReveal(); // Q : coup joué → on remasque pour le tour suivant
   state.game.message = 'Stockfish évalue ton coup libre...';
   renderGamePanel();
   renderGameDetails();
@@ -7022,7 +7037,71 @@ function advCurrentDifficulty() {
 
 // Aides actives : selon la difficulté en Aventure, complètes ailleurs (Atelier).
 function advAids() {
-  return state.screen === 'adventure' ? advCurrentDifficulty().aids : FULL_AIDS;
+  if (state.screen !== 'adventure') {
+    return FULL_AIDS;
+  }
+  const difficulty = advCurrentDifficulty();
+  // Q : en Normal, les cases légales sont masquées mais révélées après 5 s ou
+  // une erreur (state.game.revealLegalDots). En Difficile : jamais.
+  if (difficulty.legalDotsRevealable && state.game?.revealLegalDots) {
+    return { ...difficulty.aids, legalDots: true };
+  }
+  return difficulty.aids;
+}
+
+// Q — La difficulté courante masque-t-elle les cases légales de façon révélable ?
+function legalDotsRevealable() {
+  return state.screen === 'adventure' && Boolean(advCurrentDifficulty()?.legalDotsRevealable);
+}
+
+let legalDotsTimer = null;
+
+// Réinitialise la révélation des cases légales pour le tour courant (masquées,
+// minuteur 5 s relancé au prochain rendu).
+function resetLegalDotsReveal() {
+  if (legalDotsTimer) {
+    clearTimeout(legalDotsTimer);
+    legalDotsTimer = null;
+  }
+  if (state.game) {
+    state.game.revealLegalDots = false;
+  }
+}
+
+// Révèle immédiatement les cases légales (déclenché par une erreur du joueur).
+function revealLegalDotsNow() {
+  if (legalDotsTimer) {
+    clearTimeout(legalDotsTimer);
+    legalDotsTimer = null;
+  }
+  if (state.game && legalDotsRevealable() && !state.game.revealLegalDots) {
+    state.game.revealLegalDots = true;
+    renderGameDetails();
+  }
+}
+
+// Arme le minuteur 5 s de révélation si c'est au joueur de jouer (appelé au rendu
+// du plateau interactif). Les gardes évitent de relancer le minuteur à chaque rendu.
+function maybeArmLegalDotsTimer() {
+  if (
+    !legalDotsRevealable() ||
+    !state.game ||
+    state.game.revealLegalDots ||
+    legalDotsTimer ||
+    state.game.status !== 'playing' ||
+    state.game.locked ||
+    state.game.historyView != null ||
+    state.game.chess.turn() !== 'w'
+  ) {
+    return;
+  }
+  legalDotsTimer = setTimeout(() => {
+    legalDotsTimer = null;
+    if (state.game && legalDotsRevealable() && state.game.status === 'playing') {
+      state.game.revealLegalDots = true;
+      renderGameDetails();
+    }
+  }, 5000);
 }
 
 // Classes sur <body> pour piloter l'affichage (éval, touches, retour arrière) en CSS.
