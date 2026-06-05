@@ -2770,6 +2770,11 @@ function renderBoard(node, container = elements.boardPreview) {
   // Le camp maté est celui au trait dans la FEN. Le joueur joue les Blancs : roi
   // noir maté = victoire (flash doré), roi blanc maté = défaite (flash rouge).
   const matedSide = matedSquare ? node.fen.split(' ')[1] : null;
+  // T : prémouvement — le plateau accepte des clics pendant le tour adverse pour
+  // armer un coup ; les cases armées sont surlignées (orange).
+  const premovable = container === elements.boardPreview && isPremoveContext();
+  const premoveFrom = state.game?.premove?.from ?? state.game?.premoveSelect ?? null;
+  const premoveTo = state.game?.premove?.to ?? null;
   container.replaceChildren();
   container.classList.toggle('is-game-board', interactive);
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
@@ -2788,6 +2793,9 @@ function renderBoard(node, container = elements.boardPreview) {
     openingBookMode,
     checkSquare,
     matedSquare,
+    premovable,
+    premoveFrom,
+    premoveTo,
     aids: advAids()
   };
   rows.forEach((row, rankIndex) => {
@@ -3086,6 +3094,8 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
     target && piece ? 'is-capture-target' : '',
     squareName === options.checkSquare ? 'is-check' : '',
     squareName === options.matedSquare ? 'is-mated' : '',
+    squareName === options.premoveFrom ? 'is-premove-from' : '',
+    squareName === options.premoveTo ? 'is-premove-to' : '',
     squareName === options.selectedSquare ? 'is-selected' : ''
   ]
     .filter(Boolean)
@@ -3100,6 +3110,17 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         handleBoardSquareClick(squareName);
+      }
+    });
+  } else if (options.premovable) {
+    // T : pendant le tour adverse, le clic arme un prémouvement.
+    square.setAttribute('role', 'button');
+    square.setAttribute('tabindex', '0');
+    square.addEventListener('click', () => handlePremoveClick(squareName));
+    square.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        handlePremoveClick(squareName);
       }
     });
   }
@@ -3267,6 +3288,95 @@ function handleBoardSquareClick(squareName) {
 
   game.message = 'Cette destination n’est pas légale pour la pièce sélectionnée.';
   renderGameDetails();
+}
+
+// T — On peut armer un prémouvement pendant que l'adversaire (Noirs) réfléchit :
+// partie en cours, plateau visible, pas en revue, et c'est au trait noir.
+function isPremoveContext() {
+  const game = state.game;
+  return Boolean(
+    game &&
+      game.status === 'playing' &&
+      !game.locked &&
+      game.historyView == null &&
+      !getActiveFreeReviewEntry() &&
+      game.chess.turn() === 'b'
+  );
+}
+
+function clearPremove() {
+  if (!state.game) {
+    return;
+  }
+  state.game.premove = null;
+  state.game.premoveSelect = null;
+}
+
+// Clic sur l'échiquier pendant le tour adverse : on arme/désarme le prémouvement.
+function handlePremoveClick(squareName) {
+  if (suppressNextBoardClick) {
+    suppressNextBoardClick = false;
+    return;
+  }
+  const game = state.game;
+  if (!game || !isPremoveContext()) {
+    return;
+  }
+  const piece = game.chess.get(squareName); // position courante (avant coup adverse)
+  const sel = game.premoveSelect;
+  if (!sel) {
+    if (piece && piece.color === 'w') {
+      game.premoveSelect = squareName;
+      game.premove = null;
+      game.message = `⚡ Prémouvement : choisis la destination de ${squareName}.`;
+      renderGameDetails();
+    }
+    return;
+  }
+  if (sel === squareName) {
+    // reclic sur la source → annule la sélection
+    game.premoveSelect = null;
+    game.message = '⚡ Prémouvement annulé.';
+    renderGameDetails();
+    return;
+  }
+  if (piece && piece.color === 'w') {
+    // on change de pièce source
+    game.premoveSelect = squareName;
+    game.premove = null;
+    game.message = `⚡ Prémouvement : choisis la destination de ${squareName}.`;
+    renderGameDetails();
+    return;
+  }
+  // destination choisie : on arme (la légalité sera vérifiée au moment de jouer).
+  game.premove = { from: sel, to: squareName };
+  game.premoveSelect = null;
+  game.message = `⚡ Prémouvement armé : ${sel} → ${squareName}.`;
+  renderGameDetails();
+}
+
+// Exécute le prémouvement armé dès que c'est au tour du joueur. Annulé s'il est
+// devenu illégal dans la nouvelle position.
+function tryExecutePremove() {
+  const game = state.game;
+  if (!game || game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
+    return;
+  }
+  const premove = game.premove;
+  if (!premove) {
+    return;
+  }
+  game.premove = null;
+  game.premoveSelect = null;
+  const legal = game.chess
+    .moves({ square: premove.from, verbose: true })
+    .some((move) => move.to === premove.to);
+  if (!legal) {
+    game.message = '⚡ Prémouvement annulé : il est devenu illégal.';
+    renderGameDetails();
+    return;
+  }
+  submitHumanMove(`${premove.from}${premove.to}`);
 }
 
 function selectBoardSquare(squareName) {
@@ -4041,7 +4151,9 @@ function createInitialGameState(level = state.campaignLevel) {
     replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
     revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
     finalMateLives: 0,       // S : retours « dernière chance » en phase finale du mat
-    clock: makeInitialClock() // U : pendule des deux camps (null si sans horloge)
+    clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
+    premove: null,           // T : { from, to } armé pendant la réflexion adverse
+    premoveSelect: null      // T : case source sélectionnée pour armer le prémouvement
   };
 }
 
@@ -5503,6 +5615,7 @@ async function submitOpeningMove(input) {
   // Affiche (et anime) le coup blanc avant que l'adversaire ne réponde.
   renderGameDetails();
   await advanceOpponentTurn();
+  tryExecutePremove(); // T : joue le prémouvement armé si c'est de nouveau à toi
 }
 
 async function submitExplorationMove(input, message) {
@@ -5608,6 +5721,7 @@ async function submitFreeMove(input) {
   state.game.freeRoundPending = !isExplorationMode();
   renderGamePanel();
   await advanceOpponentTurn();
+  tryExecutePremove(); // T : joue le prémouvement armé si c'est de nouveau à toi
 }
 
 async function advanceOpponentTurn() {
@@ -5794,6 +5908,7 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
   if (!game) {
     return;
   }
+  clearPremove(); // T : un prémouvement armé n'a plus de sens une fois la partie finie
   setEngineThinking(false);
   document.body.classList.toggle('is-game-lost', result === 'lost');
   document.body.classList.toggle('is-game-over', result === 'won' || result === 'lost');

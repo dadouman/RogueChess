@@ -1946,6 +1946,22 @@ body.is-engine-thinking .board-preview::before {
     0 0 18px rgba(117, 231, 232, 0.72);
 }
 
+/* T — Prémouvement armé : cases source et destination en orange. */
+.board-square.is-premove-from,
+.board-square.is-premove-to {
+  box-shadow: inset 0 0 0 3px rgba(255, 150, 70, 0.92);
+}
+
+.board-square.is-premove-to::before {
+  content: "";
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 999px;
+  background: rgba(255, 150, 70, 0.85);
+  box-shadow: 0 0 0 2px rgba(16, 17, 15, 0.55);
+}
+
 .board-square.is-target::before {
   content: "";
   position: absolute;
