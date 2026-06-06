@@ -8276,6 +8276,12 @@ function advRecordGame(result) {
   if (!state.adventure || !game || !run || game.gameRecorded) {
     return;
   }
+  // « Illuminer le cerveau » (leçons libres + pièges) = entraînement : ces parties
+  // ne sont PAS enregistrées dans l'historique. Seule l'arène (boss) y figure.
+  if (run.kind !== 'boss') {
+    game.gameRecorded = true;
+    return;
+  }
   game.gameRecorded = true;
   const opening = advOpeningSignature(game);
   const plies = (game.freeReviewMoves || []).filter(
@@ -8316,8 +8322,9 @@ function advRefreshRecordedMoves(game) {
 }
 
 // M — Agrégats victoires/défaites par adversaire et par ouverture.
-function advGameStats() {
-  const games = state.adventure?.games || [];
+function advGameStats(gameFilter = null) {
+  const source = state.adventure?.games || [];
+  const games = gameFilter ? source.filter(gameFilter) : source;
   const byOpening = new Map();
   const byOpponent = new Map();
   let won = 0;
@@ -8481,8 +8488,10 @@ function makeWinLossBar(label, won, lost) {
 }
 
 // M — Affiche l'historique des parties (tallies par adversaire/ouverture + liste).
+// Seules les parties d'arène (boss) sont listées : les leçons « illuminer le
+// cerveau » sont de l'entraînement et n'apparaissent pas dans l'historique.
 function renderAdvGameHistory() {
-  const stats = advGameStats();
+  const stats = advGameStats((g) => g.kind === 'boss');
   const summary = document.querySelector('#advHistorySummary');
   const tallies = document.querySelector('#advHistoryTallies');
   const list = document.querySelector('#advHistoryList');
@@ -8524,18 +8533,6 @@ function renderAdvGameHistory() {
         bars.append(makeWinLossBar(`N${b.level}`, b.won, b.lost));
       }
       group.append(bars);
-      tallies.append(group);
-    }
-
-    // Entraînement (leçons) : pastilles compactes si présent.
-    const lessons = stats.byOpponent.filter((p) => p.kind !== 'boss');
-    if (lessons.length) {
-      const group = document.createElement('div');
-      group.className = 'adv-tally-group';
-      group.innerHTML = '<span class="adv-tally-label">Entraînement</span>';
-      for (const p of lessons) {
-        group.append(makeAdvTallyChip(advFormatOpponentGroup(p), p.won, p.lost));
-      }
       tallies.append(group);
     }
 
