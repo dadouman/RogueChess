@@ -9532,7 +9532,6 @@ function bindAdventureEvents() {
   bind('#advHomeButton', () => setScreen('home'));
   bind('#advMapButton', openAdventureMap);
   bind('#advViewToggle', toggleAdvViewMode);
-  bind('#advMapClose', closeAdventureMap);
   // Onglets / vues de la carte aventure
   bind('#advTabMain', () => setAdvMapView('main'));
   bind('#advTabShop', () => setAdvMapView('shop'));
@@ -9636,7 +9635,8 @@ function bindAdventureEvents() {
       }
     });
   }
-  bind('#advMapHomeButton', () => {
+  // « Quitter » (bas de l'écran Choix du mode de jeu) : sortir vers l'accueil principal.
+  bind('#advMapQuit', () => {
     closeAdventureMap();
     setScreen('home');
   });
