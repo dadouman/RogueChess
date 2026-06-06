@@ -9383,17 +9383,16 @@ function renderAdventureMap() {
     return;
   }
   const coveragePct = advCoveragePct();
-  const progress = advBrainProgress();
-  const ring = document.querySelector('#advBrainRing');
-  if (ring) {
-    ring.style.setProperty('--pct', String(coveragePct));
-  }
+  // Pastille « niveau joueur » en haut à gauche de la carte (cadre = jauge d'XP),
+  // comme sur les autres écrans. La cartouche de stats a été supprimée.
   const playerProg = advPlayerProgress();
-  advSetText('#advRingValue', `${coveragePct} %`);
-  advSetText('#advStatPlayer', `Niv.${playerProg.level}`);
-  advSetText('#advStatPlaytime', `${playerProg.moves} coup${playerProg.moves > 1 ? 's' : ''}`);
-  advSetText('#advStatLevel', String(progress.level));
-  advSetText('#advStatPower', `N${state.adventure.highestBoss}`);
+  advSetText('#advMapLevelValue', String(playerProg.level));
+  const levelBubble = document.querySelector('#advMapLevel');
+  if (levelBubble) {
+    const pct = clamp((playerProg.into / playerProg.span) * 100, 0, 100);
+    levelBubble.style.setProperty('--xp-pct', pct.toFixed(1));
+    levelBubble.title = `Niveau joueur ${playerProg.level} · ${playerProg.xp} XP`;
+  }
   renderAdvDifficulty();
   renderAdvTimeControl();
   renderAdvShop();
