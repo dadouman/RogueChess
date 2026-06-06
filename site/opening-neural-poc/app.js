@@ -7324,7 +7324,8 @@ function createAdventureState() {
     xp: 0,
     nodes: new Set(),
     lessons: {},
-    bosses: {},
+    bosses: {},          // record d'étoiles par boss (0-3) : « déjà acquises », permanent
+    bossStreaks: {},     // série de victoires en cours par boss (0-3), remise à 0 à la défaite
     highestBoss: 0,
     act2Announced: false,
     movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
@@ -7351,6 +7352,8 @@ function loadAdventure() {
     base.nodes = new Set(Array.isArray(data.nodes) ? data.nodes : []);
     base.lessons = data.lessons && typeof data.lessons === 'object' ? data.lessons : {};
     base.bosses = data.bosses && typeof data.bosses === 'object' ? data.bosses : {};
+    base.bossStreaks =
+      data.bossStreaks && typeof data.bossStreaks === 'object' ? data.bossStreaks : {};
     base.highestBoss = Number(data.highestBoss) || 0;
     base.act2Announced = Boolean(data.act2Announced);
     base.movesPlayed = Number(data.movesPlayed) || 0;
@@ -7384,6 +7387,7 @@ function saveAdventure() {
         nodes: [...state.adventure.nodes],
         lessons: state.adventure.lessons,
         bosses: state.adventure.bosses,
+        bossStreaks: state.adventure.bossStreaks || {},
         highestBoss: state.adventure.highestBoss,
         act2Announced: state.adventure.act2Announced,
         movesPlayed: state.adventure.movesPlayed || 0,
@@ -7951,8 +7955,59 @@ function advAct2Unlocked() {
   return advCoverage() >= ADV_ACT2_UNLOCK;
 }
 
+// Un boss se maîtrise en 3 victoires d'affilée (3 étoiles).
+const ADV_BOSS_STARS = 3;
+
+// Étoiles « déjà acquises » (record permanent, conservé même après défaite).
+function advBossRecord(level) {
+  return clamp(Math.round(state.adventure?.bosses?.[level] || 0), 0, ADV_BOSS_STARS);
+}
+
+// Série de victoires en cours (remise à 0 à la défaite).
+function advBossStreakCount(level) {
+  return clamp(Math.round(state.adventure?.bossStreaks?.[level] || 0), 0, ADV_BOSS_STARS);
+}
+
+function advBossConquered(level) {
+  return advBossRecord(level) >= ADV_BOSS_STARS;
+}
+
+// Le boss suivant s'ouvre dès une étoile (une victoire) sur le précédent.
 function advBossUnlocked(level) {
-  return advAct2Unlocked() && level <= state.adventure.highestBoss + 1;
+  if (!advAct2Unlocked()) {
+    return false;
+  }
+  if (level <= 1) {
+    return true;
+  }
+  return advBossRecord(level - 1) >= 1;
+}
+
+// Prochain boss à travailler : le plus petit débloqué pas encore maîtrisé.
+function advCurrentBossTarget() {
+  for (let level = 1; level <= 10; level += 1) {
+    if (advBossUnlocked(level) && !advBossConquered(level)) {
+      return level;
+    }
+  }
+  return 0;
+}
+
+// Étoiles d'un boss en deux couleurs : série en cours (or) + déjà acquises (cyan).
+function advBossStarsMarkup(level) {
+  const streak = advBossStreakCount(level);
+  const record = advBossRecord(level);
+  let html = '';
+  for (let i = 1; i <= ADV_BOSS_STARS; i += 1) {
+    if (i <= streak) {
+      html += '<span class="adv-star is-streak">★</span>';
+    } else if (i <= record) {
+      html += '<span class="adv-star is-earned">★</span>';
+    } else {
+      html += '<span class="adv-star is-empty">☆</span>';
+    }
+  }
+  return html;
 }
 
 function isAdventureRun() {
@@ -8699,28 +8754,46 @@ function adventureOnGameFinished(result) {
     }
   }
   if (run.kind === 'boss') {
+    const level = run.bossLevel;
+    state.adventure.bossStreaks = state.adventure.bossStreaks || {};
     if (result === 'won' && !run.resolved) {
       run.resolved = true;
-      const level = run.bossLevel;
-      const firstWin = !state.adventure.bosses[level];
-      state.adventure.bosses[level] = 3;
-      if (level > state.adventure.highestBoss) {
+      const prevStreak = advBossStreakCount(level);
+      const streak = Math.min(prevStreak + 1, ADV_BOSS_STARS);
+      state.adventure.bossStreaks[level] = streak;
+      const prevRecord = advBossRecord(level);
+      const record = Math.max(prevRecord, streak);
+      state.adventure.bosses[level] = record;
+      // XP à chaque nouvelle étoile gagnée (progression).
+      if (record > prevRecord) {
+        advAddXp(Math.max(10, Math.round(advBossXp(level) / ADV_BOSS_STARS)));
+      }
+      const conquered = streak >= ADV_BOSS_STARS;
+      const newlyConquered = conquered && prevRecord < ADV_BOSS_STARS;
+      if (newlyConquered && level > state.adventure.highestBoss) {
         state.adventure.highestBoss = level;
       }
-      if (firstWin) {
-        advAddXp(advBossXp(level));
-      }
       const profile = getStockfishLevelProfile(level);
-      showAdventureToast({
-        icon: '👑',
-        title: `Boss N${level} maté !`,
-        text:
-          level < 10
-            ? `${profile.label} tombe. Adversaire suivant débloqué.`
-            : `${profile.label} tombe. Cortex souverain !`,
-        kind: 'boss'
-      });
+      if (conquered) {
+        showAdventureToast({
+          icon: '👑',
+          title: `Boss N${level} maîtrisé !`,
+          text: newlyConquered
+            ? `Trois victoires d'affilée — ${profile.label} est dompté !`
+            : `${profile.label} retombe (déjà maîtrisé).`,
+          kind: 'boss'
+        });
+      } else {
+        showAdventureToast({
+          icon: '⭐',
+          title: `Victoire ${streak}/${ADV_BOSS_STARS} contre N${level}`,
+          text: `Encore ${ADV_BOSS_STARS - streak} victoire(s) d'affilée pour le maîtriser.`,
+          kind: 'boss'
+        });
+      }
     } else if (result === 'lost') {
+      const hadStreak = advBossStreakCount(level);
+      state.adventure.bossStreaks[level] = 0; // la série tombe ; le record (déjà acquis) reste
       const chess = state.game?.chess;
       const drawn = Boolean(chess?.isDraw?.());
       const matedReally = Boolean(chess?.isCheckmate?.());
@@ -8731,11 +8804,14 @@ function adventureOnGameFinished(result) {
           : matedReally
           ? 'Échec et mat subi'
           : 'Position effondrée',
-        text: drawn
-          ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
-          : matedReally
-          ? 'Le boss te mate. Relance l’assaut.'
-          : 'Ta position est tombée trop bas. Relance l’assaut.',
+        text:
+          hadStreak > 0
+            ? `Série interrompue : tu repars de 0. Tes ${advBossRecord(level)} étoile(s) acquises restent.`
+            : drawn
+            ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
+            : matedReally
+            ? 'Le boss te mate. Relance l’assaut.'
+            : 'Ta position est tombée trop bas. Relance l’assaut.',
         kind: null
       });
     }
@@ -9231,22 +9307,33 @@ function renderAdventureResult(el, game, run) {
   actions.className = 'adv-result-actions';
 
   if (run.kind === 'boss') {
+    const level = run.bossLevel;
+    const streak = advBossStreakCount(level);
+    const record = advBossRecord(level);
+    const conquered = advBossConquered(level);
+    stars.innerHTML = advBossStarsMarkup(level);
     if (win) {
-      heading.textContent = `Boss N${run.bossLevel} vaincu !`;
-      stars.textContent = advStarString(state.adventure.bosses[run.bossLevel] || 3);
-      note.textContent = 'Échec et mat livré. Le cortex gagne en puissance.';
-      if (run.bossLevel < 10 && advBossUnlocked(run.bossLevel + 1)) {
-        actions.append(
-          advResultButton(`Boss N${run.bossLevel + 1} ▸`, () => launchBoss(run.bossLevel + 1), true)
-        );
+      if (conquered) {
+        heading.textContent = `Boss N${level} maîtrisé !`;
+        note.textContent = "Trois victoires d'affilée — le cortex gagne en puissance.";
+      } else {
+        heading.textContent = `Victoire ${streak}/${ADV_BOSS_STARS} contre N${level}`;
+        note.textContent = `Enchaîne ${ADV_BOSS_STARS - streak} victoire(s) d'affilée pour le maîtriser.`;
       }
     } else {
       const mated = Boolean(game.chess?.isCheckmate?.());
       heading.textContent = mated ? 'Échec et mat subi' : 'Position effondrée';
-      note.textContent = mated
-        ? 'Le boss t’a maté. Rejoue la chute ci-dessous, puis relance l’attaque.'
-        : `La position est passée sous ${formatEval(advDeficitThresholdCp(run.bossLevel))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
-      actions.append(advResultButton('🔁 Recommencer le boss', () => launchBoss(run.bossLevel), true));
+      note.textContent =
+        record > 0
+          ? `Série remise à zéro (tes ${record} étoile(s) restent). Rejoue la chute ci-dessous, puis relance.`
+          : mated
+          ? 'Le boss t’a maté. Rejoue la chute ci-dessous, puis relance l’attaque.'
+          : `La position est passée sous ${formatEval(advDeficitThresholdCp(level))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
+    }
+    // Call to action : rejouer le même boss, + jouer le suivant si une étoile est débloquée.
+    actions.append(advResultButton(`🔁 Rejouer le boss N${level}`, () => launchBoss(level), true));
+    if (level < 10 && advBossUnlocked(level + 1)) {
+      actions.append(advResultButton(`Boss N${level + 1} ▸`, () => launchBoss(level + 1)));
     }
   } else if (run.trapsMode) {
     if (win) {
@@ -9408,7 +9495,11 @@ function makeAdventureStageRow(options) {
   info.append(title, desc);
   const stars = document.createElement('span');
   stars.className = 'adv-stage-stars';
-  stars.textContent = options.showStars ? advStarString(options.stars) : '';
+  if (options.starsHtml != null) {
+    stars.innerHTML = options.starsHtml;
+  } else {
+    stars.textContent = options.showStars ? advStarString(options.stars) : '';
+  }
   button.append(node, info, stars);
   if (!options.disabled && options.onClick) {
     button.addEventListener('click', options.onClick);
@@ -9520,19 +9611,19 @@ function renderAdventureMap() {
   }
   if (act2) {
     act2.replaceChildren();
+    const target = advCurrentBossTarget();
     for (let level = 1; level <= 10; level += 1) {
       const profile = getStockfishLevelProfile(level);
-      const done = Boolean(state.adventure.bosses[level]);
+      const conquered = advBossConquered(level);
       const open = advBossUnlocked(level);
-      const isCurrent = open && !done && level === state.adventure.highestBoss + 1;
+      const isCurrent = open && !conquered && level === target;
       act2.append(
         makeAdventureStageRow({
-          icon: done ? '✓' : open ? `N${level}` : '🔒',
+          icon: conquered ? '✓' : open ? `N${level}` : '🔒',
           title: `Boss N${level} · ${profile.label}`,
           desc: profile.elo ? `${profile.elo} Elo` : 'Force max',
-          stars: state.adventure.bosses[level] || 0,
-          showStars: done,
-          cls: done ? 'is-done' : isCurrent ? 'is-current' : open ? '' : 'is-locked',
+          starsHtml: open ? advBossStarsMarkup(level) : '',
+          cls: conquered ? 'is-done' : isCurrent ? 'is-current' : open ? '' : 'is-locked',
           disabled: !open,
           onClick: () => launchBoss(level)
         })

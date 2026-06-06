@@ -4065,6 +4065,31 @@ body.is-adv-map-open {
   white-space: nowrap;
 }
 
+/* Étoiles des boss : 2 couleurs — série de victoires en cours vs déjà acquises.
+   Sur défaite, seules les « déjà acquises » (is-earned) subsistent. */
+.adv-star {
+  font-style: normal;
+}
+
+.adv-star.is-streak {
+  color: var(--gold);
+  text-shadow: 0 0 6px rgba(255, 217, 102, 0.55);
+}
+
+.adv-star.is-earned {
+  color: var(--cyan);
+}
+
+.adv-star.is-empty {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+/* Étoiles plus grandes dans le bandeau de résultat de fin de partie. */
+.adv-stars .adv-star {
+  font-size: 20px;
+  letter-spacing: 2px;
+}
+
 /* === Niveau joueur : pastille discrète, le cadre est une jauge de progression === */
 .adv-player-badge {
   display: none;
