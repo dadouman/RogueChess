@@ -3506,6 +3506,64 @@ body.is-adv-map-open {
   background: rgba(255, 120, 120, 0.09);
 }
 
+/* Data-viz : barres victoires/défaites (bilan global + par niveau de boss) */
+.adv-wl-bars {
+  flex: 1 1 100%;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.adv-wl-bar {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.adv-wl-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.adv-wl-track {
+  display: flex;
+  height: 12px;
+  min-width: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.adv-wl-win {
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(140, 235, 160, 0.95), rgba(96, 200, 124, 0.95));
+}
+
+.adv-wl-loss {
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(255, 130, 130, 0.95), rgba(232, 92, 92, 0.92));
+}
+
+.adv-wl-count {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.adv-wl-count i {
+  font-style: normal;
+  margin: 0 1px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
 .adv-history-list {
   list-style: none;
   margin: 0;

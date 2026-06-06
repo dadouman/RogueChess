@@ -8386,6 +8386,24 @@ function makeAdvTallyChip(title, won, lost) {
   return chip;
 }
 
+// Barre data-viz victoires/défaites : segment vert (V) + rouge (D) proportionnels,
+// libellé court à gauche, score V–D à droite. Lecture immédiate.
+function makeWinLossBar(label, won, lost) {
+  const total = won + lost;
+  const rate = total ? Math.round((won / total) * 100) : 0;
+  const row = document.createElement('div');
+  row.className = 'adv-wl-bar';
+  row.innerHTML =
+    `<span class="adv-wl-label">${escapeHtml(label)}</span>` +
+    `<span class="adv-wl-track">` +
+    `<span class="adv-wl-win" style="flex:${won}"></span>` +
+    `<span class="adv-wl-loss" style="flex:${lost}"></span>` +
+    `</span>` +
+    `<span class="adv-wl-count">${won}<i>–</i>${lost}</span>`;
+  row.title = `${label} : ${won} V / ${lost} D — ${rate}% de réussite`;
+  return row;
+}
+
 // M — Affiche l'historique des parties (tallies par adversaire/ouverture + liste).
 function renderAdvGameHistory() {
   const stats = advGameStats();
@@ -8403,15 +8421,48 @@ function renderAdvGameHistory() {
 
   if (tallies) {
     tallies.replaceChildren();
-    if (stats.byOpponent.length) {
+
+    // Bilan global : une barre V/D pour un coup d'œil immédiat.
+    if (stats.games.length) {
       const group = document.createElement('div');
       group.className = 'adv-tally-group';
-      group.innerHTML = '<span class="adv-tally-label">Par adversaire</span>';
-      for (const p of stats.byOpponent) {
+      group.innerHTML = '<span class="adv-tally-label">Bilan</span>';
+      const bars = document.createElement('div');
+      bars.className = 'adv-wl-bars';
+      bars.append(makeWinLossBar('Total', stats.won, stats.lost));
+      group.append(bars);
+      tallies.append(group);
+    }
+
+    // Par boss : data-viz V/D par niveau (N1 → N10), l'info clé demandée.
+    const bosses = stats.byOpponent
+      .filter((p) => p.kind === 'boss')
+      .sort((a, b) => (a.level || 0) - (b.level || 0));
+    if (bosses.length) {
+      const group = document.createElement('div');
+      group.className = 'adv-tally-group';
+      group.innerHTML = '<span class="adv-tally-label">Par boss</span>';
+      const bars = document.createElement('div');
+      bars.className = 'adv-wl-bars';
+      for (const b of bosses) {
+        bars.append(makeWinLossBar(`N${b.level}`, b.won, b.lost));
+      }
+      group.append(bars);
+      tallies.append(group);
+    }
+
+    // Entraînement (leçons) : pastilles compactes si présent.
+    const lessons = stats.byOpponent.filter((p) => p.kind !== 'boss');
+    if (lessons.length) {
+      const group = document.createElement('div');
+      group.className = 'adv-tally-group';
+      group.innerHTML = '<span class="adv-tally-label">Entraînement</span>';
+      for (const p of lessons) {
         group.append(makeAdvTallyChip(advFormatOpponentGroup(p), p.won, p.lost));
       }
       tallies.append(group);
     }
+
     if (stats.byOpening.length) {
       const group = document.createElement('div');
       group.className = 'adv-tally-group';
