@@ -4031,6 +4031,8 @@ body.is-adv-map-open {
   border: 2px solid var(--line-strong);
   background: rgba(0, 0, 0, 0.32);
   font-size: 16px;
+  font-weight: 800; /* palier N1..N10 = force du boss, mis en avant */
+  color: var(--text);
 }
 
 .adv-stage.is-done .adv-stage-node {
@@ -4084,7 +4086,12 @@ body.is-adv-map-open {
   color: rgba(255, 255, 255, 0.22);
 }
 
-/* Étoiles plus grandes dans le bandeau de résultat de fin de partie. */
+/* Étoiles mises en avant dans l'arène et le bandeau de résultat. */
+.adv-stage-stars .adv-star {
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+
 .adv-stars .adv-star {
   font-size: 20px;
   letter-spacing: 2px;
@@ -5814,5 +5821,10 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
 
   .adv-stage-stars {
     font-size: 10px;
+  }
+
+  .adv-stage-stars .adv-star {
+    font-size: 15px;
+    letter-spacing: 1px;
   }
 }

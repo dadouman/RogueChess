@@ -9619,8 +9619,8 @@ function renderAdventureMap() {
       const isCurrent = open && !conquered && level === target;
       act2.append(
         makeAdventureStageRow({
-          icon: conquered ? '✓' : open ? `N${level}` : '🔒',
-          title: `Boss N${level} · ${profile.label}`,
+          icon: open ? `N${level}` : '🔒',
+          title: profile.label,
           desc: profile.elo ? `${profile.elo} Elo` : 'Force max',
           starsHtml: open ? advBossStarsMarkup(level) : '',
           cls: conquered ? 'is-done' : isCurrent ? 'is-current' : open ? '' : 'is-locked',
