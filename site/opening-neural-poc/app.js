@@ -3334,10 +3334,14 @@ function handleBoardSquareClick(squareName) {
 // partie en cours, plateau visible, pas en revue, et c'est au trait noir.
 function isPremoveContext() {
   const game = state.game;
+  // Le prémouvement s'arme justement pendant la réflexion adverse : la partie est
+  // alors « verrouillée » (game.locked) — on ne teste donc PAS le verrou ici, sinon
+  // le drag ne s'activerait jamais (et la page scrollerait au toucher). On vérifie
+  // simplement qu'on est bien dans une partie en cours, au tour des Noirs.
   return Boolean(
     game &&
       game.status === 'playing' &&
-      !game.locked &&
+      !game.cinematic &&
       game.historyView == null &&
       !getActiveFreeReviewEntry() &&
       game.chess.turn() === 'b'
@@ -5649,6 +5653,9 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
     setGameLocked(false);
     elements.moveInput.value = '';
     renderGraph();
+    // T : maintenant que c'est de nouveau à toi (déverrouillé), joue le prémouvement
+    // armé pendant la réflexion adverse. Relance la chaîne (coup → réponse → prémouvement).
+    tryExecutePremove();
   }
 }
 
@@ -5701,7 +5708,7 @@ async function submitOpeningMove(input) {
   // Affiche (et anime) le coup blanc avant que l'adversaire ne réponde.
   renderGameDetails();
   await advanceOpponentTurn();
-  tryExecutePremove(); // T : joue le prémouvement armé si c'est de nouveau à toi
+  // Le prémouvement éventuel est joué après déverrouillage (cf. submitHumanMove).
 }
 
 async function submitExplorationMove(input, message) {
@@ -5807,7 +5814,7 @@ async function submitFreeMove(input) {
   state.game.freeRoundPending = !isExplorationMode();
   renderGamePanel();
   await advanceOpponentTurn();
-  tryExecutePremove(); // T : joue le prémouvement armé si c'est de nouveau à toi
+  // Le prémouvement éventuel est joué après déverrouillage (cf. submitHumanMove).
 }
 
 async function advanceOpponentTurn() {
