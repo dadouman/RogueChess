@@ -7915,6 +7915,20 @@ function renderAdvPlayerBadge() {
     lvlEl.textContent = String(prog.level);
   }
   badge.title = `Niveau joueur ${prog.level} · ${prog.xp} XP`;
+
+  // En-tête du volet d'options rapides (même progression que la bulle).
+  const ring = document.querySelector('#advQuickRing');
+  if (ring) {
+    ring.style.setProperty('--xp-pct', pct.toFixed(1));
+  }
+  const quickLvl = document.querySelector('#advQuickLevel');
+  if (quickLvl) {
+    quickLvl.textContent = String(prog.level);
+  }
+  const quickXp = document.querySelector('#advQuickXp');
+  if (quickXp) {
+    quickXp.textContent = `${prog.xp} XP`;
+  }
   if (lastPlayerLevelShown && prog.level > lastPlayerLevelShown) {
     badge.classList.remove('is-levelup');
     void badge.offsetWidth; // relance l'animation
@@ -8922,6 +8936,26 @@ function closeAdvAnalyseSheet() {
   }
 }
 
+// Volet d'options rapides, ouvert par la bulle « niveau joueur » (haut à droite).
+// Hub de navigation pendant la partie : carte/niveaux, réglages, accueil.
+function openAdvQuickMenu() {
+  closeAdvAnalyseSheet();
+  renderAdvPlayerBadge(); // synchronise niveau + XP dans l'en-tête du volet
+  const menu = document.querySelector('#advQuickMenu');
+  if (menu) {
+    menu.classList.add('is-open');
+    menu.setAttribute('aria-hidden', 'false');
+  }
+}
+
+function closeAdvQuickMenu() {
+  const menu = document.querySelector('#advQuickMenu');
+  if (menu) {
+    menu.classList.remove('is-open');
+    menu.setAttribute('aria-hidden', 'true');
+  }
+}
+
 // Reprend l'éval détaillée + le commentaire déjà calculés (éléments du rail) dans la feuille.
 function renderAdvAnalyseSheet() {
   const game = state.game;
@@ -9542,10 +9576,41 @@ function bindAdventureEvents() {
     // U : cadence personnalisée (validée à la perte de focus / Entrée).
     customClockInput.addEventListener('change', () => setAdvCustomClock(customClockInput.value));
   }
-  // Barre d'actions portable : Niveau / Analyse / Cerveau
-  bind('#advBarMenu', openAdventureMap);
+  // Barre d'actions de jeu : Vue (cerveau/échiquier) + Analyse
   bind('#advBarAnalyse', openAdvAnalyseSheet);
   bind('#advBarView', toggleAdvViewMode);
+  // Bulle haut-droite : ouvre le volet d'options rapides (menu de navigation)
+  bind('#advPlayerBadge', openAdvQuickMenu);
+  bind('#advQuickMap', () => {
+    closeAdvQuickMenu();
+    openAdventureMap();
+  });
+  bind('#advQuickSettings', () => {
+    closeAdvQuickMenu();
+    openAdventureMap();
+    setAdvMapView('settings');
+  });
+  bind('#advQuickHome', () => {
+    closeAdvQuickMenu();
+    setScreen('home');
+  });
+  const quickMenu = document.querySelector('#advQuickMenu');
+  if (quickMenu) {
+    quickMenu.addEventListener('click', (event) => {
+      if (event.target.closest('[data-quick-close]')) {
+        closeAdvQuickMenu();
+      }
+    });
+  }
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    const m = document.querySelector('#advQuickMenu');
+    if (m && m.classList.contains('is-open')) {
+      closeAdvQuickMenu();
+    }
+  });
   // Historique : navigation ‹/› + masquer/afficher
   bind('#advHistPrev', () => advHistoryStep(-1));
   bind('#advHistNext', () => advHistoryStep(1));

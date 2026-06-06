@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -524,23 +524,61 @@
       </div>
     </div>
 
-    <!-- Niveau joueur : pastille discrète en haut, le cadre fait jauge de progression -->
-    <div id="advPlayerBadge" class="adv-player-badge" aria-label="Niveau joueur" style="--xp-pct: 0">
+    <!-- Bulle menu (haut à droite en partie) : niveau joueur + jauge XP, ouvre le volet d'options -->
+    <button
+      id="advPlayerBadge"
+      class="adv-player-badge"
+      type="button"
+      aria-label="Ouvrir le menu et les options"
+      aria-haspopup="dialog"
+      style="--xp-pct: 0"
+    >
       <span id="advPlayerBadgeLevel">1</span>
-    </div>
+      <span class="adv-player-badge-menu" aria-hidden="true">☰</span>
+    </button>
 
-    <!-- Version portable : barre d'actions fixe + feuille de coups -->
-    <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions Aventure">
-      <button id="advBarMenu" type="button" class="adv-bar-btn">
-        <span class="adv-bar-ico" aria-hidden="true">🗺️</span><span>Niveau</span>
+    <!-- Version portable : barre d'actions de jeu (vue + analyse). La navigation/menu vit dans la bulle. -->
+    <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions de jeu">
+      <button id="advBarView" type="button" class="adv-bar-btn">
+        <span class="adv-bar-ico" aria-hidden="true">🧠</span><span id="advBarViewLabel">Cerveau</span>
       </button>
       <button id="advBarAnalyse" type="button" class="adv-bar-btn">
         <span class="adv-bar-ico" aria-hidden="true">🔬</span><span>Analyse</span>
       </button>
-      <button id="advBarView" type="button" class="adv-bar-btn">
-        <span class="adv-bar-ico" aria-hidden="true">🧠</span><span id="advBarViewLabel">Cerveau</span>
-      </button>
     </nav>
+
+    <!-- Volet d'options rapides, ouvert par la bulle en haut à droite -->
+    <div id="advQuickMenu" class="adv-quick" aria-hidden="true">
+      <div class="adv-quick-backdrop" data-quick-close></div>
+      <aside class="adv-quick-panel" role="dialog" aria-modal="true" aria-label="Menu et options">
+        <header class="adv-quick-head">
+          <div class="adv-quick-level">
+            <div class="adv-quick-ring" id="advQuickRing" style="--xp-pct: 0">
+              <span id="advQuickLevel">1</span>
+            </div>
+            <div class="adv-quick-level-txt">
+              <strong>Niveau joueur</strong>
+              <em id="advQuickXp">0 XP</em>
+            </div>
+          </div>
+          <button class="adv-quick-x" type="button" data-quick-close aria-label="Fermer le menu">✕</button>
+        </header>
+        <div class="adv-quick-actions">
+          <button id="advQuickMap" type="button" class="adv-quick-item">
+            <span class="adv-quick-ico" aria-hidden="true">🗺️</span>
+            <span class="adv-quick-text"><b>Carte du cerveau</b><i>Choisir une étape ou un adversaire</i></span>
+          </button>
+          <button id="advQuickSettings" type="button" class="adv-quick-item">
+            <span class="adv-quick-ico" aria-hidden="true">⚙️</span>
+            <span class="adv-quick-text"><b>Réglages</b><i>Difficulté, temps, options</i></span>
+          </button>
+          <button id="advQuickHome" type="button" class="adv-quick-item">
+            <span class="adv-quick-ico" aria-hidden="true">🏠</span>
+            <span class="adv-quick-text"><b>Accueil</b><i>Quitter la partie</i></span>
+          </button>
+        </div>
+      </aside>
+    </div>
 
     <div id="advAnalyseSheet" class="adv-move-sheet" aria-hidden="true">
       <div class="adv-sheet-backdrop" data-sheet-close></div>
@@ -559,6 +597,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=5" type="module"></script>
+    <script src="./app.js?v=6" type="module"></script>
   </body>
 </html>
