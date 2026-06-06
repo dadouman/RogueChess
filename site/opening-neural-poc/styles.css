@@ -3118,6 +3118,7 @@ body.is-adv-map-open {
 }
 
 .adv-map-panel[data-view="main"] .adv-view-main,
+.adv-map-panel[data-view="lesson"] .adv-view-lesson,
 .adv-map-panel[data-view="arena"] .adv-view-arena,
 .adv-map-panel[data-view="shop"] .adv-view-shop,
 .adv-map-panel[data-view="settings"] .adv-view-settings {
@@ -3126,32 +3127,132 @@ body.is-adv-map-open {
   gap: 14px;
 }
 
-.adv-view-back {
-  justify-self: start;
-}
-
-/* Pied de l'écran Choix du mode de jeu : bouton « Quitter » (retour accueil). */
-.adv-map-footer {
-  flex: 0 0 auto;
-  display: flex;
-  padding-top: 2px;
-}
-
+/* Boutons d'action en bas d'écran (même gabarit pleine largeur).
+   « Retour » sur les sous-vues, « Quitter » (rouge) en bas de la vue principale. */
+.adv-bottom-btn,
 .adv-quit-btn {
   width: 100%;
   min-height: 44px;
+  margin-top: 2px;
   padding: 12px 16px;
-  border: 1px solid rgba(255, 120, 120, 0.45);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 120, 120, 0.1);
-  color: #ffd9d9;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
 }
 
+.adv-bottom-btn:active {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.adv-quit-btn {
+  border-color: rgba(255, 120, 120, 0.45);
+  background: rgba(255, 120, 120, 0.1);
+  color: #ffd9d9;
+}
+
 .adv-quit-btn:active {
   background: rgba(255, 120, 120, 0.18);
+}
+
+/* === Vue « Illuminer le cerveau » : afficher le cerveau + choix du parcours === */
+.adv-brain-pick {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.adv-brain-emblem {
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  border-radius: 999px;
+  background: conic-gradient(
+    var(--cyan) calc(var(--xp-pct, 0) * 1%),
+    rgba(255, 255, 255, 0.12) 0
+  );
+}
+
+.adv-brain-emblem-core {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: 98px;
+  height: 98px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 35%, rgba(117, 231, 232, 0.18), #11150e 70%);
+}
+
+.adv-brain-emblem-ico {
+  font-size: 38px;
+  line-height: 1;
+}
+
+.adv-brain-emblem-pct {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-pick-grid {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.adv-pick-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.adv-pick-btn:hover:not(:disabled) {
+  transform: translateX(3px);
+  border-color: rgba(255, 217, 102, 0.6);
+  background: rgba(255, 217, 102, 0.1);
+}
+
+.adv-pick-btn:disabled,
+.adv-pick-btn.is-locked {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.adv-pick-ico {
+  flex: 0 0 auto;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.adv-pick-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adv-pick-text b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.adv-pick-text i {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* Bouton icône discret (engrenage réglages, fermeture). */

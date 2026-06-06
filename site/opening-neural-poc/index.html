@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=7" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -433,17 +433,44 @@
               <div class="adv-history-tallies" id="advHistoryTallies"></div>
               <ul class="adv-history-list" id="advHistoryList"></ul>
             </section>
+
+            <button id="advMapQuit" class="adv-quit-btn" type="button">Quitter</button>
+          </section>
+
+          <!-- Vue « Illuminer le cerveau » : afficher le cerveau, choisir le parcours -->
+          <section class="adv-view adv-view-lesson">
+            <div class="adv-act-head">
+              <strong>Comment parcourir le cerveau ?</strong>
+            </div>
+            <div class="adv-brain-pick">
+              <div class="adv-brain-emblem" id="advLessonBrain" style="--xp-pct: 0">
+                <span class="adv-brain-emblem-core">
+                  <span class="adv-brain-emblem-ico" aria-hidden="true">🧠</span>
+                  <span class="adv-brain-emblem-pct" id="advLessonCortex">0 %</span>
+                </span>
+              </div>
+              <div class="adv-pick-grid">
+                <button id="advLessonFree" class="adv-pick-btn" type="button">
+                  <span class="adv-pick-ico" aria-hidden="true">🧭</span>
+                  <span class="adv-pick-text"><b>Libre</b><i>Apprends les lignes du livre</i></span>
+                </button>
+                <button id="advLessonTrap" class="adv-pick-btn" type="button">
+                  <span class="adv-pick-ico" aria-hidden="true">🎯</span>
+                  <span class="adv-pick-text"><b>Piège</b><i id="advLessonTrapSub">Fais tomber Stockfish dans un piège</i></span>
+                </button>
+              </div>
+            </div>
+            <button id="advLessonBack" class="adv-bottom-btn" type="button">← Retour</button>
           </section>
 
           <!-- Vue arène : choisir l'adversaire -->
           <section class="adv-view adv-view-arena">
-            <button id="advArenaBack" class="adv-ghost adv-view-back" type="button">← Retour</button>
             <div class="adv-act-head">
-              <span class="kicker">Arène</span>
               <strong>Choisis ton adversaire</strong>
-              <p id="advAct2Lock">Verrouillé : illumine assez de cortex pour ouvrir l'arène.</p>
+              <p id="advAct2Lock" hidden></p>
             </div>
             <div id="advAct2Stages" class="adv-stage-rail"></div>
+            <button id="advArenaBack" class="adv-bottom-btn" type="button">← Retour</button>
           </section>
 
           <!-- Vue boutique -->
@@ -473,7 +500,6 @@
 
           <!-- Vue réglages (engrenage) : difficulté + cadence -->
           <section class="adv-view adv-view-settings">
-            <button id="advSettingsBack" class="adv-ghost adv-view-back" type="button">← Retour</button>
             <section class="adv-difficulty">
               <span class="kicker">Difficulté · aides affichées</span>
               <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
@@ -489,11 +515,9 @@
               </div>
               <p id="advTimeDesc" class="adv-difficulty-desc"></p>
             </section>
+            <button id="advSettingsBack" class="adv-bottom-btn" type="button">← Retour</button>
           </section>
         </div>
-        <footer class="adv-map-footer">
-          <button id="advMapQuit" class="adv-quit-btn" type="button">Quitter</button>
-        </footer>
       </div>
     </div>
 
@@ -598,6 +622,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=7" type="module"></script>
+    <script src="./app.js?v=9" type="module"></script>
   </body>
 </html>
