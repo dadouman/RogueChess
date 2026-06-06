@@ -3531,16 +3531,30 @@ body.is-adv-map-open {
 
 .adv-shop-line {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.adv-shop-line span {
-  min-width: 0;
+.adv-shop-line-info {
   flex: 1 1 auto;
-  font-size: 12px;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.adv-shop-line-info b {
+  font-size: 12.5px;
+  font-weight: 800;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adv-shop-line-info span {
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3549,6 +3563,48 @@ body.is-adv-map-open {
 .adv-shop-line button {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+/* Mini-échiquier animé d'une ouverture (« GIF » en boucle) */
+.opening-gif {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: 84px;
+  height: 84px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+}
+
+.opening-gif-cell {
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.opening-gif-cell.light {
+  background: #e7e0cb;
+}
+
+.opening-gif-cell.dark {
+  background: #7c8f6b;
+}
+
+.opening-gif-cell.is-move {
+  background: #e6d678;
+}
+
+.opening-gif-cell.is-white {
+  color: #ffffff;
+  text-shadow: 0 0 1.5px rgba(0, 0, 0, 0.85);
+}
+
+.opening-gif-cell.is-black {
+  color: #16180f;
+  text-shadow: 0 0 1.5px rgba(255, 255, 255, 0.5);
 }
 
 .adv-shop-empty {

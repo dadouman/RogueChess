@@ -7824,6 +7824,7 @@ function renderAdvShop() {
     return;
   }
   host.replaceChildren();
+  resetOpeningGifBoards(); // on repart de zéro pour les mini-échiquiers animés
   const stats = advGameStats();
   const lines = stats.byOpening.filter((o) => o.key && o.key !== 'hors-livre').slice(0, 6);
   if (!lines.length) {
@@ -7837,11 +7838,27 @@ function renderAdvShop() {
     const sourceGame = stats.games.find(
       (g) => g.openingKey === opening.key && Array.isArray(g.lineSans) && g.lineSans.length
     );
+    const sans = opening.lineSans || sourceGame?.lineSans || null;
     const boosted = advLineIsBoosted(opening.key);
     const row = document.createElement('div');
     row.className = 'adv-shop-line';
-    const label = document.createElement('span');
-    label.textContent = opening.label;
+
+    // Visuel : mini-échiquier qui rejoue l'ouverture en boucle (pour bien choisir).
+    const gif = makeOpeningGifBoard(sans);
+    if (gif) {
+      row.append(gif);
+    }
+
+    // Texte : nom de l'ouverture (PGN/ECO) + séquence de coups.
+    const info = document.createElement('div');
+    info.className = 'adv-shop-line-info';
+    const nameEl = document.createElement('b');
+    nameEl.textContent = advOpeningDisplayLabel(sans, opening.label);
+    const seqEl = document.createElement('span');
+    seqEl.textContent = opening.label;
+    info.append(nameEl, seqEl);
+    row.append(info);
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'adv-ghost';
@@ -7857,7 +7874,7 @@ function renderAdvShop() {
         );
       }
     }
-    row.append(label, btn);
+    row.append(btn);
     host.append(row);
   }
 }
@@ -8246,6 +8263,156 @@ function advOpeningSignature(game) {
   };
 }
 
+// Nom d'ouverture (PGN/ECO) le plus précis atteint en rejouant une suite de coups :
+// on suit la ligne dans le graphe et on garde le nom du nœud le plus profond.
+function advOpeningInfoFromSans(sans) {
+  if (!Array.isArray(sans) || !sans.length || !(state.nodesByFen instanceof Map)) {
+    return null;
+  }
+  let chess;
+  try {
+    chess = new Chess();
+  } catch {
+    return null;
+  }
+  let best = null;
+  for (const san of sans) {
+    let mv = null;
+    try {
+      mv = chess.move(san);
+    } catch {
+      mv = null;
+    }
+    if (!mv) break;
+    const node = state.nodesByFen.get(chess.fen());
+    if (node && (node.opening || node.eco)) {
+      best = { name: node.opening || null, eco: node.eco || null };
+    }
+  }
+  return best;
+}
+
+// Libellé d'ouverture lisible : « Nom (ECO) » si connu, sinon la séquence de coups.
+function advOpeningDisplayLabel(sans, fallbackLabel) {
+  const info = advOpeningInfoFromSans(sans);
+  if (info?.name) {
+    return info.eco ? `${info.name} (${info.eco})` : info.name;
+  }
+  return fallbackLabel || 'Hors livre';
+}
+
+// === Mini-échiquier animé d'une ouverture (« GIF » en boucle, pour bien choisir) ===
+const OPENING_GIF_GLYPHS = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
+const OPENING_GIF_MAX_PLIES = 12;
+let openingGifBoards = [];
+let openingGifTimer = null;
+
+// FEN → 64 cases (rang 8→1, colonnes a→h) : { glyph, white } ou null.
+function fenToGifCells(fen) {
+  const board = String(fen || '').split(' ')[0];
+  const cells = [];
+  for (const rankStr of board.split('/')) {
+    for (const ch of rankStr) {
+      if (/\d/.test(ch)) {
+        for (let i = 0; i < Number(ch); i += 1) cells.push(null);
+      } else {
+        cells.push({ glyph: OPENING_GIF_GLYPHS[ch.toLowerCase()] || '', white: ch === ch.toUpperCase() });
+      }
+    }
+  }
+  return cells;
+}
+
+// Construit les images successives de l'ouverture (départ + après chaque coup),
+// avec une pause en fin de ligne avant de boucler.
+function buildOpeningGifFrames(sans) {
+  let chess;
+  try {
+    chess = new Chess();
+  } catch {
+    return null;
+  }
+  const frames = [{ fen: chess.fen(), from: null, to: null }];
+  for (const san of (sans || []).slice(0, OPENING_GIF_MAX_PLIES)) {
+    let mv = null;
+    try {
+      mv = chess.move(san);
+    } catch {
+      mv = null;
+    }
+    if (!mv) break;
+    frames.push({ fen: chess.fen(), from: mv.from, to: mv.to });
+  }
+  if (frames.length < 2) {
+    return null;
+  }
+  const last = frames[frames.length - 1];
+  frames.push({ ...last }, { ...last }); // pause avant rebouclage
+  return frames;
+}
+
+function renderOpeningGifFrame(entry) {
+  const frame = entry.frames[entry.index];
+  const cells = fenToGifCells(frame.fen);
+  entry.cellEls.forEach((cell, i) => {
+    const data = cells[i];
+    cell.textContent = data ? data.glyph : '';
+    cell.classList.toggle('is-white', Boolean(data?.white));
+    cell.classList.toggle('is-black', Boolean(data && !data.white));
+    const sqName = entry.squareNames[i];
+    cell.classList.toggle('is-move', frame.from === sqName || frame.to === sqName);
+  });
+}
+
+function ensureOpeningGifTicker() {
+  if (openingGifTimer || !openingGifBoards.length) {
+    return;
+  }
+  openingGifTimer = window.setInterval(() => {
+    for (const entry of openingGifBoards) {
+      entry.index = (entry.index + 1) % entry.frames.length;
+      renderOpeningGifFrame(entry);
+    }
+  }, 820);
+}
+
+// Arrête et oublie tous les mini-échiquiers (à appeler avant un re-rendu).
+function resetOpeningGifBoards() {
+  openingGifBoards = [];
+  if (openingGifTimer) {
+    window.clearInterval(openingGifTimer);
+    openingGifTimer = null;
+  }
+}
+
+function makeOpeningGifBoard(sans) {
+  const frames = buildOpeningGifFrames(sans);
+  if (!frames) {
+    return null;
+  }
+  const board = document.createElement('div');
+  board.className = 'opening-gif';
+  board.setAttribute('aria-hidden', 'true');
+  const cellEls = [];
+  const squareNames = [];
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  for (let rank = 8; rank >= 1; rank -= 1) {
+    for (let f = 0; f < 8; f += 1) {
+      const cell = document.createElement('span');
+      const dark = (rank + f) % 2 === 1;
+      cell.className = `opening-gif-cell ${dark ? 'dark' : 'light'}`;
+      board.append(cell);
+      cellEls.push(cell);
+      squareNames.push(`${files[f]}${rank}`);
+    }
+  }
+  const entry = { frames, index: 0, cellEls, squareNames };
+  renderOpeningGifFrame(entry);
+  openingGifBoards.push(entry);
+  ensureOpeningGifTicker();
+  return board;
+}
+
 // M — Enregistre une partie terminée dans l'historique persistant.
 // Coups joués (avec évals) d'une partie, version compacte persistable, pour la
 // revue + analyse a posteriori. Construite depuis freeReviewMoves à la fin.
@@ -8335,7 +8502,16 @@ function advGameStats(gameFilter = null) {
     else lost += 1;
 
     const oKey = g.openingKey || 'hors-livre';
-    const o = byOpening.get(oKey) || { key: oKey, label: g.openingLabel || oKey, won: 0, lost: 0 };
+    const o = byOpening.get(oKey) || {
+      key: oKey,
+      label: g.openingLabel || oKey,
+      lineSans: Array.isArray(g.lineSans) ? g.lineSans : null, // pour nom d'ouverture + mini-échiquier
+      won: 0,
+      lost: 0
+    };
+    if (!o.lineSans && Array.isArray(g.lineSans)) {
+      o.lineSans = g.lineSans;
+    }
     if (isWin) o.won += 1;
     else o.lost += 1;
     byOpening.set(oKey, o);
@@ -8541,7 +8717,7 @@ function renderAdvGameHistory() {
       group.className = 'adv-tally-group';
       group.innerHTML = '<span class="adv-tally-label">Par ouverture</span>';
       for (const o of stats.byOpening.slice(0, 6)) {
-        group.append(makeAdvTallyChip(o.label, o.won, o.lost));
+        group.append(makeAdvTallyChip(advOpeningDisplayLabel(o.lineSans, o.label), o.won, o.lost));
       }
       tallies.append(group);
     }
@@ -8556,11 +8732,12 @@ function renderAdvGameHistory() {
       const icon = g.result === 'won' ? '✅' : '❌';
       const mateBadge = g.mate ? '<span class="adv-history-mate">mat</span>' : '';
       const chevron = reviewable ? '<span class="adv-history-chevron" aria-hidden="true">▸</span>' : '';
+      const openingText = advOpeningDisplayLabel(g.lineSans, g.openingLabel);
       li.innerHTML = `
         <span class="adv-history-result">${icon}</span>
         <span class="adv-history-main">
           <b>${escapeHtml(advFormatGameOpponent(g))}</b>${mateBadge}
-          <i>${escapeHtml(g.openingLabel || 'Hors livre')}</i>
+          <i>${escapeHtml(openingText)}</i>
         </span>
         <span class="adv-history-meta">${g.plies} c · ${advFormatRelativeTime(g.ts)}</span>${chevron}`;
       if (reviewable) {
@@ -8695,7 +8872,7 @@ function renderGameReview() {
       game.result === 'won' ? (game.mate ? 'Victoire (mat)' : 'Victoire') : 'Défaite';
     resultEl.className = game.result === 'won' ? 'is-won' : 'is-lost';
   }
-  advSetText('#advReviewOpening', game.openingLabel || 'Hors livre');
+  advSetText('#advReviewOpening', advOpeningDisplayLabel(game.lineSans, game.openingLabel));
   const accuracy = advGameAccuracy(game.moves);
   advSetText('#advReviewAccuracy', accuracy == null ? '—' : `${accuracy} %`);
 
@@ -8893,6 +9070,7 @@ function closeAdventureMap() {
     map.hidden = true;
   }
   document.body.classList.remove('is-adv-map-open');
+  resetOpeningGifBoards(); // stoppe l'animation des mini-échiquiers quand la carte se ferme
 }
 
 function resetAdventureProgress() {
