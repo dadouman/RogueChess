@@ -3057,15 +3057,15 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
 }
 
 .adv-map-panel {
-  display: grid;
-  /* Colonne unique bornée à la largeur du panneau : minmax(0,...) empêche le
-     contenu large (grille de cadence, longs libellés) d'élargir toute la carte. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
-  width: min(100%, 1040px);
+  /* Colonne flex : en-tête + barre d'onglets fixes, contenu scrollable unique
+     (.adv-tab-content) → plus de double-scroll. */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(100%, 760px);
   max-height: 92vh;
-  padding: 22px;
-  overflow: auto;
+  padding: 16px;
+  overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 18px;
   background:
@@ -3074,11 +3074,148 @@ body.screen-adventure.is-adv-board-view .adv-review-panel[hidden] {
   box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6);
 }
 
+/* Verrou du scroll de fond quand la carte est ouverte (anti double-scroll). */
+body.is-adv-map-open {
+  overflow: hidden;
+}
+
+/* === Onglets + vues de la carte aventure === */
+.adv-tabbar {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.adv-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 9px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-tab.is-active {
+  border-color: var(--cyan);
+  color: var(--text);
+  background: rgba(117, 231, 232, 0.12);
+}
+
+.adv-tab-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.adv-view {
+  display: none;
+}
+
+.adv-map-panel[data-view="main"] .adv-view-main,
+.adv-map-panel[data-view="arena"] .adv-view-arena,
+.adv-map-panel[data-view="shop"] .adv-view-shop,
+.adv-map-panel[data-view="settings"] .adv-view-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.adv-view-back {
+  justify-self: start;
+}
+
+/* Bouton icône discret (engrenage réglages, fermeture). */
+.adv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.adv-icon-btn.is-active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* Gros boutons de la vue principale. */
+.adv-main-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.adv-big-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(117, 231, 232, 0.16), rgba(255, 255, 255, 0.03));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 120ms ease;
+}
+
+.adv-big-btn:hover {
+  border-color: var(--cyan);
+}
+
+.adv-big-btn:active {
+  transform: scale(0.99);
+}
+
+.adv-big-btn-arena {
+  background: linear-gradient(180deg, rgba(255, 160, 90, 0.18), rgba(255, 255, 255, 0.03));
+}
+
+.adv-big-btn-ico {
+  flex: 0 0 auto;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.adv-big-btn-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.adv-big-btn-text b {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.adv-big-btn-text i {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .adv-map-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .adv-map-header h2 {

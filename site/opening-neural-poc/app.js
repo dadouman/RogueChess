@@ -8737,6 +8737,8 @@ function openAdventureMap() {
   if (map) {
     map.hidden = false;
   }
+  document.body.classList.add('is-adv-map-open'); // verrou du scroll de fond (anti double-scroll)
+  setAdvMapView('main'); // on rouvre toujours sur l'onglet principal
   renderAdventureMap();
 }
 
@@ -8745,6 +8747,7 @@ function closeAdventureMap() {
   if (map) {
     map.hidden = true;
   }
+  document.body.classList.remove('is-adv-map-open');
 }
 
 function resetAdventureProgress() {
@@ -9328,6 +9331,53 @@ function makeAdventureStageRow(options) {
   return button;
 }
 
+// Bascule entre les vues de la carte : principale, arène, boutique, réglages.
+function setAdvMapView(view) {
+  state.advMapView = view;
+  const panel = document.querySelector('.adv-map-panel');
+  if (panel) {
+    panel.dataset.view = view;
+  }
+  document
+    .querySelector('#advTabMain')
+    ?.classList.toggle('is-active', view === 'main' || view === 'arena');
+  document.querySelector('#advTabShop')?.classList.toggle('is-active', view === 'shop');
+  document.querySelector('#advSettingsBtn')?.classList.toggle('is-active', view === 'settings');
+  document.querySelector('.adv-tab-content')?.scrollTo?.(0, 0);
+}
+
+// Sous-titres des deux gros boutons de la vue principale.
+function renderAdvMainActions() {
+  if (!state.adventure) {
+    return;
+  }
+  const lessonSub = document.querySelector('#advBtnLessonSub');
+  if (lessonSub) {
+    const allDone = ADV_LESSONS.every((l) => state.adventure.lessons[l.id]);
+    lessonSub.textContent =
+      allDone && advTrapsUnlocked()
+        ? "Cortex à 100 % — pièges d'ouverture"
+        : `Apprends les lignes · cortex à ${advCoveragePct()} %`;
+  }
+  const arenaSub = document.querySelector('#advBtnArenaSub');
+  if (arenaSub) {
+    arenaSub.textContent = advAct2Unlocked()
+      ? `Affronte Stockfish · meilleur N${state.adventure.highestBoss}/10`
+      : `Verrouillé · illumine ${Math.round(ADV_ACT2_UNLOCK * 100)} % du cortex`;
+  }
+}
+
+// Bouton « Illuminer le cerveau » : leçon d'ouverture, ou pièges une fois tout le
+// cortex illuminé (progression naturelle).
+function launchBrainLesson() {
+  const allDone = ADV_LESSONS.every((l) => state.adventure?.lessons?.[l.id]);
+  if (allDone && advTrapsUnlocked()) {
+    launchTrapsLesson();
+  } else {
+    launchLesson();
+  }
+}
+
 function renderAdventureMap() {
   if (!state.adventure) {
     return;
@@ -9348,57 +9398,14 @@ function renderAdventureMap() {
   renderAdvTimeControl();
   renderAdvShop();
   renderAdvGameHistory();
+  renderAdvMainActions();
 
-  const act1 = document.querySelector('#advAct1Stages');
-  if (act1) {
-    act1.replaceChildren();
-    const currentLesson = ADV_LESSONS.find((lesson) => !state.adventure.lessons[lesson.id]);
-    for (const lesson of ADV_LESSONS) {
-      const done = Boolean(state.adventure.lessons[lesson.id]);
-      const isCurrent = currentLesson && lesson.id === currentLesson.id;
-      act1.append(
-        makeAdventureStageRow({
-          icon: done ? '✓' : lesson.icon,
-          title: lesson.title,
-          desc: `Illumine ${Math.round(lesson.target * 100)} % du cortex`,
-          stars: state.adventure.lessons[lesson.id] || 0,
-          showStars: done,
-          cls: done ? 'is-done' : isCurrent ? 'is-current' : '',
-          disabled: false,
-          onClick: () => launchLesson()
-        })
-      );
-    }
-    // Catégorie « Pièges » : débloquée une fois toutes les lignes apprises.
-    if (bookHasTrapLines()) {
-      const trapsUnlocked = advTrapsUnlocked();
-      act1.append(
-        makeAdventureStageRow({
-          icon: trapsUnlocked ? '🎯' : '🔒',
-          title: 'Pièges d’ouverture',
-          desc: trapsUnlocked
-            ? 'Fais tomber Stockfish et livre le mat'
-            : 'Verrouillé : illumine 100 % du cortex',
-          stars: 0,
-          showStars: false,
-          cls: trapsUnlocked ? '' : 'is-locked',
-          disabled: !trapsUnlocked,
-          onClick: () => launchTrapsLesson()
-        })
-      );
-    }
-  }
-
-  const act2Section = document.querySelector('#advAct2Section');
   const act2 = document.querySelector('#advAct2Stages');
   const lock = document.querySelector('#advAct2Lock');
   const unlocked = advAct2Unlocked();
-  if (act2Section) {
-    act2Section.classList.toggle('is-locked', !unlocked);
-  }
   if (lock) {
     lock.textContent = unlocked
-      ? 'Arène ouverte : mate chaque niveau pour libérer le suivant.'
+      ? 'Mate chaque niveau pour libérer le suivant.'
       : `Verrouillé : illumine ${Math.round(ADV_ACT2_UNLOCK * 100)} % du cortex (actuel ${coveragePct} %).`;
   }
   if (act2) {
@@ -9442,6 +9449,14 @@ function bindAdventureEvents() {
   bind('#advMapButton', openAdventureMap);
   bind('#advViewToggle', toggleAdvViewMode);
   bind('#advMapClose', closeAdventureMap);
+  // Onglets / vues de la carte aventure
+  bind('#advTabMain', () => setAdvMapView('main'));
+  bind('#advTabShop', () => setAdvMapView('shop'));
+  bind('#advSettingsBtn', () => setAdvMapView('settings'));
+  bind('#advSettingsBack', () => setAdvMapView('main'));
+  bind('#advArenaBack', () => setAdvMapView('main'));
+  bind('#advBtnLesson', launchBrainLesson);
+  bind('#advBtnArena', () => setAdvMapView('arena'));
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Revue d'une partie historique : navigation + fermeture.
   bind('#advReviewClose', closeGameReview);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -385,100 +385,126 @@
     </div>
 
     <div id="adventureMap" class="adventure-map" hidden aria-label="Carte du cerveau">
-      <div class="adv-map-panel">
+      <div class="adv-map-panel" data-view="main">
         <header class="adv-map-header">
           <div>
             <span class="kicker">Mode Aventure</span>
             <h2>Carte du cerveau</h2>
           </div>
           <div class="adv-map-header-actions">
+            <button id="advSettingsBtn" class="adv-icon-btn" type="button" aria-label="Réglages" title="Réglages">⚙️</button>
             <button id="advMapHomeButton" class="adv-ghost" type="button">Accueil</button>
-            <button id="advMapClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+            <button id="advMapClose" class="adv-icon-btn" type="button" aria-label="Fermer" title="Fermer">✕</button>
           </div>
         </header>
 
-        <div class="adv-map-summary">
-          <div class="adv-brain-ring" id="advBrainRing" style="--pct: 0">
-            <div class="adv-brain-ring-core">
-              <strong id="advRingValue">0 %</strong>
-              <span>cortex</span>
-            </div>
-          </div>
-          <dl class="adv-map-stats">
-            <div class="is-player"><dt>Niveau joueur</dt><dd id="advStatPlayer">Niv.1</dd></div>
-            <div><dt>Temps de jeu</dt><dd id="advStatPlaytime">0 coups</dd></div>
-            <div><dt>Niveau cerveau</dt><dd id="advStatLevel">1</dd></div>
-            <div><dt>Puissance</dt><dd id="advStatPower">N0</dd></div>
-          </dl>
+        <div class="adv-tabbar" role="tablist" aria-label="Sections">
+          <button id="advTabMain" class="adv-tab is-active" type="button" data-view="main" role="tab">🧠 Principal</button>
+          <button id="advTabShop" class="adv-tab" type="button" data-view="shop" role="tab">🛒 Boutique</button>
         </div>
 
-        <section class="adv-difficulty">
-          <span class="kicker">Difficulté · aides affichées</span>
-          <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
-          <p id="advDifficultyDesc" class="adv-difficulty-desc"></p>
-        </section>
-
-        <section class="adv-difficulty">
-          <span class="kicker">Cadence · pendule</span>
-          <div id="advTimeButtons" class="adv-difficulty-buttons" role="group" aria-label="Cadence de jeu"></div>
-          <div class="adv-time-custom">
-            <label for="advTimeCustomInput">🎛️ Perso :</label>
-            <input id="advTimeCustomInput" class="adv-time-custom-input" type="number" min="0.5" max="180" step="0.5" inputmode="decimal" aria-label="Minutes par camp (cadence personnalisée)" />
-            <span>min / camp</span>
-          </div>
-          <p id="advTimeDesc" class="adv-difficulty-desc"></p>
-        </section>
-
-        <section class="adv-shop" id="advShopSection">
-          <div class="adv-act-head">
-            <span class="kicker">Boutique · <span id="advShopCoins">0</span> 🪙</span>
-            <strong>Dépense tes pièces</strong>
-            <p>Gagne des pièces à chaque victoire (boss et leçons).</p>
-          </div>
-          <div class="adv-shop-item">
-            <div class="adv-shop-item-info">
-              <b>👁️ Voir les menaces</b>
-              <span id="advShopThreatsDesc">Surligne tes pièces attaquées.</span>
+        <div class="adv-tab-content">
+          <!-- Vue principale : cortex + 2 gros boutons + historique -->
+          <section class="adv-view adv-view-main">
+            <div class="adv-map-summary">
+              <div class="adv-brain-ring" id="advBrainRing" style="--pct: 0">
+                <div class="adv-brain-ring-core">
+                  <strong id="advRingValue">0 %</strong>
+                  <span>cortex</span>
+                </div>
+              </div>
+              <dl class="adv-map-stats">
+                <div class="is-player"><dt>Niveau joueur</dt><dd id="advStatPlayer">Niv.1</dd></div>
+                <div><dt>Temps de jeu</dt><dd id="advStatPlaytime">0 coups</dd></div>
+                <div><dt>Niveau cerveau</dt><dd id="advStatLevel">1</dd></div>
+                <div><dt>Puissance</dt><dd id="advStatPower">N0</dd></div>
+              </dl>
             </div>
-            <button id="advShopThreatsBtn" class="adv-ghost" type="button">Activer</button>
-          </div>
-          <div class="adv-shop-item adv-shop-item-block">
-            <div class="adv-shop-item-info">
-              <b>📈 Surpondérer une ligne</b>
-              <span>Fais jouer Stockfish dans une ligne pour la travailler.</span>
-            </div>
-            <div id="advShopLines" class="adv-shop-lines"></div>
-          </div>
-        </section>
 
-        <div class="adv-map-acts">
-          <section class="adv-act">
-            <div class="adv-act-head">
-              <span class="kicker">Acte 1</span>
-              <strong>Apprends les lignes</strong>
-              <p>Reste dans le livre pour allumer tes neurones. Chaque ligne maîtrisée illumine le cortex.</p>
+            <div class="adv-main-actions">
+              <button id="advBtnLesson" class="adv-big-btn" type="button">
+                <span class="adv-big-btn-ico" aria-hidden="true">🧠</span>
+                <span class="adv-big-btn-text">
+                  <b>Illuminer le cerveau</b>
+                  <i id="advBtnLessonSub">Apprends les lignes du livre</i>
+                </span>
+              </button>
+              <button id="advBtnArena" class="adv-big-btn adv-big-btn-arena" type="button">
+                <span class="adv-big-btn-ico" aria-hidden="true">⚔️</span>
+                <span class="adv-big-btn-text">
+                  <b>Arène</b>
+                  <i id="advBtnArenaSub">Affronte Stockfish</i>
+                </span>
+              </button>
             </div>
-            <div id="advAct1Stages" class="adv-stage-rail"></div>
+
+            <section class="adv-games" id="advHistorySection">
+              <div class="adv-act-head">
+                <span class="kicker">Historique</span>
+                <strong>Tes parties</strong>
+                <p id="advHistorySummary">Aucune partie jouée pour l'instant.</p>
+              </div>
+              <div class="adv-history-tallies" id="advHistoryTallies"></div>
+              <ul class="adv-history-list" id="advHistoryList"></ul>
+            </section>
           </section>
-          <section class="adv-act" id="advAct2Section">
+
+          <!-- Vue arène : choisir l'adversaire -->
+          <section class="adv-view adv-view-arena">
+            <button id="advArenaBack" class="adv-ghost adv-view-back" type="button">← Retour</button>
             <div class="adv-act-head">
-              <span class="kicker">Acte 2</span>
-              <strong>Domine Stockfish</strong>
-              <p id="advAct2Lock">Verrouillé : illumine assez de cortex en Acte 1 pour ouvrir l'arène.</p>
+              <span class="kicker">Arène</span>
+              <strong>Choisis ton adversaire</strong>
+              <p id="advAct2Lock">Verrouillé : illumine assez de cortex pour ouvrir l'arène.</p>
             </div>
             <div id="advAct2Stages" class="adv-stage-rail"></div>
           </section>
-        </div>
 
-        <section class="adv-games" id="advHistorySection">
-          <div class="adv-act-head">
-            <span class="kicker">Historique</span>
-            <strong>Tes parties</strong>
-            <p id="advHistorySummary">Aucune partie jouée pour l'instant.</p>
-          </div>
-          <div class="adv-history-tallies" id="advHistoryTallies"></div>
-          <ul class="adv-history-list" id="advHistoryList"></ul>
-        </section>
+          <!-- Vue boutique -->
+          <section class="adv-view adv-view-shop">
+            <section class="adv-shop" id="advShopSection">
+              <div class="adv-act-head">
+                <span class="kicker">Boutique · <span id="advShopCoins">0</span> 🪙</span>
+                <strong>Dépense tes pièces</strong>
+                <p>Gagne des pièces à chaque victoire (boss et leçons).</p>
+              </div>
+              <div class="adv-shop-item">
+                <div class="adv-shop-item-info">
+                  <b>👁️ Voir les menaces</b>
+                  <span id="advShopThreatsDesc">Surligne tes pièces attaquées.</span>
+                </div>
+                <button id="advShopThreatsBtn" class="adv-ghost" type="button">Activer</button>
+              </div>
+              <div class="adv-shop-item adv-shop-item-block">
+                <div class="adv-shop-item-info">
+                  <b>📈 Surpondérer une ligne</b>
+                  <span>Fais jouer Stockfish dans une ligne pour la travailler.</span>
+                </div>
+                <div id="advShopLines" class="adv-shop-lines"></div>
+              </div>
+            </section>
+          </section>
+
+          <!-- Vue réglages (engrenage) : difficulté + cadence -->
+          <section class="adv-view adv-view-settings">
+            <button id="advSettingsBack" class="adv-ghost adv-view-back" type="button">← Retour</button>
+            <section class="adv-difficulty">
+              <span class="kicker">Difficulté · aides affichées</span>
+              <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
+              <p id="advDifficultyDesc" class="adv-difficulty-desc"></p>
+            </section>
+            <section class="adv-difficulty">
+              <span class="kicker">Cadence · pendule</span>
+              <div id="advTimeButtons" class="adv-difficulty-buttons" role="group" aria-label="Cadence de jeu"></div>
+              <div class="adv-time-custom">
+                <label for="advTimeCustomInput">🎛️ Perso :</label>
+                <input id="advTimeCustomInput" class="adv-time-custom-input" type="number" min="0.5" max="180" step="0.5" inputmode="decimal" aria-label="Minutes par camp (cadence personnalisée)" />
+                <span>min / camp</span>
+              </div>
+              <p id="advTimeDesc" class="adv-difficulty-desc"></p>
+            </section>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -545,6 +571,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=2" type="module"></script>
+    <script src="./app.js?v=3" type="module"></script>
   </body>
 </html>
