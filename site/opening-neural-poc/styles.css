@@ -3565,46 +3565,200 @@ body.is-adv-map-open {
   white-space: nowrap;
 }
 
-/* Mini-échiquier animé d'une ouverture (« GIF » en boucle) */
-.opening-gif {
-  flex: 0 0 auto;
+/* Échiquier d'ouverture (pièces SVG nettes) : vignette + visionneuse */
+.opening-board {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  width: 84px;
-  height: 84px;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--line-strong);
+  width: 92px;
+  height: 92px;
 }
 
-.opening-gif-cell {
-  display: grid;
-  place-items: center;
-  font-size: 10.5px;
-  line-height: 1;
+.opening-sq {
+  position: relative;
 }
 
-.opening-gif-cell.light {
+.opening-sq.light {
   background: #e7e0cb;
 }
 
-.opening-gif-cell.dark {
+.opening-sq.dark {
   background: #7c8f6b;
 }
 
-.opening-gif-cell.is-move {
-  background: #e6d678;
+.opening-sq.is-move {
+  box-shadow: inset 0 0 0 2px rgba(255, 217, 102, 0.95);
 }
 
-.opening-gif-cell.is-white {
-  color: #ffffff;
-  text-shadow: 0 0 1.5px rgba(0, 0, 0, 0.85);
+.opening-sq img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.opening-gif-cell.is-black {
-  color: #16180f;
-  text-shadow: 0 0 1.5px rgba(255, 255, 255, 0.5);
+/* Vignette cliquable (position finale) dans la boutique */
+.opening-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.opening-thumb:active {
+  transform: scale(0.97);
+}
+
+.opening-thumb-hint {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 8px;
+  line-height: 1;
+}
+
+/* Visionneuse plein écran : grand échiquier animé + contrôles */
+.opening-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.66);
+}
+
+.opening-viewer-panel {
+  width: min(380px, 94vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #0d120c;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+}
+
+.opening-viewer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.opening-viewer-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.opening-viewer-title strong {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.opening-viewer-title span {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.opening-viewer-x {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.opening-board-large {
+  width: min(320px, 84vw);
+  height: min(320px, 84vw);
+  align-self: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.opening-viewer-move {
+  margin: 0;
+  min-height: 1.2em;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.opening-viewer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.opening-ctl {
+  width: 44px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.opening-ctl.is-play {
+  width: 54px;
+  font-size: 18px;
+}
+
+.opening-viewer-counter {
+  min-width: 48px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.opening-viewer-speeds {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.opening-speed {
+  flex: 1 1 0;
+  max-width: 120px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.opening-speed.is-active {
+  border-color: var(--cyan);
+  color: var(--text);
+  background: rgba(117, 231, 232, 0.12);
 }
 
 .adv-shop-empty {

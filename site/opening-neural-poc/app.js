@@ -7824,7 +7824,6 @@ function renderAdvShop() {
     return;
   }
   host.replaceChildren();
-  resetOpeningGifBoards(); // on repart de zéro pour les mini-échiquiers animés
   const stats = advGameStats();
   const lines = stats.byOpening.filter((o) => o.key && o.key !== 'hors-livre').slice(0, 6);
   if (!lines.length) {
@@ -7843,17 +7842,18 @@ function renderAdvShop() {
     const row = document.createElement('div');
     row.className = 'adv-shop-line';
 
-    // Visuel : mini-échiquier qui rejoue l'ouverture en boucle (pour bien choisir).
-    const gif = makeOpeningGifBoard(sans);
-    if (gif) {
-      row.append(gif);
+    // Visuel : vignette de la position finale (clic → visionneuse animée).
+    const nameLabel = advOpeningDisplayLabel(sans, opening.label);
+    const thumb = makeOpeningThumb(sans, nameLabel, opening.label);
+    if (thumb) {
+      row.append(thumb);
     }
 
     // Texte : nom de l'ouverture (PGN/ECO) + séquence de coups.
     const info = document.createElement('div');
     info.className = 'adv-shop-line-info';
     const nameEl = document.createElement('b');
-    nameEl.textContent = advOpeningDisplayLabel(sans, opening.label);
+    nameEl.textContent = nameLabel;
     const seqEl = document.createElement('span');
     seqEl.textContent = opening.label;
     info.append(nameEl, seqEl);
@@ -8301,14 +8301,16 @@ function advOpeningDisplayLabel(sans, fallbackLabel) {
   return fallbackLabel || 'Hors livre';
 }
 
-// === Mini-échiquier animé d'une ouverture (« GIF » en boucle, pour bien choisir) ===
-const OPENING_GIF_GLYPHS = { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' };
-const OPENING_GIF_MAX_PLIES = 12;
-let openingGifBoards = [];
-let openingGifTimer = null;
+// === Visuel d'ouverture : vignette (position finale) + visionneuse animée ===
+const OPENING_MAX_PLIES = 16;
+const OPENING_VIEWER_SPEEDS = [
+  { label: '🐢 Lent', ms: 1500 },
+  { label: 'Normal', ms: 850 },
+  { label: '🐇 Rapide', ms: 380 }
+];
 
-// FEN → 64 cases (rang 8→1, colonnes a→h) : { glyph, white } ou null.
-function fenToGifCells(fen) {
+// FEN → 64 pièces (index 0 = a8 … 63 = h1) : lettre de pièce ou null.
+function fenToPieceArray(fen) {
   const board = String(fen || '').split(' ')[0];
   const cells = [];
   for (const rankStr of board.split('/')) {
@@ -8316,24 +8318,23 @@ function fenToGifCells(fen) {
       if (/\d/.test(ch)) {
         for (let i = 0; i < Number(ch); i += 1) cells.push(null);
       } else {
-        cells.push({ glyph: OPENING_GIF_GLYPHS[ch.toLowerCase()] || '', white: ch === ch.toUpperCase() });
+        cells.push(ch);
       }
     }
   }
   return cells;
 }
 
-// Construit les images successives de l'ouverture (départ + après chaque coup),
-// avec une pause en fin de ligne avant de boucler.
-function buildOpeningGifFrames(sans) {
+// Images successives d'une ouverture : départ + après chaque coup (FEN, from, to, san).
+function buildOpeningFrames(sans) {
   let chess;
   try {
     chess = new Chess();
   } catch {
     return null;
   }
-  const frames = [{ fen: chess.fen(), from: null, to: null }];
-  for (const san of (sans || []).slice(0, OPENING_GIF_MAX_PLIES)) {
+  const frames = [{ fen: chess.fen(), from: null, to: null, san: null }];
+  for (const san of (sans || []).slice(0, OPENING_MAX_PLIES)) {
     let mv = null;
     try {
       mv = chess.move(san);
@@ -8341,76 +8342,244 @@ function buildOpeningGifFrames(sans) {
       mv = null;
     }
     if (!mv) break;
-    frames.push({ fen: chess.fen(), from: mv.from, to: mv.to });
+    frames.push({ fen: chess.fen(), from: mv.from, to: mv.to, san: mv.san });
   }
-  if (frames.length < 2) {
-    return null;
-  }
-  const last = frames[frames.length - 1];
-  frames.push({ ...last }, { ...last }); // pause avant rebouclage
-  return frames;
+  return frames.length >= 2 ? frames : null;
 }
 
-function renderOpeningGifFrame(entry) {
-  const frame = entry.frames[entry.index];
-  const cells = fenToGifCells(frame.fen);
-  entry.cellEls.forEach((cell, i) => {
-    const data = cells[i];
-    cell.textContent = data ? data.glyph : '';
-    cell.classList.toggle('is-white', Boolean(data?.white));
-    cell.classList.toggle('is-black', Boolean(data && !data.white));
-    const sqName = entry.squareNames[i];
-    cell.classList.toggle('is-move', frame.from === sqName || frame.to === sqName);
-  });
-}
-
-function ensureOpeningGifTicker() {
-  if (openingGifTimer || !openingGifBoards.length) {
-    return;
-  }
-  openingGifTimer = window.setInterval(() => {
-    for (const entry of openingGifBoards) {
-      entry.index = (entry.index + 1) % entry.frames.length;
-      renderOpeningGifFrame(entry);
+// Remplit un conteneur avec un échiquier (pièces SVG nettes) pour une position donnée.
+function fillOpeningBoard(container, frame) {
+  container.replaceChildren();
+  const pieces = fenToPieceArray(frame.fen);
+  const files = 'abcdefgh';
+  for (let row = 0; row < 8; row += 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const sq = `${files[col]}${8 - row}`;
+      const cell = document.createElement('div');
+      cell.className = `opening-sq ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+      if (sq === frame.from || sq === frame.to) {
+        cell.classList.add('is-move');
+      }
+      const pc = pieces[row * 8 + col];
+      if (pc) {
+        const img = document.createElement('img');
+        img.src = `/pieces/merida/${pc === pc.toUpperCase() ? 'w' : 'b'}${pc.toUpperCase()}.svg`;
+        img.alt = '';
+        img.setAttribute('aria-hidden', 'true');
+        cell.append(img);
+      }
+      container.append(cell);
     }
-  }, 820);
-}
-
-// Arrête et oublie tous les mini-échiquiers (à appeler avant un re-rendu).
-function resetOpeningGifBoards() {
-  openingGifBoards = [];
-  if (openingGifTimer) {
-    window.clearInterval(openingGifTimer);
-    openingGifTimer = null;
   }
 }
 
-function makeOpeningGifBoard(sans) {
-  const frames = buildOpeningGifFrames(sans);
+// Vignette cliquable : la position FINALE de l'ouverture (statique, pièces nettes).
+function makeOpeningThumb(sans, name, label) {
+  const frames = buildOpeningFrames(sans);
   if (!frames) {
     return null;
   }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'opening-thumb';
+  btn.setAttribute('aria-label', `Voir l'animation de l'ouverture : ${name || label || ''}`);
   const board = document.createElement('div');
-  board.className = 'opening-gif';
-  board.setAttribute('aria-hidden', 'true');
-  const cellEls = [];
-  const squareNames = [];
-  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-  for (let rank = 8; rank >= 1; rank -= 1) {
-    for (let f = 0; f < 8; f += 1) {
-      const cell = document.createElement('span');
-      const dark = (rank + f) % 2 === 1;
-      cell.className = `opening-gif-cell ${dark ? 'dark' : 'light'}`;
-      board.append(cell);
-      cellEls.push(cell);
-      squareNames.push(`${files[f]}${rank}`);
-    }
+  board.className = 'opening-board';
+  fillOpeningBoard(board, frames[frames.length - 1]);
+  const hint = document.createElement('span');
+  hint.className = 'opening-thumb-hint';
+  hint.textContent = '▶';
+  btn.append(board, hint);
+  btn.addEventListener('click', () => openOpeningViewer(sans, name, label));
+  return btn;
+}
+
+// --- Visionneuse animée plein écran (lecture/pause + vitesse réglable) ---
+let openingViewer = null;
+
+function closeOpeningViewer() {
+  if (!openingViewer) {
+    return;
   }
-  const entry = { frames, index: 0, cellEls, squareNames };
-  renderOpeningGifFrame(entry);
-  openingGifBoards.push(entry);
-  ensureOpeningGifTicker();
-  return board;
+  if (openingViewer.timer) {
+    window.clearInterval(openingViewer.timer);
+  }
+  if (openingViewer.keyHandler) {
+    window.removeEventListener('keydown', openingViewer.keyHandler);
+  }
+  openingViewer.overlay.remove();
+  openingViewer = null;
+}
+
+function openingViewerRender() {
+  const v = openingViewer;
+  if (!v) {
+    return;
+  }
+  const frame = v.frames[v.index];
+  fillOpeningBoard(v.board, frame);
+  v.counter.textContent = `${v.index} / ${v.frames.length - 1}`;
+  v.moveLabel.textContent = frame.san
+    ? `${Math.ceil(v.index / 2)}${v.index % 2 === 1 ? '.' : '…'} ${frame.san}`
+    : 'Position de départ';
+  v.playBtn.textContent = v.playing ? '⏸' : '▶';
+}
+
+function openingViewerStep(delta) {
+  const v = openingViewer;
+  if (!v) {
+    return;
+  }
+  v.index = (v.index + delta + v.frames.length) % v.frames.length;
+  openingViewerRender();
+}
+
+function openingViewerSetPlaying(play) {
+  const v = openingViewer;
+  if (!v) {
+    return;
+  }
+  v.playing = play;
+  if (v.timer) {
+    window.clearInterval(v.timer);
+    v.timer = null;
+  }
+  if (play) {
+    v.timer = window.setInterval(() => {
+      v.index = v.index + 1 >= v.frames.length ? 0 : v.index + 1;
+      openingViewerRender();
+    }, OPENING_VIEWER_SPEEDS[v.speed].ms);
+  }
+  openingViewerRender();
+}
+
+function openingViewerSetSpeed(speedIndex) {
+  const v = openingViewer;
+  if (!v) {
+    return;
+  }
+  v.speed = clamp(speedIndex, 0, OPENING_VIEWER_SPEEDS.length - 1);
+  v.speedBtns.forEach((btn, i) => btn.classList.toggle('is-active', i === v.speed));
+  if (v.playing) {
+    openingViewerSetPlaying(true); // relance le minuteur à la nouvelle vitesse
+  }
+}
+
+function openOpeningViewer(sans, name, label) {
+  const frames = buildOpeningFrames(sans);
+  if (!frames) {
+    return;
+  }
+  closeOpeningViewer();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'opening-viewer';
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) {
+      closeOpeningViewer();
+    }
+  });
+
+  const panel = document.createElement('div');
+  panel.className = 'opening-viewer-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+
+  const head = document.createElement('header');
+  head.className = 'opening-viewer-head';
+  const title = document.createElement('div');
+  title.className = 'opening-viewer-title';
+  title.innerHTML = `<strong>${escapeHtml(name || 'Ouverture')}</strong><span>${escapeHtml(
+    label || ''
+  )}</span>`;
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'opening-viewer-x';
+  closeBtn.textContent = '✕';
+  closeBtn.setAttribute('aria-label', 'Fermer');
+  closeBtn.addEventListener('click', closeOpeningViewer);
+  head.append(title, closeBtn);
+
+  const board = document.createElement('div');
+  board.className = 'opening-board opening-board-large';
+
+  const moveLabel = document.createElement('p');
+  moveLabel.className = 'opening-viewer-move';
+
+  const controls = document.createElement('div');
+  controls.className = 'opening-viewer-controls';
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.className = 'opening-ctl';
+  prev.textContent = '‹';
+  prev.setAttribute('aria-label', 'Coup précédent');
+  const playBtn = document.createElement('button');
+  playBtn.type = 'button';
+  playBtn.className = 'opening-ctl is-play';
+  playBtn.setAttribute('aria-label', 'Lecture / Pause');
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.className = 'opening-ctl';
+  next.textContent = '›';
+  next.setAttribute('aria-label', 'Coup suivant');
+  const counter = document.createElement('span');
+  counter.className = 'opening-viewer-counter';
+  prev.addEventListener('click', () => {
+    openingViewerSetPlaying(false);
+    openingViewerStep(-1);
+  });
+  next.addEventListener('click', () => {
+    openingViewerSetPlaying(false);
+    openingViewerStep(1);
+  });
+  playBtn.addEventListener('click', () => openingViewerSetPlaying(!openingViewer.playing));
+  controls.append(prev, playBtn, next, counter);
+
+  const speeds = document.createElement('div');
+  speeds.className = 'opening-viewer-speeds';
+  const speedBtns = OPENING_VIEWER_SPEEDS.map((s, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'opening-speed';
+    btn.textContent = s.label;
+    btn.addEventListener('click', () => openingViewerSetSpeed(i));
+    speeds.append(btn);
+    return btn;
+  });
+
+  panel.append(head, board, moveLabel, controls, speeds);
+  overlay.append(panel);
+  document.body.append(overlay);
+
+  const keyHandler = (event) => {
+    if (event.key === 'Escape') {
+      closeOpeningViewer();
+    } else if (event.key === 'ArrowLeft') {
+      openingViewerSetPlaying(false);
+      openingViewerStep(-1);
+    } else if (event.key === 'ArrowRight') {
+      openingViewerSetPlaying(false);
+      openingViewerStep(1);
+    }
+  };
+  window.addEventListener('keydown', keyHandler);
+
+  openingViewer = {
+    overlay,
+    board,
+    moveLabel,
+    counter,
+    playBtn,
+    speedBtns,
+    frames,
+    index: 0,
+    playing: false,
+    speed: 1,
+    timer: null,
+    keyHandler
+  };
+  openingViewerSetSpeed(1);
+  openingViewerSetPlaying(true); // démarre l'animation
 }
 
 // M — Enregistre une partie terminée dans l'historique persistant.
@@ -9070,7 +9239,7 @@ function closeAdventureMap() {
     map.hidden = true;
   }
   document.body.classList.remove('is-adv-map-open');
-  resetOpeningGifBoards(); // stoppe l'animation des mini-échiquiers quand la carte se ferme
+  closeOpeningViewer(); // ferme la visionneuse d'ouverture si ouverte
 }
 
 function resetAdventureProgress() {
