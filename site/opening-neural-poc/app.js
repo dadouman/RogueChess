@@ -3974,29 +3974,29 @@ function flashAdvBoard(type) {
   setTimeout(() => board.classList.remove(cls), type === 'learn' ? 900 : 650);
 }
 
-/** Ajoute des points de suivi verts sur les cases-cibles des coups du livre. */
+/** Ajoute des points de suivi verts sur les cases-cibles des coups du livre.
+ *  Q — Ces indices « avant de jouer » suivent la même règle que les cases légales
+ *  (aide « point vert ») : visibles aux niveaux faciles, masqués en Normal jusqu'à
+ *  5 s ou une erreur, jamais en Difficile. */
 function applyAdvBoardHints() {
   if (!isAdventureRun() || state.advViewMode !== 'board') {
     return;
   }
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.chess.turn() !== 'w' || game.phase !== 'opening') {
-    return;
-  }
-  const edges = getExpectedWhiteBookEdges();
-  if (!edges.length) {
-    return;
-  }
-  const toSquares  = new Set(edges.map(e => e.uci.slice(2, 4)));
-  const fromSquares = new Set(edges.map(e => e.uci.slice(0, 2)));
   const board = document.querySelector('#boardPreview');
   if (!board) {
     return;
   }
+  const inOpening =
+    game && game.status === 'playing' && game.chess.turn() === 'w' && game.phase === 'opening';
+  // L'indice n'apparaît que si l'aide « point vert » est active (révélée).
+  const edges = inOpening && advAids().legalDots ? getExpectedWhiteBookEdges() : [];
+  const toSquares = new Set(edges.map((e) => e.uci.slice(2, 4)));
+  const fromSquares = new Set(edges.map((e) => e.uci.slice(0, 2)));
   for (const sq of board.querySelectorAll('.board-square')) {
     const name = sq.dataset.square;
     sq.classList.toggle('is-book-hint', toSquares.has(name));
-    sq.classList.toggle('is-book-from',  fromSquares.has(name));
+    sq.classList.toggle('is-book-from', fromSquares.has(name));
   }
 }
 
