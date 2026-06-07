@@ -927,6 +927,11 @@ span.expected-pill {
   color: #11150e;
 }
 
+.move-verdict.is-brilliant {
+  background: linear-gradient(180deg, #8ad9ff, #5fb8e6);
+  color: #06210f;
+}
+
 .move-verdict.is-good {
   background: rgba(120, 220, 140, 0.9);
 }
@@ -946,6 +951,70 @@ span.expected-pill {
 
 .move-verdict.is-book {
   background: rgba(180, 190, 205, 0.6);
+}
+
+/* Bandeau d'analyse de fin de partie : compteurs par verdict + précision */
+.adv-analysis,
+.game-review-analysis .adv-analysis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-analysis-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.adv-analysis-stat i {
+  font-style: normal;
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: #11150e;
+}
+
+.adv-analysis-stat.is-brilliant i {
+  background: linear-gradient(180deg, #8ad9ff, #5fb8e6);
+}
+.adv-analysis-stat.is-good i {
+  background: rgba(120, 220, 140, 0.9);
+}
+.adv-analysis-stat.is-inaccuracy i {
+  background: rgba(255, 214, 120, 0.92);
+}
+.adv-analysis-stat.is-mistake i {
+  background: rgba(255, 162, 92, 0.95);
+}
+.adv-analysis-stat.is-blunder i {
+  background: rgba(255, 104, 104, 0.95);
+  color: #fff;
+}
+
+.adv-analysis-accuracy {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.game-review-analysis:empty {
+  display: none;
 }
 
 .action-grid button:first-child {

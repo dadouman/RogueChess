@@ -4928,6 +4928,7 @@ function formatEvalDelta(deltaCp) {
 // L — Verdicts type Lichess (sur les coups BLANCS, ceux du joueur), selon la
 // perte d'évaluation par rapport au meilleur coup.
 const MOVE_VERDICTS = {
+  brilliant: { label: 'Brillant', short: '✦', cls: 'brilliant' },
   good: { label: 'Bon', short: '✓', cls: 'good' },
   inaccuracy: { label: 'Imprécision', short: '?!', cls: 'inaccuracy' },
   mistake: { label: 'Erreur', short: '?', cls: 'mistake' },
@@ -4935,6 +4936,8 @@ const MOVE_VERDICTS = {
   book: { label: 'Livre', short: '📖', cls: 'book' }
 };
 const MOVE_VERDICT_LOSS = { inaccuracy: 50, mistake: 100, blunder: 200 };
+const MOVE_BRILLIANT_GAIN = 200; // gain d'éval (cp) pour un coup « brillant »
+const MOVE_BRILLIANT_MIN_CP = 300; // position nettement gagnante après le coup
 
 function advMoveVerdict(entry) {
   if (!entry || entry.color !== 'w') {
@@ -4949,7 +4952,16 @@ function advMoveVerdict(entry) {
   if (!Number.isFinite(entry.beforeEvalCp) || !Number.isFinite(entry.afterEvalCp)) {
     return null;
   }
-  const loss = entry.beforeEvalCp - entry.afterEvalCp; // perte d'éval côté blanc
+  const before = entry.beforeEvalCp;
+  const after = entry.afterEvalCp;
+  // Coup brillant : ton coup crée un mat forcé, ou gagne décisivement (gros gain
+  // d'éval vers une position nettement gagnante).
+  const createsMate = isMateScore(after) && after > 0 && !(isMateScore(before) && before > 0);
+  const decisiveGain = after - before >= MOVE_BRILLIANT_GAIN && after >= MOVE_BRILLIANT_MIN_CP;
+  if (createsMate || decisiveGain) {
+    return { key: 'brilliant', loss: 0, ...MOVE_VERDICTS.brilliant };
+  }
+  const loss = before - after; // perte d'éval côté blanc
   let key = 'good';
   if (loss >= MOVE_VERDICT_LOSS.blunder) {
     key = 'blunder';
@@ -9393,11 +9405,58 @@ function advGameAccuracy(moves) {
   let clean = 0;
   for (const m of whiteMoves) {
     const verdict = advStoredVerdict(m);
-    if (verdict && (verdict.key === 'good' || verdict.key === 'book')) {
+    if (verdict && ['good', 'book', 'brilliant'].includes(verdict.key)) {
       clean += 1;
     }
   }
   return Math.round((clean / whiteMoves.length) * 100);
+}
+
+// L — Compte les coups BLANCS par verdict (brillant/bon/imprécision/erreur/gaffe).
+function advMoveStatsFromStored(moves) {
+  const counts = { brilliant: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0 };
+  let total = 0;
+  for (const m of moves || []) {
+    const verdict = advStoredVerdict(m);
+    if (!verdict) {
+      continue;
+    }
+    counts[verdict.key] = (counts[verdict.key] || 0) + 1;
+    total += 1;
+  }
+  return { counts, total };
+}
+
+// Bandeau d'analyse de fin de partie : compteurs par verdict + précision.
+function buildMoveStatsRow(moves) {
+  const { counts, total } = advMoveStatsFromStored(moves);
+  if (!total) {
+    return null;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'adv-analysis';
+  // « Bon coup » regroupe les coups solides + les coups de livre.
+  const tiers = [
+    { key: 'brilliant', n: counts.brilliant },
+    { key: 'good', n: counts.good + counts.book },
+    { key: 'inaccuracy', n: counts.inaccuracy },
+    { key: 'mistake', n: counts.mistake },
+    { key: 'blunder', n: counts.blunder }
+  ];
+  for (const tier of tiers) {
+    const v = MOVE_VERDICTS[tier.key];
+    const stat = document.createElement('span');
+    stat.className = `adv-analysis-stat is-${v.cls}`;
+    stat.innerHTML = `<i>${v.short}</i> ${tier.n}`;
+    stat.title = `${v.label} : ${tier.n}`;
+    wrap.append(stat);
+  }
+  const acc = advGameAccuracy(moves);
+  const accEl = document.createElement('span');
+  accEl.className = 'adv-analysis-accuracy';
+  accEl.textContent = `Précision ${acc == null ? '—' : `${acc} %`}`;
+  wrap.append(accEl);
+  return wrap;
 }
 
 function buildStoredMoveComment(move) {
@@ -9746,6 +9805,14 @@ function renderGameReview() {
   advSetText('#advReviewOpening', advOpeningDisplayLabel(game.lineSans, game.openingLabel));
   const accuracy = advGameAccuracy(game.moves);
   advSetText('#advReviewAccuracy', accuracy == null ? '—' : `${accuracy} %`);
+  const analysisHost = document.querySelector('#advReviewAnalysis');
+  if (analysisHost) {
+    analysisHost.replaceChildren();
+    const statsRow = buildMoveStatsRow(game.moves);
+    if (statsRow) {
+      analysisHost.append(statsRow);
+    }
+  }
 
   // Position affichée : sous-variante (branche) si active, sinon ligne principale.
   const shown = gameReviewShownPosition();
@@ -10489,7 +10556,19 @@ function renderAdventureResult(el, game, run) {
   }
 
   actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
-  el.append(heading, stars, evalEl, note, actions);
+
+  // Analyse de la partie : compteurs brillant/bon/imprécision/erreur/gaffe + précision.
+  const analysisMoves =
+    (game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length
+      ? game.recordRef.moves
+      : buildGameReviewMoves(game)) || [];
+  const statsRow = buildMoveStatsRow(analysisMoves);
+
+  el.append(heading, stars, evalEl, note);
+  if (statsRow) {
+    el.append(statsRow);
+  }
+  el.append(actions);
 }
 
 function renderAdventureHud() {
