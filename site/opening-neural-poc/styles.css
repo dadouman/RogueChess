@@ -3767,6 +3767,152 @@ body.is-adv-map-open {
   margin: 0;
 }
 
+/* Carrousel de pondération des ouvertures (boutique) */
+.adv-weight-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.adv-weight-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-weight-coins {
+  font-weight: 800;
+  color: var(--gold);
+}
+
+.adv-weight-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.adv-weight-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.adv-weight-info b {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.adv-weight-move {
+  font-size: 11.5px;
+  color: var(--soft);
+}
+
+.adv-weight-stats {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.adv-weight-delta {
+  font-style: normal;
+  font-weight: 800;
+}
+
+.adv-weight-delta.is-up {
+  color: var(--green);
+}
+
+.adv-weight-delta.is-down {
+  color: #ff8a8a;
+}
+
+.adv-weight-buys {
+  display: flex;
+  gap: 8px;
+}
+
+.adv-weight-buy {
+  flex: 1 1 0;
+  min-height: 42px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.adv-weight-buy.is-up {
+  border-color: rgba(155, 229, 111, 0.55);
+  background: rgba(155, 229, 111, 0.12);
+  color: #d6f5c4;
+}
+
+.adv-weight-buy.is-down {
+  border-color: rgba(255, 138, 138, 0.5);
+  background: rgba(255, 138, 138, 0.12);
+  color: #ffd9d9;
+}
+
+.adv-weight-buy:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.adv-weight-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.adv-weight-nav .adv-ghost {
+  flex: 1 1 0;
+  min-height: 36px;
+}
+
+.adv-weight-lock.is-active {
+  border-color: var(--cyan);
+  background: rgba(117, 231, 232, 0.14);
+  color: var(--text);
+}
+
+.adv-weight-summary {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.adv-weight-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.adv-weight-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.adv-weight-chip.is-up {
+  border-color: rgba(155, 229, 111, 0.5);
+  background: rgba(155, 229, 111, 0.1);
+  color: #d6f5c4;
+}
+
+.adv-weight-chip.is-down {
+  border-color: rgba(255, 138, 138, 0.45);
+  background: rgba(255, 138, 138, 0.1);
+  color: #ffd9d9;
+}
+
 /* === Historique des parties (M) === */
 .adv-games {
   display: grid;

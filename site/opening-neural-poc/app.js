@@ -4578,14 +4578,8 @@ function getOpponentBookEdgesForRun() {
   if (edges.length <= 1) {
     return edges;
   }
-  // O (boutique) : si des réponses prolongent une ligne surpondérée (achetée),
-  // on les privilégie pour que le joueur la rencontre et puisse la travailler.
-  if (advBoostedLines().length) {
-    const boosted = edges.filter((edge) => advNextSanContinuesBoosted(edge.san));
-    if (boosted.length) {
-      return boosted;
-    }
-  }
+  // O (boutique) : la pondération ±5% achetée est appliquée plus tard, lors du
+  // tirage pondéré du coup noir (buildOpponentBookCandidates), pas par un filtre dur.
   // N (boss) : on masque les réponses qui rejoueraient une ligne déjà gagnée,
   // pour pousser vers de la variété. Si tout est masqué, on relâche le filtre.
   if (advWonLineMaskingActive()) {
@@ -4815,13 +4809,18 @@ function buildOpponentBookCandidates(bookEdges, ply = state.game?.chess.history(
 
   const canLeave = canOpponentLeaveBookAtPly(ply) && !isAdventureLesson();
   const bookMass = canLeave ? 1 - OPENING_FREE_BREAK_PROBABILITY : 1;
+  // O — pondération boutique : ±5% (points de %) sur la proba d'un coup noir donné.
+  const branchFen = state.game?.chess.fen();
   return normalizeWeightedCandidates([
-    ...bookEdges.map((edge) => ({
-      id: `book:${edge.id}`,
-      type: 'book',
-      edge: { ...edge, probability: edge.probability * bookMass },
-      probability: edge.probability * bookMass
-    })),
+    ...bookEdges.map((edge) => {
+      const weighted = Math.max(0, edge.probability + advBlackChoiceWeight(branchFen, edge.uci) / 100);
+      return {
+        id: `book:${edge.id}`,
+        type: 'book',
+        edge: { ...edge, probability: weighted * bookMass },
+        probability: weighted * bookMass
+      };
+    }),
     ...(canLeave
       ? [
           {
@@ -7342,7 +7341,12 @@ function createAdventureState() {
     timeControl: DEFAULT_TIME_CONTROL, // U : cadence de la pendule
     customClockMinutes: 10, // U : minutes/camp de la cadence personnalisée
     coins: 0,            // Boutique : pièces gagnées par victoire
-    boostedLines: [],    // O : lignes d'ouverture surpondérées (achat boutique)
+    boostedLines: [],    // (héritage) ancien système de surpondération de ligne
+    // O — pondération des choix d'ouverture de Stockfish (±5%), valable pour le
+    // prochain boss puis remise à zéro. Clé = `${fenAvantCoupNoir}|${uci}`.
+    openingWeights: {},  // { clé: pourcentage } (réinitialisé après chaque partie de boss)
+    openingDeck: [],     // propositions du carrousel (clés), retirées après chaque partie
+    openingLocks: [],    // cadenas : propositions conservées dans le carrousel
     threatsEnabled: false // R : aide « voir les menaces » activée
   };
 }
@@ -7375,6 +7379,10 @@ function loadAdventure() {
     base.customClockMinutes = clamp(Number(data.customClockMinutes) || 10, 0.5, 180);
     base.coins = Math.max(0, Number(data.coins) || 0);
     base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
+    base.openingWeights =
+      data.openingWeights && typeof data.openingWeights === 'object' ? data.openingWeights : {};
+    base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : [];
+    base.openingLocks = Array.isArray(data.openingLocks) ? data.openingLocks.slice(0, 40) : [];
     base.threatsEnabled = Boolean(data.threatsEnabled);
   } catch {
     return createAdventureState();
@@ -7405,6 +7413,9 @@ function saveAdventure() {
         customClockMinutes: state.adventure.customClockMinutes || 10,
         coins: state.adventure.coins || 0,
         boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
+        openingWeights: state.adventure.openingWeights || {},
+        openingDeck: (state.adventure.openingDeck || []).slice(0, 40),
+        openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
         threatsEnabled: Boolean(state.adventure.threatsEnabled)
       })
     );
@@ -7818,64 +7829,141 @@ function renderAdvShop() {
         }).`;
   }
 
-  // O — surpondérer une ligne déjà jouée (depuis l'historique).
+  // O — carrousel de pondération des choix d'ouverture de Stockfish (±5%).
   const host = document.querySelector('#advShopLines');
-  if (!host) {
+  if (host) {
+    renderAdvOpeningCarousel(host);
+  }
+}
+
+let advCarouselIndex = 0;
+
+function advCarouselAdvance(deckLength, delta = 1) {
+  if (!deckLength) {
     return;
   }
+  advCarouselIndex = (advCarouselIndex + delta + deckLength) % deckLength;
+}
+
+// Carrousel : une proposition à la fois (un coup noir d'embranchement), avec
+// boutons −5 % / +5 % (10 🪙, cumulables quand la proposition revient), cadenas
+// gratuit, et « passer ». Les pondérations actives sont listées dessous.
+function renderAdvOpeningCarousel(host) {
   host.replaceChildren();
-  const stats = advGameStats();
-  const lines = stats.byOpening.filter((o) => o.key && o.key !== 'hors-livre').slice(0, 6);
-  if (!lines.length) {
+  const deck = advEnsureOpeningDeck();
+  if (!deck.length) {
     const empty = document.createElement('p');
     empty.className = 'adv-shop-empty';
-    empty.textContent = 'Joue des parties pour débloquer des lignes à surpondérer.';
+    empty.textContent = "Aucune ouverture à influencer : le livre ne laisse pas de choix aux Noirs.";
     host.append(empty);
     return;
   }
-  for (const opening of lines) {
-    const sourceGame = stats.games.find(
-      (g) => g.openingKey === opening.key && Array.isArray(g.lineSans) && g.lineSans.length
-    );
-    const sans = opening.lineSans || sourceGame?.lineSans || null;
-    const boosted = advLineIsBoosted(opening.key);
-    const row = document.createElement('div');
-    row.className = 'adv-shop-line';
+  if (advCarouselIndex >= deck.length) {
+    advCarouselIndex = 0;
+  }
+  const key = deck[advCarouselIndex];
+  const choice = advChoiceByKey(key);
+  if (!choice) {
+    advCarouselIndex = 0;
+    return;
+  }
 
-    // Visuel : vignette de la position finale (clic → visionneuse animée).
-    const nameLabel = advOpeningDisplayLabel(sans, opening.label);
-    const thumb = makeOpeningThumb(sans, nameLabel, opening.label);
-    if (thumb) {
-      row.append(thumb);
-    }
+  const card = document.createElement('div');
+  card.className = 'adv-weight-card';
 
-    // Texte : nom de l'ouverture (PGN/ECO) + séquence de coups.
-    const info = document.createElement('div');
-    info.className = 'adv-shop-line-info';
-    const nameEl = document.createElement('b');
-    nameEl.textContent = nameLabel;
-    const seqEl = document.createElement('span');
-    seqEl.textContent = opening.label;
-    info.append(nameEl, seqEl);
-    row.append(info);
+  const top = document.createElement('div');
+  top.className = 'adv-weight-top';
+  top.innerHTML =
+    `<span class="adv-weight-count">${advCarouselIndex + 1} / ${deck.length}</span>` +
+    `<span class="adv-weight-coins">${advCoins()} 🪙</span>`;
+  card.append(top);
 
+  const body = document.createElement('div');
+  body.className = 'adv-weight-body';
+  const nameLabel = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
+  const thumb = makeOpeningThumb(choice.sans, nameLabel, choice.sans.join(' '));
+  if (thumb) {
+    body.append(thumb);
+  }
+  const info = document.createElement('div');
+  info.className = 'adv-weight-info';
+  const ply = choice.sans.length;
+  const moveNo = Math.ceil(ply / 2);
+  const weight = advOpeningWeightOf(key);
+  const weightTxt = weight > 0 ? `+${weight}%` : weight < 0 ? `${weight}%` : '0%';
+  const weightCls = weight > 0 ? 'is-up' : weight < 0 ? 'is-down' : '';
+  info.innerHTML =
+    `<b>${escapeHtml(nameLabel)}</b>` +
+    `<span class="adv-weight-move">Stockfish (Noirs) : ${moveNo}…${escapeHtml(choice.san)}</span>` +
+    `<span class="adv-weight-stats">Base ${Math.round(choice.baseProb * 100)}% · ` +
+    `<i class="adv-weight-delta ${weightCls}">pondération ${weightTxt}</i></span>`;
+  body.append(info);
+  card.append(body);
+
+  // Actions : −5 % / +5 % (paye puis passe à la suivante)
+  const buys = document.createElement('div');
+  buys.className = 'adv-weight-buys';
+  const makeBuy = (dir, label) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'adv-ghost';
-    if (boosted) {
-      btn.textContent = '✓ surpondérée';
-      btn.disabled = true;
-    } else {
-      btn.textContent = `Booster (${SHOP_LINE_BOOST_COST}🪙)`;
-      btn.disabled = !sourceGame || advCoins() < SHOP_LINE_BOOST_COST;
-      if (sourceGame) {
-        btn.addEventListener('click', () =>
-          advBuyLineBoost(opening.key, opening.label, sourceGame.lineSans)
-        );
+    btn.className = `adv-weight-buy ${dir > 0 ? 'is-up' : 'is-down'}`;
+    btn.textContent = `${label} (${OPENING_WEIGHT_COST}🪙)`;
+    btn.disabled = advCoins() < OPENING_WEIGHT_COST;
+    btn.addEventListener('click', () => {
+      if (advAdjustOpeningWeight(key, dir)) {
+        advCarouselAdvance(deck.length); // cumulable seulement quand la proposition revient
       }
+      renderAdvShop();
+    });
+    return btn;
+  };
+  buys.append(makeBuy(-1, '− 5%'), makeBuy(1, '+ 5%'));
+  card.append(buys);
+
+  // Cadenas (gratuit) + passer
+  const nav = document.createElement('div');
+  nav.className = 'adv-weight-nav';
+  const lockBtn = document.createElement('button');
+  lockBtn.type = 'button';
+  lockBtn.className = 'adv-ghost adv-weight-lock';
+  const locked = advOpeningLockIs(key);
+  lockBtn.classList.toggle('is-active', locked);
+  lockBtn.textContent = locked ? '🔒 Gardée' : '🔓 Garder';
+  lockBtn.addEventListener('click', () => {
+    advToggleOpeningLock(key);
+    renderAdvShop();
+  });
+  const skipBtn = document.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.className = 'adv-ghost adv-weight-skip';
+  skipBtn.textContent = 'Passer ›';
+  skipBtn.addEventListener('click', () => {
+    advCarouselAdvance(deck.length);
+    renderAdvShop();
+  });
+  nav.append(lockBtn, skipBtn);
+  card.append(nav);
+
+  host.append(card);
+
+  // Récapitulatif des pondérations actives (lisible d'un coup d'œil).
+  const active = Object.entries(state.adventure?.openingWeights || {}).filter(([, v]) => v);
+  if (active.length) {
+    const summary = document.createElement('div');
+    summary.className = 'adv-weight-summary';
+    summary.innerHTML = '<span class="adv-tally-label">Pondérations actives (prochain boss)</span>';
+    const chips = document.createElement('div');
+    chips.className = 'adv-weight-chips';
+    for (const [k, v] of active) {
+      const c = advChoiceByKey(k);
+      const chip = document.createElement('span');
+      chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
+      const nm = c ? advOpeningDisplayLabel(c.sans, c.name || c.san) : k;
+      chip.textContent = `${nm} ${v > 0 ? '+' : ''}${v}%`;
+      chips.append(chip);
     }
-    row.append(btn);
-    host.append(row);
+    summary.append(chips);
+    host.append(summary);
   }
 }
 
@@ -7887,23 +7975,6 @@ function advToggleThreats() {
   saveAdventure();
   renderAdvShop();
   renderGameDetails();
-}
-
-function advBuyLineBoost(key, label, sans) {
-  if (
-    !state.adventure ||
-    advLineIsBoosted(key) ||
-    advCoins() < SHOP_LINE_BOOST_COST ||
-    !Array.isArray(sans)
-  ) {
-    return;
-  }
-  state.adventure.coins -= SHOP_LINE_BOOST_COST;
-  state.adventure.boostedLines = state.adventure.boostedLines || [];
-  state.adventure.boostedLines.push({ key, label, sans });
-  saveAdventure();
-  showAdventureToast({ icon: '📈', title: 'Ligne surpondérée', text: label, kind: null });
-  renderAdvShop();
 }
 
 // Bouton « Annuler » (retour arrière) : actif seulement si l'aide est dispo et qu'un
@@ -8741,27 +8812,173 @@ function advThreatsActive() {
   return Boolean(state.adventure?.threatsEnabled) && advThreatsUnlocked();
 }
 
-function advBoostedLines() {
-  return state.adventure?.boostedLines || [];
+// === O — Pondération des choix d'ouverture de Stockfish (boutique) ===
+const OPENING_WEIGHT_STEP = 5; // points de % par achat
+const OPENING_WEIGHT_COST = 10; // pièces par ±5 %
+const OPENING_WEIGHT_MAX = 60; // bornes de la pondération cumulée
+const OPENING_DECK_SIZE = 6; // nombre de propositions tirées dans le carrousel
+const OPENING_BRANCH_MAX_PLY = 20;
+
+let advChoicesCache = null;
+
+// Énumère tous les coups noirs « influençables » : positions du livre où les Noirs
+// ont au moins 2 réponses (vrai choix de Stockfish). Un élément = un coup à un
+// embranchement. Mis en cache (le livre est statique).
+function advInfluenceableChoices() {
+  if (advChoicesCache) {
+    return advChoicesCache;
+  }
+  const out = [];
+  if (!(state.edgesById instanceof Map)) {
+    return out;
+  }
+  const seen = new Set();
+  const queue = [{ id: 'root', sans: [] }];
+  let guard = 0;
+  while (queue.length && guard < 6000) {
+    guard += 1;
+    const { id, sans } = queue.shift();
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const node = getNode(id);
+    if (!node) {
+      continue;
+    }
+    const outs = getRawOutgoingEdges(id);
+    const blacks = outs.filter((edge) => edge.color === 'b');
+    if (blacks.length >= 2 && sans.length <= OPENING_BRANCH_MAX_PLY) {
+      for (const edge of blacks) {
+        const child = getNode(edge.to);
+        out.push({
+          key: `${node.fen}|${edge.uci}`,
+          fen: node.fen,
+          uci: edge.uci,
+          san: edge.san,
+          sans: [...sans, edge.san],
+          name: child?.opening || null,
+          eco: child?.eco || null,
+          baseProb: Number(edge.probability) || 0
+        });
+      }
+    }
+    if (sans.length < OPENING_BRANCH_MAX_PLY + 4) {
+      for (const edge of outs) {
+        if (!seen.has(edge.to)) {
+          queue.push({ id: edge.to, sans: [...sans, edge.san] });
+        }
+      }
+    }
+  }
+  advChoicesCache = out;
+  return out;
 }
 
-function advLineIsBoosted(key) {
-  return advBoostedLines().some((line) => line.key === key);
+function advChoiceByKey(key) {
+  return advInfluenceableChoices().find((choice) => choice.key === key) || null;
 }
 
-// O : un coup d'ouverture prolonge-t-il une ligne surpondérée (achat boutique) ?
-function advNextSanContinuesBoosted(nextSan, game = state.game) {
-  const boosted = advBoostedLines();
-  if (!boosted.length) {
+// Pondération (points de %) d'un coup noir donné — seulement en partie de boss.
+function advBlackChoiceWeight(fen, uci) {
+  const weights = state.adventure?.openingWeights;
+  if (!weights || state.advRun?.kind !== 'boss') {
+    return 0;
+  }
+  return Number(weights[`${fen}|${uci}`]) || 0;
+}
+
+function advOpeningWeightOf(key) {
+  return Number(state.adventure?.openingWeights?.[key]) || 0;
+}
+
+function advOpeningLocks() {
+  return state.adventure?.openingLocks || [];
+}
+
+function advOpeningLockIs(key) {
+  return advOpeningLocks().includes(key);
+}
+
+// (Re)tire le carrousel de propositions : un échantillon aléatoire, cadenas inclus.
+function advEnsureOpeningDeck() {
+  const adv = state.adventure;
+  if (!adv) {
+    return [];
+  }
+  const all = advInfluenceableChoices();
+  const valid = new Set(all.map((choice) => choice.key));
+  adv.openingLocks = (adv.openingLocks || []).filter((key) => valid.has(key));
+  const current = (adv.openingDeck || []).filter((key) => valid.has(key));
+  if (current.length) {
+    adv.openingDeck = current;
+    return adv.openingDeck;
+  }
+  // Nouveau tirage : cadenas d'abord, puis complément aléatoire.
+  const locked = advOpeningLocks();
+  const pool = all.map((c) => c.key).filter((key) => !locked.includes(key));
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(randomUnit() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  adv.openingDeck = [...locked, ...pool.slice(0, Math.max(0, OPENING_DECK_SIZE - locked.length))];
+  saveAdventure();
+  return adv.openingDeck;
+}
+
+// Remise à zéro après une partie de boss : pondérations + propositions (cadenas gardés).
+function advResetOpeningInfluence() {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.openingWeights = {};
+  state.adventure.openingDeck = [];
+}
+
+// Achat : ajuste la pondération d'un coup de ±5 % (10 🪙). Renvoie true si appliqué.
+function advAdjustOpeningWeight(key, direction) {
+  const adv = state.adventure;
+  if (!adv || !advChoiceByKey(key)) {
     return false;
   }
-  const prefix = [...advCurrentOpeningSans(game), normalizeSanForCompare(nextSan)];
-  return boosted.some(
-    (line) =>
-      Array.isArray(line.sans) &&
-      line.sans.length >= prefix.length &&
-      prefix.every((san, index) => normalizeSanForCompare(line.sans[index]) === san)
+  if (advCoins() < OPENING_WEIGHT_COST) {
+    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
+    return false;
+  }
+  const next = clamp(
+    advOpeningWeightOf(key) + direction * OPENING_WEIGHT_STEP,
+    -OPENING_WEIGHT_MAX,
+    OPENING_WEIGHT_MAX
   );
+  if (next === advOpeningWeightOf(key)) {
+    return false; // borne atteinte
+  }
+  adv.openingWeights = adv.openingWeights || {};
+  if (next === 0) {
+    delete adv.openingWeights[key];
+  } else {
+    adv.openingWeights[key] = next;
+  }
+  adv.coins = Math.max(0, advCoins() - OPENING_WEIGHT_COST);
+  saveAdventure();
+  return true;
+}
+
+function advToggleOpeningLock(key) {
+  const adv = state.adventure;
+  if (!adv) {
+    return;
+  }
+  adv.openingLocks = adv.openingLocks || [];
+  if (adv.openingLocks.includes(key)) {
+    adv.openingLocks = adv.openingLocks.filter((k) => k !== key);
+  } else {
+    adv.openingLocks.push(key);
+    if (!(adv.openingDeck || []).includes(key)) {
+      adv.openingDeck = [...(adv.openingDeck || []), key];
+    }
+  }
+  saveAdventure();
 }
 
 // Libellé court de l'adversaire d'une partie enregistrée (M).
@@ -9165,6 +9382,9 @@ function adventureOnGameFinished(result) {
         kind: null
       });
     }
+    // O — la pondération d'ouverture ne valait que pour ce boss : on remet à zéro
+    // (les cadenas restent). Les propositions seront re-tirées au prochain passage.
+    advResetOpeningInfluence();
   }
   saveAdventure();
   updateHomeProgress();
