@@ -962,6 +962,17 @@ span.expected-pill {
   gap: 6px;
 }
 
+.adv-analysis[hidden] {
+  display: none;
+}
+
+/* Révélé sous les boutons du résultat : on le détache un peu. */
+#advResult .adv-analysis {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
 .adv-analysis-stat {
   display: inline-flex;
   align-items: center;

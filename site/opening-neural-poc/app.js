@@ -10555,20 +10555,28 @@ function renderAdventureResult(el, game, run) {
     );
   }
 
-  actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
-
   // Analyse de la partie : compteurs brillant/bon/imprécision/erreur/gaffe + précision.
+  // Masquée par défaut (anti-encombrement) et révélée par le bouton « Analyse ».
   const analysisMoves =
     (game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length
       ? game.recordRef.moves
       : buildGameReviewMoves(game)) || [];
   const statsRow = buildMoveStatsRow(analysisMoves);
+  if (statsRow) {
+    statsRow.hidden = true;
+    const analyseBtn = advResultButton('📊 Analyse', () => {
+      statsRow.hidden = !statsRow.hidden;
+      analyseBtn.classList.toggle('is-active', !statsRow.hidden);
+    });
+    actions.append(analyseBtn);
+  }
 
-  el.append(heading, stars, evalEl, note);
+  actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
+
+  el.append(heading, stars, evalEl, note, actions);
   if (statsRow) {
     el.append(statsRow);
   }
-  el.append(actions);
 }
 
 function renderAdventureHud() {
