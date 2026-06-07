@@ -5936,17 +5936,10 @@ async function playStockfishBlackMove() {
   }
 
   const replyDeficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
-  if (!isExplorationMode() && afterEvaluation.cpWhite < replyDeficitLimitCp) {
-    finishGame(
-      'lost',
-      isAdventureRun()
-        ? `Stockfish punit la gaffe : la position chute à ${formatEval(afterEvaluation.cpWhite)} (seuil ${formatEval(replyDeficitLimitCp)}).`
-        : `La réponse Stockfish punit l'erreur: la position tombe à ${formatEval(afterEvaluation.cpWhite)}.`,
-      game.chess.fen(),
-      afterEvaluation
-    );
-    return;
-  }
+  // La position n'est JAMAIS catégorisée « effondrée » après la réponse de Stockfish :
+  // la défaite ne se déclare qu'après TON coup et sa réévaluation (cf. submitFreeMove).
+  // Ici on se contente d'avertir si la position est déjà critique, sans finir la partie.
+  const replyCritical = !isExplorationMode() && afterEvaluation.cpWhite < replyDeficitLimitCp;
 
   if (!isExplorationMode() && !isMateObjective(game) && game.freeRemaining <= 0) {
     finishSurvivalLevel();
@@ -5955,6 +5948,8 @@ async function playStockfishBlackMove() {
 
   game.message = isExplorationMode()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
+    : replyCritical
+    ? `⚠️ Position critique après ${move.san} (éval ${formatEval(afterEvaluation.cpWhite)}). Joue : ton coup et sa réévaluation décideront du sort.`
     : isAdventureRun()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
     : isMateObjective(game)
@@ -10164,6 +10159,22 @@ function advResultButton(label, handler, primary = false) {
   return button;
 }
 
+// Phrase d'évaluation de la position effondrée : rend la défaite explicite
+// (« tu n'avais plus aucune chance ») en chiffrant l'écart pour le joueur (Blancs).
+function advDefeatEvalLine(game) {
+  if (Boolean(game?.chess?.isCheckmate?.())) {
+    return 'Échec et mat sur l’échiquier — plus aucune ressource.';
+  }
+  const cp = game?.failureEvaluation?.cpWhite;
+  if (!Number.isFinite(cp)) {
+    return '';
+  }
+  const mag = Math.abs(cp);
+  const qual =
+    mag >= 600 ? 'totalement perdante' : mag >= 300 ? 'largement perdante' : 'très compromise';
+  return `Position ${qual} : Stockfish évalue à ${formatEval(cp)} pour toi — tu n’avais plus aucune chance de la sauver.`;
+}
+
 function renderAdventureResult(el, game, run) {
   el.hidden = false;
   const win = game.status === 'won';
@@ -10241,8 +10252,34 @@ function renderAdventureResult(el, game, run) {
         : '↶ Revenir en arrière';
     actions.prepend(advResultButton(label, () => advUndoDefeat(), true));
   }
+  // Effondrement : éval bien visible (« aucune chance ») + accès à l'analyse détaillée.
+  const evalEl = document.createElement('p');
+  evalEl.className = 'adv-result-eval';
+  if (!win) {
+    const line = advDefeatEvalLine(game);
+    if (line) {
+      evalEl.textContent = line;
+    } else {
+      evalEl.hidden = true;
+    }
+  } else {
+    evalEl.hidden = true;
+  }
+
+  // « Analyser la partie » : ouvre la revue (sous-variantes : meilleure suite Stockfish
+  // + exploration perso) pour comprendre l'effondrement coup par coup.
+  if (!win && game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
+    actions.append(
+      advResultButton('🔍 Analyser la partie', () => {
+        const record = game.recordRef;
+        advRefreshRecordedMoves(game); // s'assure que la suite de défaite est incluse
+        openGameReview(record);
+      })
+    );
+  }
+
   actions.append(advResultButton('Carte du cerveau', () => openAdventureMap()));
-  el.append(heading, stars, note, actions);
+  el.append(heading, stars, evalEl, note, actions);
 }
 
 function renderAdventureHud() {
