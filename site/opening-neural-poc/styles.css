@@ -3777,6 +3777,34 @@ body.is-adv-map-open {
   background: rgba(117, 231, 232, 0.12);
 }
 
+/* Actions boutique intégrées à la visionneuse (±5 / cadenas / passer) */
+.opening-viewer-shop {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.opening-viewer-shop[hidden] {
+  display: none;
+}
+
+.opening-viewer-shop-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.opening-viewer-shop-coins {
+  font-weight: 800;
+  color: var(--gold);
+}
+
 .adv-shop-empty {
   font-size: 11px;
   color: var(--muted);

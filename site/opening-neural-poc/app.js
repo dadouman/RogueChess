@@ -7875,7 +7875,7 @@ function renderAdvOpeningCarousel(host) {
   const body = document.createElement('div');
   body.className = 'adv-weight-body';
   const nameLabel = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
-  const thumb = makeOpeningThumb(choice.sans, nameLabel, choice.sans.join(' '));
+  const thumb = makeOpeningThumb(choice.sans, nameLabel, choice.sans.join(' '), choice.key);
   if (thumb) {
     body.append(thumb);
   }
@@ -8444,7 +8444,9 @@ function fillOpeningBoard(container, frame) {
 }
 
 // Vignette cliquable : la position FINALE de l'ouverture (statique, pièces nettes).
-function makeOpeningThumb(sans, name, label) {
+// `shopKey` (facultatif) : si fourni, la visionneuse ouverte propose les actions
+// boutique (±5 % / cadenas / passer) pour choisir sans revenir au carrousel.
+function makeOpeningThumb(sans, name, label, shopKey = null) {
   const frames = buildOpeningFrames(sans);
   if (!frames) {
     return null;
@@ -8460,7 +8462,7 @@ function makeOpeningThumb(sans, name, label) {
   hint.className = 'opening-thumb-hint';
   hint.textContent = '▶';
   btn.append(board, hint);
-  btn.addEventListener('click', () => openOpeningViewer(sans, name, label));
+  btn.addEventListener('click', () => openOpeningViewer(sans, name, label, shopKey));
   return btn;
 }
 
@@ -8535,7 +8537,7 @@ function openingViewerSetSpeed(speedIndex) {
   }
 }
 
-function openOpeningViewer(sans, name, label) {
+function openOpeningViewer(sans, name, label, shopKey = null) {
   const frames = buildOpeningFrames(sans);
   if (!frames) {
     return;
@@ -8617,7 +8619,12 @@ function openOpeningViewer(sans, name, label) {
     return btn;
   });
 
-  panel.append(head, board, moveLabel, controls, speeds);
+  // Actions boutique (±5 % / cadenas / passer) directement depuis la visionneuse,
+  // pour choisir sans revenir au carrousel. Renseignées par renderOpeningViewerShop().
+  const shopActions = document.createElement('div');
+  shopActions.className = 'opening-viewer-shop';
+
+  panel.append(head, board, moveLabel, controls, speeds, shopActions);
   overlay.append(panel);
   document.body.append(overlay);
 
@@ -8636,11 +8643,15 @@ function openOpeningViewer(sans, name, label) {
 
   openingViewer = {
     overlay,
+    panel,
     board,
+    titleEl: title,
     moveLabel,
     counter,
     playBtn,
     speedBtns,
+    shopActions,
+    shopKey,
     frames,
     index: 0,
     playing: false,
@@ -8648,8 +8659,131 @@ function openOpeningViewer(sans, name, label) {
     timer: null,
     keyHandler
   };
+  panel.classList.toggle('has-shop', Boolean(shopKey));
   openingViewerSetSpeed(1);
+  renderOpeningViewerShop();
   openingViewerSetPlaying(true); // démarre l'animation
+}
+
+// Charge une autre proposition dans la visionneuse ouverte (sans la recréer).
+function loadOpeningViewerChoice(choice) {
+  const v = openingViewer;
+  if (!v) {
+    return;
+  }
+  const frames = buildOpeningFrames(choice.sans);
+  if (!frames) {
+    closeOpeningViewer();
+    return;
+  }
+  v.frames = frames;
+  v.index = 0;
+  v.shopKey = choice.key;
+  const name = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
+  v.titleEl.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(
+    choice.sans.join(' ')
+  )}</span>`;
+  renderOpeningViewerShop();
+  openingViewerSetPlaying(true);
+}
+
+// Rangée d'actions boutique dans la visionneuse (coins + pondération + ±5 / cadenas / passer).
+function renderOpeningViewerShop() {
+  const v = openingViewer;
+  if (!v?.shopActions) {
+    return;
+  }
+  v.shopActions.replaceChildren();
+  if (!v.shopKey) {
+    v.shopActions.hidden = true;
+    return;
+  }
+  v.shopActions.hidden = false;
+  const weight = advOpeningWeightOf(v.shopKey);
+  const wTxt = weight > 0 ? `+${weight}%` : weight < 0 ? `${weight}%` : '0%';
+  const info = document.createElement('div');
+  info.className = 'opening-viewer-shop-info';
+  info.innerHTML =
+    `<span class="opening-viewer-shop-coins">${advCoins()} 🪙</span>` +
+    `<span class="adv-weight-delta ${weight > 0 ? 'is-up' : weight < 0 ? 'is-down' : ''}">pondération ${wTxt}</span>`;
+  v.shopActions.append(info);
+
+  const buys = document.createElement('div');
+  buys.className = 'adv-weight-buys';
+  const makeBuy = (dir, label) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `adv-weight-buy ${dir > 0 ? 'is-up' : 'is-down'}`;
+    btn.textContent = `${label} (${OPENING_WEIGHT_COST}🪙)`;
+    btn.disabled = advCoins() < OPENING_WEIGHT_COST;
+    btn.addEventListener('click', () => openingViewerShopWeight(dir));
+    return btn;
+  };
+  buys.append(makeBuy(-1, '− 5%'), makeBuy(1, '+ 5%'));
+  v.shopActions.append(buys);
+
+  const nav = document.createElement('div');
+  nav.className = 'adv-weight-nav';
+  const lockBtn = document.createElement('button');
+  lockBtn.type = 'button';
+  lockBtn.className = 'adv-ghost adv-weight-lock';
+  const locked = advOpeningLockIs(v.shopKey);
+  lockBtn.classList.toggle('is-active', locked);
+  lockBtn.textContent = locked ? '🔒 Gardée' : '🔓 Garder';
+  lockBtn.addEventListener('click', openingViewerShopLock);
+  const skipBtn = document.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.className = 'adv-ghost adv-weight-skip';
+  skipBtn.textContent = 'Passer ›';
+  skipBtn.addEventListener('click', openingViewerShopSkip);
+  nav.append(lockBtn, skipBtn);
+  v.shopActions.append(nav);
+}
+
+function openingViewerShopWeight(dir) {
+  const v = openingViewer;
+  if (!v?.shopKey) {
+    return;
+  }
+  if (advAdjustOpeningWeight(v.shopKey, dir)) {
+    openingViewerShopAdvance();
+  } else {
+    renderOpeningViewerShop(); // pas assez de pièces : on reste sur la position
+  }
+}
+
+function openingViewerShopSkip() {
+  if (openingViewer?.shopKey) {
+    openingViewerShopAdvance();
+  }
+}
+
+function openingViewerShopLock() {
+  const v = openingViewer;
+  if (!v?.shopKey) {
+    return;
+  }
+  advToggleOpeningLock(v.shopKey);
+  renderAdvShop(); // garde le carrousel en phase
+  renderOpeningViewerShop();
+}
+
+// Après un choix : consomme la proposition et enchaîne sur la suivante dans la visionneuse.
+function openingViewerShopAdvance() {
+  const v = openingViewer;
+  if (!v?.shopKey) {
+    return;
+  }
+  advConsumeOpeningChoice(v.shopKey);
+  renderAdvShop();
+  const deck = advEnsureOpeningDeck();
+  const nextKey = deck[advCarouselIndex];
+  const next = nextKey ? advChoiceByKey(nextKey) : null;
+  if (next) {
+    loadOpeningViewerChoice(next);
+  } else {
+    closeOpeningViewer(); // plus de proposition : on referme
+  }
 }
 
 // M — Enregistre une partie terminée dans l'historique persistant.
