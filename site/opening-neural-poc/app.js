@@ -7345,8 +7345,8 @@ function createAdventureState() {
     // O — pondération des choix d'ouverture de Stockfish (±5%), valable pour le
     // prochain boss puis remise à zéro. Clé = `${fenAvantCoupNoir}|${uci}`.
     openingWeights: {},  // { clé: pourcentage } (réinitialisé après chaque partie de boss)
-    openingDeck: [],     // propositions du carrousel (clés), retirées après chaque partie
-    openingLocks: [],    // cadenas : propositions conservées dans le carrousel
+    openingDeck: null,   // file des propositions restantes (null = à (re)remplir, [] = épuisée)
+    openingLocks: [],    // cadenas : propositions non consommées (cumulables)
     threatsEnabled: false // R : aide « voir les menaces » activée
   };
 }
@@ -7381,7 +7381,7 @@ function loadAdventure() {
     base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
     base.openingWeights =
       data.openingWeights && typeof data.openingWeights === 'object' ? data.openingWeights : {};
-    base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : [];
+    base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : null;
     base.openingLocks = Array.isArray(data.openingLocks) ? data.openingLocks.slice(0, 40) : [];
     base.threatsEnabled = Boolean(data.threatsEnabled);
   } catch {
@@ -7414,7 +7414,9 @@ function saveAdventure() {
         coins: state.adventure.coins || 0,
         boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
         openingWeights: state.adventure.openingWeights || {},
-        openingDeck: (state.adventure.openingDeck || []).slice(0, 40),
+        openingDeck: Array.isArray(state.adventure.openingDeck)
+          ? state.adventure.openingDeck.slice(0, 40)
+          : null,
         openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
         threatsEnabled: Boolean(state.adventure.threatsEnabled)
       })
@@ -7838,24 +7840,21 @@ function renderAdvShop() {
 
 let advCarouselIndex = 0;
 
-function advCarouselAdvance(deckLength, delta = 1) {
-  if (!deckLength) {
-    return;
-  }
-  advCarouselIndex = (advCarouselIndex + delta + deckLength) % deckLength;
-}
-
 // Carrousel : une proposition à la fois (un coup noir d'embranchement), avec
-// boutons −5 % / +5 % (10 🪙, cumulables quand la proposition revient), cadenas
-// gratuit, et « passer ». Les pondérations actives sont listées dessous.
+// boutons −5 % / +5 % (10 🪙) et « passer ». Chaque action consomme le choix et
+// passe au suivant, jusqu'à épuisement. Le cadenas conserve un choix (cumulable).
 function renderAdvOpeningCarousel(host) {
   host.replaceChildren();
   const deck = advEnsureOpeningDeck();
   if (!deck.length) {
     const empty = document.createElement('p');
     empty.className = 'adv-shop-empty';
-    empty.textContent = "Aucune ouverture à influencer : le livre ne laisse pas de choix aux Noirs.";
+    empty.textContent = advInfluenceableChoices().length
+      ? 'Toutes les propositions ont été passées. Reviens après une partie de boss.'
+      : "Aucune ouverture à influencer : le livre ne laisse pas de choix aux Noirs.";
     host.append(empty);
+    // Récap des pondérations actives même quand la file est vide.
+    renderAdvWeightSummary(host);
     return;
   }
   if (advCarouselIndex >= deck.length) {
@@ -7900,7 +7899,7 @@ function renderAdvOpeningCarousel(host) {
   body.append(info);
   card.append(body);
 
-  // Actions : −5 % / +5 % (paye puis passe à la suivante)
+  // Actions : −5 % / +5 % (paye, puis la proposition est consommée et on passe à la suivante)
   const buys = document.createElement('div');
   buys.className = 'adv-weight-buys';
   const makeBuy = (dir, label) => {
@@ -7911,7 +7910,7 @@ function renderAdvOpeningCarousel(host) {
     btn.disabled = advCoins() < OPENING_WEIGHT_COST;
     btn.addEventListener('click', () => {
       if (advAdjustOpeningWeight(key, dir)) {
-        advCarouselAdvance(deck.length); // cumulable seulement quand la proposition revient
+        advConsumeOpeningChoice(key); // choix consommé → suivant (cadenas = conservé)
       }
       renderAdvShop();
     });
@@ -7938,7 +7937,7 @@ function renderAdvOpeningCarousel(host) {
   skipBtn.className = 'adv-ghost adv-weight-skip';
   skipBtn.textContent = 'Passer ›';
   skipBtn.addEventListener('click', () => {
-    advCarouselAdvance(deck.length);
+    advConsumeOpeningChoice(key); // « passer » consomme aussi le choix
     renderAdvShop();
   });
   nav.append(lockBtn, skipBtn);
@@ -7946,25 +7945,30 @@ function renderAdvOpeningCarousel(host) {
 
   host.append(card);
 
-  // Récapitulatif des pondérations actives (lisible d'un coup d'œil).
+  renderAdvWeightSummary(host);
+}
+
+// Récapitulatif des pondérations actives (lisible d'un coup d'œil), pour le prochain boss.
+function renderAdvWeightSummary(host) {
   const active = Object.entries(state.adventure?.openingWeights || {}).filter(([, v]) => v);
-  if (active.length) {
-    const summary = document.createElement('div');
-    summary.className = 'adv-weight-summary';
-    summary.innerHTML = '<span class="adv-tally-label">Pondérations actives (prochain boss)</span>';
-    const chips = document.createElement('div');
-    chips.className = 'adv-weight-chips';
-    for (const [k, v] of active) {
-      const c = advChoiceByKey(k);
-      const chip = document.createElement('span');
-      chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
-      const nm = c ? advOpeningDisplayLabel(c.sans, c.name || c.san) : k;
-      chip.textContent = `${nm} ${v > 0 ? '+' : ''}${v}%`;
-      chips.append(chip);
-    }
-    summary.append(chips);
-    host.append(summary);
+  if (!active.length) {
+    return;
   }
+  const summary = document.createElement('div');
+  summary.className = 'adv-weight-summary';
+  summary.innerHTML = '<span class="adv-tally-label">Pondérations actives (prochain boss)</span>';
+  const chips = document.createElement('div');
+  chips.className = 'adv-weight-chips';
+  for (const [k, v] of active) {
+    const c = advChoiceByKey(k);
+    const chip = document.createElement('span');
+    chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
+    const nm = c ? advOpeningDisplayLabel(c.sans, c.name || c.san) : k;
+    chip.textContent = `${nm} ${v > 0 ? '+' : ''}${v}%`;
+    chips.append(chip);
+  }
+  summary.append(chips);
+  host.append(summary);
 }
 
 function advToggleThreats() {
@@ -8900,7 +8904,9 @@ function advOpeningLockIs(key) {
   return advOpeningLocks().includes(key);
 }
 
-// (Re)tire le carrousel de propositions : un échantillon aléatoire, cadenas inclus.
+// File des propositions du carrousel. null → on (re)remplit avec TOUS les choix
+// (cadenas en tête) ; un tableau (même vide) signifie « déjà parcourue » et n'est
+// pas re-rempli avant une partie de boss.
 function advEnsureOpeningDeck() {
   const adv = state.adventure;
   if (!adv) {
@@ -8909,21 +8915,39 @@ function advEnsureOpeningDeck() {
   const all = advInfluenceableChoices();
   const valid = new Set(all.map((choice) => choice.key));
   adv.openingLocks = (adv.openingLocks || []).filter((key) => valid.has(key));
-  const current = (adv.openingDeck || []).filter((key) => valid.has(key));
-  if (current.length) {
-    adv.openingDeck = current;
+  if (Array.isArray(adv.openingDeck)) {
+    adv.openingDeck = adv.openingDeck.filter((key) => valid.has(key));
     return adv.openingDeck;
   }
-  // Nouveau tirage : cadenas d'abord, puis complément aléatoire.
+  // (Re)remplissage : tous les choix, cadenas d'abord puis le reste dans l'ordre du livre.
   const locked = advOpeningLocks();
-  const pool = all.map((c) => c.key).filter((key) => !locked.includes(key));
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(randomUnit() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  adv.openingDeck = [...locked, ...pool.slice(0, Math.max(0, OPENING_DECK_SIZE - locked.length))];
+  const rest = all.map((c) => c.key).filter((key) => !locked.includes(key));
+  adv.openingDeck = [...locked, ...rest];
   saveAdventure();
   return adv.openingDeck;
+}
+
+// Consomme la proposition courante (passer/+5/−5) : elle disparaît du carrousel et
+// on passe à la suivante. Une proposition cadenassée n'est PAS consommée (cumulable).
+function advConsumeOpeningChoice(key) {
+  const adv = state.adventure;
+  if (!adv || !Array.isArray(adv.openingDeck)) {
+    return;
+  }
+  if (advOpeningLockIs(key)) {
+    if (adv.openingDeck.length) {
+      advCarouselIndex = (advCarouselIndex + 1) % adv.openingDeck.length;
+    }
+    return;
+  }
+  const idx = adv.openingDeck.indexOf(key);
+  if (idx >= 0) {
+    adv.openingDeck.splice(idx, 1);
+  }
+  if (advCarouselIndex >= adv.openingDeck.length) {
+    advCarouselIndex = 0;
+  }
+  saveAdventure();
 }
 
 // Remise à zéro après une partie de boss : pondérations + propositions (cadenas gardés).
@@ -8932,7 +8956,7 @@ function advResetOpeningInfluence() {
     return;
   }
   state.adventure.openingWeights = {};
-  state.adventure.openingDeck = [];
+  state.adventure.openingDeck = null;
 }
 
 // Achat : ajuste la pondération d'un coup de ±5 % (10 🪙). Renvoie true si appliqué.
