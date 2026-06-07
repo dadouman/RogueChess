@@ -318,7 +318,8 @@ function formatEval(cpWhite) {
     return '-';
   }
   if (Math.abs(cpWhite) >= MATE_SCORE_CP - 1000) {
-    return cpWhite > 0 ? 'Mat blanc' : 'Mat noir';
+    const x = mateMovesFromCp(cpWhite);
+    return cpWhite > 0 ? `Mat blanc en ${x}` : `Mat noir en ${x}`;
   }
   return `${cpWhite >= 0 ? '+' : ''}${(cpWhite / 100).toFixed(2)}`;
 }
@@ -4232,6 +4233,7 @@ function createInitialGameState(level = state.campaignLevel) {
     replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
     revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
     finalMateLives: 0,       // S : retours « dernière chance » en phase finale du mat
+    mateExpected: null,      // distance au mat attendue (mat en X) pendant la conversion
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
     premove: null,           // T : { from, to } armé pendant la réflexion adverse
     premoveSelect: null      // T : case source sélectionnée pour armer le prémouvement
@@ -5775,6 +5777,47 @@ async function submitFreeMove(input) {
     return;
   }
 
+  // Filet « mat qui s'éloigne » (aventure) : si tu disposes d'un mat forcé, ton coup
+  // ne doit pas faire grimper la distance au mat de plus de 2 par rapport à l'attendu
+  // (X-1). Sinon : échec de la position → réessai en perdant une vie (jusqu'à 3).
+  if (isAdventureRun() && !state.game.chess.isCheckmate() && !state.game.chess.isDraw()) {
+    const newMate =
+      isMateScore(evaluation.cpWhite) && evaluation.cpWhite > 0
+        ? mateMovesFromCp(evaluation.cpWhite)
+        : null;
+    if (Number.isFinite(state.game.mateExpected)) {
+      const expectedAfter = Math.max(1, state.game.mateExpected - 1);
+      const blewIt = newMate === null || newMate > expectedAfter + 2;
+      if (blewIt) {
+        if ((state.game.finalMateLives || 0) > 0) {
+          state.game.finalMateLives -= 1;
+          revertLastPlayerMove();
+          const gotTxt = newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`;
+          const lives = state.game.finalMateLives;
+          state.game.message =
+            `❌ Échec de la position : ${gotTxt} (attendu : mat en ${expectedAfter}). ` +
+            `Réessaie — ${lives} vie${lives > 1 ? 's' : ''} restante${lives > 1 ? 's' : ''}.`;
+          renderGamePanel();
+          renderGameDetails();
+          return;
+        }
+        finishGame(
+          'lost',
+          `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
+            newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+          }`
+        );
+        return;
+      }
+      state.game.mateExpected = newMate; // coup correct : on met à jour l'attente
+    } else if (newMate !== null) {
+      state.game.mateExpected = newMate; // entrée en phase mat (référence)
+      if (!state.game.finalMateLives) {
+        state.game.finalMateLives = 3; // 3 vies pour la conversion
+      }
+    }
+  }
+
   recordFreeReviewMove({
     move,
     label: isExplorationMode() ? 'Exploration blanche' : 'Survie blanche',
@@ -6302,7 +6345,8 @@ async function runVictoryConversion() {
 
   if (mateFound) {
     const x = mateMovesFromCp(mateFound.cpWhite);
-    game.message = `Position gagnante : mat en ${x}. À toi de conclure !`;
+    game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
+    game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
   } else {
     game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
   }
@@ -7639,6 +7683,38 @@ function advTakeBack() {
 // Retour arrière « dernière chance » (très facile) : quand la défaite est prononcée,
 // on revient au dernier coup du joueur pour tenter de renverser la partie. Une seule
 // fois : ensuite le retour arrière est verrouillé pour cette partie.
+// Annule le dernier coup blanc venant d'être joué (avant son enregistrement dans la
+// revue), pour permettre un « réessai » : on remet l'échiquier, le journal et l'éval
+// à l'état d'avant ce coup. Utilisé par le filet « mat qui s'éloigne ».
+function revertLastPlayerMove() {
+  const game = state.game;
+  const chess = game?.chess;
+  if (!chess || chess.history().length === 0) {
+    return false;
+  }
+  chess.undo();
+  if (game.moveLog?.length) {
+    game.moveLog.shift(); // appendGameMove fait un unshift
+  }
+  if (state.screen === 'adventure' && state.adventure) {
+    state.adventure.movesPlayed = Math.max(0, (state.adventure.movesPlayed || 0) - 1);
+  }
+  game.historyView = null;
+  game.selectedSquare = null;
+  const verbose = chess.history({ verbose: true });
+  game.lastMove = verbose[verbose.length - 1] ?? null;
+  const node = getGameNodeByFen();
+  if (node) {
+    game.currentNodeId = node.id;
+    setGameGraphPathToNode(node.id);
+  }
+  const lastReview = game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  if (lastReview && Number.isFinite(lastReview.afterEvalCp)) {
+    game.currentEvalCp = lastReview.afterEvalCp;
+  }
+  return true;
+}
+
 function advUndoDefeat() {
   const game = state.game;
   if (!game || game.status === 'won') {
