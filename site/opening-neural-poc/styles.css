@@ -4256,6 +4256,93 @@ body.is-adv-map-open {
   color: var(--soft);
 }
 
+/* Sous-variantes dans la revue : suite Stockfish + variante explorée */
+#advReviewBoard .board-square {
+  cursor: pointer;
+}
+
+.game-review-engine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.game-review-engine-label {
+  color: var(--cyan);
+  font-weight: 700;
+}
+
+.game-review-engine-move {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(117, 231, 232, 0.08);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.game-review-engine-move:hover {
+  border-color: var(--cyan);
+}
+
+.game-review-variation {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(255, 217, 102, 0.4);
+  border-radius: 10px;
+  background: rgba(255, 217, 102, 0.07);
+}
+
+.game-review-variation-exit {
+  justify-self: start;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--soft);
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.game-review-variation-moves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.game-review-variation-move {
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.game-review-variation-move.is-active {
+  border-color: var(--gold);
+  background: rgba(255, 217, 102, 0.18);
+}
+
+.game-review-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .game-review-moves {
   list-style: none;
   margin: 0;

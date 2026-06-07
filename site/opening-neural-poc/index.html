@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=17" />
+    <link rel="stylesheet" href="./styles.css?v=18" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -545,6 +545,10 @@
           <button id="advReviewLast" type="button" aria-label="Fin">»</button>
         </div>
         <p id="advReviewComment" class="game-review-comment"></p>
+        <!-- Sous-variantes : meilleure suite de Stockfish (cliquable) + variante explorée -->
+        <div id="advReviewEngine" class="game-review-engine"></div>
+        <div id="advReviewVariation" class="game-review-variation" hidden></div>
+        <p class="game-review-hint">Touche une pièce sur l'échiquier pour explorer ta propre variante.</p>
         <ol id="advReviewMoves" class="game-review-moves"></ol>
       </div>
     </div>
@@ -622,6 +626,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=17" type="module"></script>
+    <script src="./app.js?v=18" type="module"></script>
   </body>
 </html>
