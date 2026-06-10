@@ -4962,6 +4962,68 @@ body.is-adv-map-open {
   letter-spacing: 2px;
 }
 
+/* === Indicateur de vies (cœurs) + mat en X, flottant en haut à gauche === */
+.adv-lives {
+  display: none;
+}
+
+body.screen-adventure.is-adv-board-view .adv-lives {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: fixed;
+  top: 7px;
+  left: 7px;
+  z-index: 26;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+body.screen-adventure.is-adv-board-view .adv-lives[hidden] {
+  display: none;
+}
+
+.adv-lives-hearts {
+  display: flex;
+  gap: 2px;
+}
+
+.adv-life {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.adv-life.is-full {
+  color: #ff5d6c;
+}
+
+.adv-life.is-empty {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.adv-life.is-sudden {
+  font-size: 14px;
+}
+
+.adv-lives-cap {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text, #eef);
+}
+
+.adv-lives[data-kind='mate'] .adv-lives-cap {
+  color: #ffd45a;
+}
+
+.adv-lives[data-kind='sudden'] .adv-lives-cap {
+  color: #ff9a6c;
+}
+
 /* === Niveau joueur : pastille discrète, le cadre est une jauge de progression === */
 .adv-player-badge {
   display: none;

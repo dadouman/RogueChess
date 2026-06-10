@@ -5805,10 +5805,8 @@ async function submitFreeMove(input) {
           state.game.finalMateLives -= 1;
           revertLastPlayerMove();
           const gotTxt = newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`;
-          const lives = state.game.finalMateLives;
-          state.game.message =
-            `❌ Échec de la position : ${gotTxt} (attendu : mat en ${expectedAfter}). ` +
-            `Réessaie — ${lives} vie${lives > 1 ? 's' : ''} restante${lives > 1 ? 's' : ''}.`;
+          // Les vies restantes sont affichées par l'indicateur de cœurs.
+          state.game.message = `❌ ${gotTxt} (attendu : mat en ${expectedAfter}). Réessaie !`;
           renderGamePanel();
           renderGameDetails();
           return;
@@ -6042,7 +6040,8 @@ function consumeLife(message) {
     finishGame('lost', `${message} Plus aucun retour disponible.`, game.failureFen, game.failureEvaluation);
     return;
   }
-  game.message = `${message} Vies restantes: ${game.lives}.`;
+  // Le nombre de vies restantes est porté par l'indicateur de cœurs.
+  game.message = message;
 }
 
 function finishGame(result, message, failureFen = null, failureEvaluation = null) {
@@ -6266,8 +6265,12 @@ async function runVictoryConversion() {
       game.currentPv = evalNow.pv;
       game.currentDepth = evalNow.depth;
       if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
-        mateFound = evalNow;
-        break; // mat détecté → on rend la main au joueur
+        // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
+        // proche (≤ seuil) ; sinon la conversion continue automatiquement.
+        if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
+          mateFound = evalNow;
+          break;
+        }
       }
       if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
         break; // l'avantage s'est évaporé → on rend la main
@@ -6644,6 +6647,7 @@ function renderGameDetails() {
   // Indices visuels propres à la vue joueur aventure
   applyAdvBoardHints();
   updateAdvBoardFeedback();
+  renderAdvLives(); // indicateur de vies unifié (ouverture / mat) + mat en X
   // Effet « cinématique » pendant la conversion automatique vers le mat.
   document.body.classList.toggle('is-victory-cinematic', Boolean(game.victoryCinematic));
 }
@@ -7398,7 +7402,9 @@ function createAdventureState() {
     openingWeights: {},  // { clé: pourcentage } (réinitialisé après chaque partie de boss)
     openingDeck: null,   // file des propositions restantes (null = à (re)remplir, [] = épuisée)
     openingLocks: [],    // cadenas : propositions non consommées (cumulables)
-    threatsEnabled: false // R : aide « voir les menaces » activée
+    threatsEnabled: false, // R : aide « voir les menaces » activée
+    mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
+    influenceDisabled: false // surpondération d'ouverture désactivée par le joueur
   };
 }
 
@@ -7435,6 +7441,10 @@ function loadAdventure() {
     base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : null;
     base.openingLocks = Array.isArray(data.openingLocks) ? data.openingLocks.slice(0, 40) : [];
     base.threatsEnabled = Boolean(data.threatsEnabled);
+    base.mateHandover = MATE_HANDOVER_OPTIONS.some((o) => o.id === Number(data.mateHandover))
+      ? Number(data.mateHandover)
+      : DEFAULT_MATE_HANDOVER;
+    base.influenceDisabled = Boolean(data.influenceDisabled);
   } catch {
     return createAdventureState();
   }
@@ -7469,7 +7479,9 @@ function saveAdventure() {
           ? state.adventure.openingDeck.slice(0, 40)
           : null,
         openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
-        threatsEnabled: Boolean(state.adventure.threatsEnabled)
+        threatsEnabled: Boolean(state.adventure.threatsEnabled),
+        mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
+        influenceDisabled: Boolean(state.adventure.influenceDisabled)
       })
     );
   } catch {
@@ -7909,6 +7921,132 @@ function advToggleInfluenceFeature() {
   if (state.adventure.influenceDisabled) {
     closeAdvInfluence(); // si désactivé pendant que le panneau est ouvert
   }
+}
+
+// === Vies + « mat en X » ========================================================
+// Indicateur de vies unifié (cœurs) + réglage du moment où la cinématique de
+// victoire rend la main au joueur pour conclure le mat.
+const MATE_HANDOVER_OPTIONS = [
+  { id: 1, label: 'Mat en 1' },
+  { id: 2, label: 'Mat en 2' },
+  { id: 3, label: 'Mat en 3' },
+  { id: 5, label: 'Mat en 5' },
+  { id: 99, label: 'Au plus tôt' }
+];
+const DEFAULT_MATE_HANDOVER = 3;
+
+function advMateHandover() {
+  const v = Number(state.adventure?.mateHandover);
+  return Number.isFinite(v) && v > 0 ? v : DEFAULT_MATE_HANDOVER;
+}
+
+// Distance au mat affichée : l'attente fixée (phase joueur) ou le score moteur
+// pendant la conversion automatique.
+function advCurrentMateInX(game) {
+  if (!game) {
+    return null;
+  }
+  if (Number.isFinite(game.mateExpected)) {
+    return game.mateExpected;
+  }
+  if (isMateScore(game.currentEvalCp) && game.currentEvalCp > 0) {
+    return mateMovesFromCp(game.currentEvalCp);
+  }
+  return null;
+}
+
+// État de l'indicateur de vies : ouverture (game.lives), phase de mat
+// (game.finalMateLives), ou mort subite (phase libre sans mat).
+function advLivesState(game) {
+  const mateX = advCurrentMateInX(game);
+  const inMate = mateX != null || game.victoryCinematic || (game.finalMateLives || 0) > 0;
+  if (inMate) {
+    return {
+      kind: 'mate',
+      count: Math.max(0, game.finalMateLives || 0),
+      max: 3,
+      label: mateX != null ? `Mat en ${mateX}` : 'Conversion'
+    };
+  }
+  if (game.phase === 'opening') {
+    return { kind: 'opening', count: Math.max(0, game.lives), max: STARTING_LIVES, label: 'Ouverture' };
+  }
+  return { kind: 'sudden', count: 1, max: 1, label: 'Mort subite' };
+}
+
+function renderAdvLives() {
+  const el = document.querySelector('#advLives');
+  if (!el) {
+    return;
+  }
+  const game = state.game;
+  const show =
+    state.screen === 'adventure' &&
+    state.advViewMode === 'board' &&
+    Boolean(game) &&
+    game.status === 'playing' &&
+    !isExplorationMode();
+  el.hidden = !show;
+  if (!show) {
+    return;
+  }
+  const st = advLivesState(game);
+  el.dataset.kind = st.kind;
+  el.replaceChildren();
+  const hearts = document.createElement('div');
+  hearts.className = 'adv-lives-hearts';
+  if (st.kind === 'sudden') {
+    const pip = document.createElement('span');
+    pip.className = 'adv-life is-sudden';
+    pip.textContent = '⚡';
+    hearts.append(pip);
+  } else {
+    for (let i = 0; i < st.max; i += 1) {
+      const h = document.createElement('span');
+      h.className = `adv-life ${i < st.count ? 'is-full' : 'is-empty'}`;
+      h.textContent = '♥';
+      hearts.append(h);
+    }
+  }
+  el.append(hearts);
+  const cap = document.createElement('span');
+  cap.className = 'adv-lives-cap';
+  cap.textContent = st.label;
+  el.append(cap);
+}
+
+function renderAdvMateHandover() {
+  const host = document.querySelector('#advMateHandoverButtons');
+  if (!host) {
+    return;
+  }
+  const current = advMateHandover();
+  host.replaceChildren();
+  for (const opt of MATE_HANDOVER_OPTIONS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `adv-diff-btn${opt.id === current ? ' is-active' : ''}`;
+    btn.setAttribute('aria-pressed', opt.id === current ? 'true' : 'false');
+    btn.innerHTML = `<span class="adv-diff-label">${escapeHtml(opt.label)}</span>`;
+    btn.addEventListener('click', () => setAdvMateHandover(opt.id));
+    host.append(btn);
+  }
+  const desc = document.querySelector('#advMateHandoverDesc');
+  if (desc) {
+    desc.textContent =
+      current >= 99
+        ? 'La conversion te rend la main dès qu’un mat forcé est trouvé (tu joues toute la finale).'
+        : `La conversion joue jusqu’au mat en ${current}, puis te laisse conclure.`;
+  }
+}
+
+function setAdvMateHandover(id) {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.mateHandover = id;
+  saveAdventure();
+  renderAdvMateHandover();
 }
 
 // === Boutique (rendu + achats) ===
@@ -11641,6 +11779,7 @@ function renderAdventureMap() {
   }
   renderAdvDifficulty();
   renderAdvTimeControl();
+  renderAdvMateHandover();
   renderAdvInfluenceSetting();
   renderAdvShop();
   renderAdvGameHistory();

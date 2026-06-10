@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=28" />
+    <link rel="stylesheet" href="./styles.css?v=29" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -523,6 +523,11 @@
               <p id="advTimeDesc" class="adv-difficulty-desc"></p>
             </section>
             <section class="adv-difficulty">
+              <span class="kicker">Mat en X · fin de la conversion</span>
+              <div id="advMateHandoverButtons" class="adv-difficulty-buttons" role="group" aria-label="Quand rendre la main pour conclure le mat"></div>
+              <p id="advMateHandoverDesc" class="adv-difficulty-desc"></p>
+            </section>
+            <section class="adv-difficulty">
               <span class="kicker">Influence des ouvertures</span>
               <div class="adv-shop-item">
                 <div class="adv-shop-item-info">
@@ -620,6 +625,9 @@
       <span class="adv-player-badge-menu" aria-hidden="true">☰</span>
     </button>
 
+    <!-- Indicateur de vies (cœurs) + mat en X — visible en partie d'aventure -->
+    <div id="advLives" class="adv-lives" hidden aria-label="Vies restantes"></div>
+
     <!-- Version portable : barre d'actions de jeu (vue + analyse). La navigation/menu vit dans la bulle. -->
     <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions de jeu">
       <button id="advBarView" type="button" class="adv-bar-btn">
@@ -680,6 +688,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=28" type="module"></script>
+    <script src="./app.js?v=29" type="module"></script>
   </body>
 </html>
