@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=27" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -497,8 +497,8 @@
               </div>
               <div class="adv-shop-item adv-shop-item-block">
                 <div class="adv-shop-item-info">
-                  <b>🎚️ Influencer les ouvertures</b>
-                  <span>Paie ±5% les chances qu'un coup des Noirs sorte (valable pour le prochain boss, puis remis à zéro). 🔒 garde une ligne dans les propositions.</span>
+                  <b>🎚️ Influence des ouvertures</b>
+                  <span>Se règle automatiquement après une défaite de boss (gratuit). Récap ci-dessous.</span>
                 </div>
                 <div id="advShopLines" class="adv-shop-lines"></div>
               </div>
@@ -521,6 +521,16 @@
                 <span>min / camp</span>
               </div>
               <p id="advTimeDesc" class="adv-difficulty-desc"></p>
+            </section>
+            <section class="adv-difficulty">
+              <span class="kicker">Influence des ouvertures</span>
+              <div class="adv-shop-item">
+                <div class="adv-shop-item-info">
+                  <b>🎚️ Surpondérer un coup après défaite</b>
+                  <span>À chaque défaite de boss, choisis un coup des Noirs à pousser (+5%) pour ta revanche. Désactive pour jouer le livre tel quel.</span>
+                </div>
+                <button id="advInfluenceToggle" class="adv-ghost" type="button" aria-pressed="true">Activé</button>
+              </div>
             </section>
             <button id="advSettingsBack" class="adv-bottom-btn" type="button">← Retour</button>
           </section>
@@ -580,7 +590,7 @@
       <div class="adv-influence-panel">
         <header class="adv-influence-head">
           <div>
-            <span class="kicker">Influencer l'ouverture · <span id="advInfluenceCoins">0 🪙</span></span>
+            <span class="kicker">Influencer l'ouverture · gratuit · 1 par défaite</span>
             <strong id="advInfluenceTitle">Coup des Noirs</strong>
           </div>
           <button id="advInfluenceClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
@@ -670,6 +680,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=27" type="module"></script>
+    <script src="./app.js?v=28" type="module"></script>
   </body>
 </html>

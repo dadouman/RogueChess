@@ -7886,6 +7886,31 @@ function setAdvCustomClock(minutesRaw) {
   renderAdvTimeControl();
 }
 
+// Réglage : activer/désactiver l'influence des lignes d'ouverture (surpondération).
+function renderAdvInfluenceSetting() {
+  const btn = document.querySelector('#advInfluenceToggle');
+  if (!btn) {
+    return;
+  }
+  const enabled = advInfluenceEnabled();
+  btn.textContent = enabled ? 'Activé' : 'Désactivé';
+  btn.classList.toggle('is-active', enabled);
+  btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+}
+
+function advToggleInfluenceFeature() {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.influenceDisabled = !state.adventure.influenceDisabled;
+  saveAdventure();
+  renderAdvInfluenceSetting();
+  renderAdvShop();
+  if (state.adventure.influenceDisabled) {
+    closeAdvInfluence(); // si désactivé pendant que le panneau est ouvert
+  }
+}
+
 // === Boutique (rendu + achats) ===
 function renderAdvShop() {
   if (!state.adventure) {
@@ -9189,15 +9214,11 @@ function advLineToNextBranch(startId, maxPlies = 6) {
 // des autres (somme nulle). Coût 10 🪙, une seule fois par défaite. true si appliqué.
 function advOverweightMove(node, chosenUci) {
   const adv = state.adventure;
-  if (!adv || !node) {
+  if (!adv || !node || !advInfluenceEnabled()) {
     return false;
   }
   if (state.advRun?.overweightUsed) {
     showAdventureToast({ icon: '🎚️', title: 'Déjà fait', text: 'Une seule surpondération par défaite.', kind: null });
-    return false;
-  }
-  if (advCoins() < OPENING_WEIGHT_COST) {
-    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
     return false;
   }
   const moves = node.moves || [];
@@ -9220,7 +9241,7 @@ function advOverweightMove(node, chosenUci) {
   for (const m of others) {
     bump(m.uci, -per);
   }
-  adv.coins = Math.max(0, advCoins() - OPENING_WEIGHT_COST);
+  // Gratuit : plus de coût en pièces (la monnaie reste pour d'autres fonctions).
   if (state.advRun) {
     state.advRun.overweightUsed = true;
   }
@@ -9233,6 +9254,9 @@ const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
 let advInfluence = null;
 
 function openAdvInfluence() {
+  if (!advInfluenceEnabled()) {
+    return;
+  }
   const nodes = advInfluenceableNodes();
   if (!nodes.length) {
     showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
@@ -9334,7 +9358,6 @@ function renderAdvInfluence() {
     return;
   }
   advSetText('#advInfluenceNav', `Nœud ${advInfluence.index + 1} / ${nodes.length}`);
-  advSetText('#advInfluenceCoins', `${advCoins()} 🪙`);
   const moveNo = Math.ceil(node.sans.length / 2) + 1;
   advSetText('#advInfluenceTitle', advOpeningDisplayLabel(node.sans, `Coup ${moveNo} des Noirs`));
 
@@ -9376,13 +9399,11 @@ function renderAdvInfluence() {
   const validate = document.querySelector('#advInfluenceValidate');
   if (validate) {
     const used = Boolean(state.advRun?.overweightUsed);
-    const poor = advCoins() < OPENING_WEIGHT_COST;
-    validate.disabled = used || poor;
+    const chosen = node.moves.find((m) => m.uci === advInfluence.selectedUci);
+    validate.disabled = used;
     validate.textContent = used
       ? '✓ Surpondération utilisée (1/défaite)'
-      : poor
-      ? `Pas assez de pièces (${OPENING_WEIGHT_COST}🪙)`
-      : `Surpondérer +5% (${OPENING_WEIGHT_COST}🪙)`;
+      : `Surpondérer ${chosen ? chosen.san + ' ' : ''}+5%`;
   }
 }
 
@@ -9412,9 +9433,13 @@ function renderAdvWeightRecap(host) {
   host.replaceChildren();
   const note = document.createElement('p');
   note.className = 'adv-shop-empty';
-  note.textContent =
-    "La surpondération se règle à la fin d'une partie de boss perdue : choisis un coup des Noirs à pousser de +5% (10🪙). L'effet s'accumule jusqu'à ta victoire.";
+  note.textContent = advInfluenceEnabled()
+    ? "Après une défaite de boss, le choix s'ouvre tout seul : pousse un coup des Noirs de +5% (gratuit). L'effet s'accumule jusqu'à ta victoire. Désactivable dans les réglages."
+    : 'Influence des ouvertures désactivée (réactive-la dans les réglages).';
   host.append(note);
+  if (!advInfluenceEnabled()) {
+    return;
+  }
   const active = Object.entries(state.adventure?.openingWeights || {}).filter(
     ([, v]) => Math.abs(v) > 0.01
   );
@@ -9439,9 +9464,14 @@ function renderAdvWeightRecap(host) {
 }
 
 // Pondération (points de %) d'un coup noir donné — seulement en partie de boss.
+// La surpondération peut être désactivée dans les réglages.
+function advInfluenceEnabled() {
+  return !state.adventure?.influenceDisabled;
+}
+
 function advBlackChoiceWeight(fen, uci) {
   const weights = state.adventure?.openingWeights;
-  if (!weights || state.advRun?.kind !== 'boss') {
+  if (!weights || state.advRun?.kind !== 'boss' || !advInfluenceEnabled()) {
     return 0;
   }
   return Number(weights[`${fen}|${uci}`]) || 0;
@@ -11321,12 +11351,14 @@ function renderAdventureResult(el, game, run) {
   }
 
   // Refonte boutique : après une défaite de boss, surpondère un coup des Noirs pour
-  // la revanche (choix du nœud + du coup, +5% / 10🪙, une fois par défaite).
-  if (!win && run.kind === 'boss' && !run.tournament) {
+  // la revanche (choix du nœud + du coup, +5%, gratuit, une fois par défaite).
+  // Le choix s'ouvre automatiquement (voir plus bas) ; le bouton permet d'y revenir.
+  const influenceLoss = !win && run.kind === 'boss' && !run.tournament && advInfluenceEnabled();
+  if (influenceLoss) {
     const used = Boolean(run.overweightUsed);
     actions.append(
       advResultButton(
-        used ? '🎚️ Pondération réglée' : `🎚️ Influencer l'ouverture (${OPENING_WEIGHT_COST}🪙)`,
+        used ? '🎚️ Pondération réglée' : "🎚️ Influencer l'ouverture",
         () => openAdvInfluence()
       )
     );
@@ -11365,6 +11397,27 @@ function renderAdventureResult(el, game, run) {
   el.append(heading, stars, evalEl, note, actions);
   if (statsRow) {
     el.append(statsRow);
+  }
+
+  // Ouverture AUTOMATIQUE du choix de surpondération en cas de défaite de boss
+  // (une seule fois, et seulement quand la cinématique de punition est terminée).
+  if (
+    influenceLoss &&
+    !run.overweightUsed &&
+    !run.influenceAutoShown &&
+    !game.cinematic?.active
+  ) {
+    run.influenceAutoShown = true;
+    setTimeout(() => {
+      if (
+        state.advRun === run &&
+        state.game?.status === 'lost' &&
+        !run.overweightUsed &&
+        advInfluenceEnabled()
+      ) {
+        openAdvInfluence();
+      }
+    }, 450);
   }
 }
 
@@ -11588,6 +11641,7 @@ function renderAdventureMap() {
   }
   renderAdvDifficulty();
   renderAdvTimeControl();
+  renderAdvInfluenceSetting();
   renderAdvShop();
   renderAdvGameHistory();
   renderAdvMainActions();
@@ -11667,6 +11721,7 @@ function bindAdventureEvents() {
   bind('#advInfluencePrev', () => advInfluenceStep(-1));
   bind('#advInfluenceNext', () => advInfluenceStep(1));
   bind('#advInfluenceValidate', advInfluenceValidate);
+  bind('#advInfluenceToggle', advToggleInfluenceFeature); // réglage activer/désactiver
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Revue d'une partie historique : navigation + fermeture.
   bind('#advReviewClose', closeGameReview);
