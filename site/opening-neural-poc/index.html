@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=29" />
+    <link rel="stylesheet" href="./styles.css?v=30" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -601,12 +601,12 @@
           <button id="advInfluenceClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
         </header>
         <div class="adv-influence-navrow">
-          <button id="advInfluencePrev" class="adv-ghost" type="button" aria-label="Nœud précédent">‹</button>
-          <span id="advInfluenceNav" class="adv-influence-navlabel">Nœud 1 / 1</span>
-          <button id="advInfluenceNext" class="adv-ghost" type="button" aria-label="Nœud suivant">›</button>
+          <button id="advInfluencePrev" class="adv-ghost" type="button" aria-label="Coup précédent">‹</button>
+          <span id="advInfluenceNav" class="adv-influence-navlabel">Au choix des Noirs</span>
+          <button id="advInfluenceNext" class="adv-ghost" type="button" aria-label="Coup suivant">›</button>
         </div>
         <div id="advInfluenceBoard" class="opening-board adv-influence-board"></div>
-        <p class="adv-influence-hint">Choisis le coup des Noirs à pousser de +5% (les autres baissent d'autant). Aperçu de chaque ligne à droite.</p>
+        <p class="adv-influence-hint">Rejoue la ligne jusqu'au choix avec ‹ ›, puis pousse un coup des Noirs de +5% pour ta prochaine partie.</p>
         <div id="advInfluenceMoves" class="adv-influence-moves"></div>
         <button id="advInfluenceValidate" class="adv-bottom-btn" type="button">Surpondérer +5% (10🪙)</button>
       </div>
@@ -688,6 +688,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=29" type="module"></script>
+    <script src="./app.js?v=30" type="module"></script>
   </body>
 </html>

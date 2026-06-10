@@ -9391,16 +9391,52 @@ function advOverweightMove(node, chosenUci) {
 const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
 let advInfluence = null;
 
+// Choisit l'UNIQUE nœud proposé : de préférence l'embranchement le plus profond
+// que la partie perdue a réellement traversé (le plus pertinent), sinon le premier
+// embranchement du livre.
+function advInfluencePickNode() {
+  const nodes = advInfluenceableNodes();
+  if (!nodes.length) {
+    return null;
+  }
+  let history = [];
+  try {
+    history = state.game?.chess ? state.game.chess.history() : [];
+  } catch {
+    history = [];
+  }
+  if (history.length) {
+    let best = null;
+    for (const node of nodes) {
+      if (
+        node.sans.length &&
+        node.sans.length <= history.length &&
+        node.sans.every((s, i) => s === history[i])
+      ) {
+        if (!best || node.sans.length > best.sans.length) {
+          best = node;
+        }
+      }
+    }
+    if (best) {
+      return best;
+    }
+  }
+  return nodes[0];
+}
+
 function openAdvInfluence() {
   if (!advInfluenceEnabled()) {
     return;
   }
-  const nodes = advInfluenceableNodes();
-  if (!nodes.length) {
+  const node = advInfluencePickNode();
+  if (!node) {
     showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
     return;
   }
-  advInfluence = { index: 0, selectedUci: nodes[0].moves[0]?.uci || null };
+  // Un seul choix rapide : on se place directement au nœud (scrub = fin de ligne),
+  // la lecture de la ligne reste possible en reculant.
+  advInfluence = { node, scrub: node.sans.length, selectedUci: node.moves[0]?.uci || null };
   const overlay = document.querySelector('#advInfluence');
   if (overlay) {
     overlay.hidden = false;
@@ -9418,16 +9454,13 @@ function closeAdvInfluence() {
   advInfluence = null;
 }
 
-function advInfluenceStep(dir) {
-  if (!advInfluence) {
+// Parcourt la ligne jusqu'au nœud proposé (lecture des coups menant au choix).
+function advInfluenceScrub(dir) {
+  if (!advInfluence?.node) {
     return;
   }
-  const nodes = advInfluenceableNodes();
-  if (!nodes.length) {
-    return;
-  }
-  advInfluence.index = (advInfluence.index + dir + nodes.length) % nodes.length;
-  advInfluence.selectedUci = nodes[advInfluence.index].moves[0]?.uci || null;
+  const len = advInfluence.node.sans.length;
+  advInfluence.scrub = clamp((advInfluence.scrub ?? len) + dir, 0, len);
   renderAdvInfluence();
 }
 
@@ -9487,47 +9520,53 @@ function advInfluenceArrows(moves, selectedUci) {
 }
 
 function renderAdvInfluence() {
-  if (!advInfluence) {
+  if (!advInfluence?.node) {
     return;
   }
-  const nodes = advInfluenceableNodes();
-  const node = nodes[advInfluence.index];
-  if (!node) {
-    return;
-  }
-  advSetText('#advInfluenceNav', `Nœud ${advInfluence.index + 1} / ${nodes.length}`);
-  const moveNo = Math.ceil(node.sans.length / 2) + 1;
+  const node = advInfluence.node;
+  const len = node.sans.length;
+  advInfluence.scrub = clamp(Number.isFinite(advInfluence.scrub) ? advInfluence.scrub : len, 0, len);
+  const scrub = advInfluence.scrub;
+  const atNode = scrub === len;
+
+  const moveNo = Math.ceil(len / 2) + 1;
   advSetText('#advInfluenceTitle', advOpeningDisplayLabel(node.sans, `Coup ${moveNo} des Noirs`));
+  const navLabel = scrub === 0 ? 'Début de partie' : atNode ? '🎯 Au choix des Noirs' : `Après ${node.sans[scrub - 1]}`;
+  advSetText('#advInfluenceNav', `${navLabel} · ${scrub}/${len}`);
 
   const board = document.querySelector('#advInfluenceBoard');
   if (board) {
-    const frames = buildOpeningFrames(node.sans, node.sans.length);
-    const frame = frames ? frames[frames.length - 1] : null;
+    const frames = buildOpeningFrames(node.sans, len);
+    const frame = frames ? frames[Math.min(scrub, frames.length - 1)] : null;
     if (frame) {
       fillOpeningBoard(board, frame);
-      board.append(advInfluenceArrows(node.moves, advInfluence.selectedUci));
+      if (atNode) {
+        board.append(advInfluenceArrows(node.moves, advInfluence.selectedUci));
+      }
     }
   }
 
+  // Choix des coups noirs, présenté comme les « touches de coup » en partie.
   const choices = document.querySelector('#advInfluenceMoves');
   if (choices) {
     choices.replaceChildren();
     node.moves.forEach((m, i) => {
       const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
+      const sel = m.uci === advInfluence.selectedUci;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'adv-influence-move';
-      btn.classList.toggle('is-selected', m.uci === advInfluence.selectedUci);
+      btn.className = `adv-influence-key${sel ? ' is-selected' : ''}`;
+      btn.style.setProperty('--key-color', color);
       const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
-      const wTxt = w > 0.01 ? ` · +${Math.round(w)}%` : w < -0.01 ? ` · ${Math.round(w)}%` : '';
-      const cont = m.line && m.line.length ? `${m.line.slice(0, 4).join(' ')}…` : '';
+      const tag =
+        w > 0.01 ? `+${Math.round(w)}%` : w < -0.01 ? `${Math.round(w)}%` : `${Math.round(m.baseProb * 100)}%`;
       btn.innerHTML =
-        `<span class="adv-influence-dot" style="background:${color}"></span>` +
-        `<span class="adv-influence-move-main"><b>${escapeHtml(m.san)}</b>` +
-        `<i>base ${Math.round(m.baseProb * 100)}%${wTxt}</i></span>` +
-        `<span class="adv-influence-cont">${escapeHtml(cont)}</span>`;
+        `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
+        `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
+        `<span class="adv-move-key-prob">${escapeHtml(tag)}</span>`;
       btn.addEventListener('click', () => {
         advInfluence.selectedUci = m.uci;
+        advInfluence.scrub = len; // au choix : on se place au nœud pour voir la flèche
         renderAdvInfluence();
       });
       choices.append(btn);
@@ -9546,10 +9585,7 @@ function renderAdvInfluence() {
 }
 
 function advInfluenceValidate() {
-  if (!advInfluence) {
-    return;
-  }
-  const node = advInfluenceableNodes()[advInfluence.index];
+  const node = advInfluence?.node;
   if (!node) {
     return;
   }
@@ -11857,8 +11893,8 @@ function bindAdventureEvents() {
   bind('#advTournamentClose', closeAdvTournament);
   // Panneau « Influencer l'ouverture » (refonte boutique, fin de défaite)
   bind('#advInfluenceClose', closeAdvInfluence);
-  bind('#advInfluencePrev', () => advInfluenceStep(-1));
-  bind('#advInfluenceNext', () => advInfluenceStep(1));
+  bind('#advInfluencePrev', () => advInfluenceScrub(-1));
+  bind('#advInfluenceNext', () => advInfluenceScrub(1));
   bind('#advInfluenceValidate', advInfluenceValidate);
   bind('#advInfluenceToggle', advToggleInfluenceFeature); // réglage activer/désactiver
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
