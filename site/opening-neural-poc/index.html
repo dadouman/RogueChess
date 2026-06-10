@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=27" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -575,6 +575,28 @@
       </div>
     </div>
 
+    <!-- Influencer l'ouverture (fin de défaite) : choisir un nœud puis le coup noir à surpondérer -->
+    <div id="advInfluence" class="adv-influence" hidden aria-label="Influencer l'ouverture">
+      <div class="adv-influence-panel">
+        <header class="adv-influence-head">
+          <div>
+            <span class="kicker">Influencer l'ouverture · <span id="advInfluenceCoins">0 🪙</span></span>
+            <strong id="advInfluenceTitle">Coup des Noirs</strong>
+          </div>
+          <button id="advInfluenceClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+        </header>
+        <div class="adv-influence-navrow">
+          <button id="advInfluencePrev" class="adv-ghost" type="button" aria-label="Nœud précédent">‹</button>
+          <span id="advInfluenceNav" class="adv-influence-navlabel">Nœud 1 / 1</span>
+          <button id="advInfluenceNext" class="adv-ghost" type="button" aria-label="Nœud suivant">›</button>
+        </div>
+        <div id="advInfluenceBoard" class="opening-board adv-influence-board"></div>
+        <p class="adv-influence-hint">Choisis le coup des Noirs à pousser de +5% (les autres baissent d'autant). Aperçu de chaque ligne à droite.</p>
+        <div id="advInfluenceMoves" class="adv-influence-moves"></div>
+        <button id="advInfluenceValidate" class="adv-bottom-btn" type="button">Surpondérer +5% (10🪙)</button>
+      </div>
+    </div>
+
     <!-- Bulle menu (haut à droite en partie) : niveau joueur + jauge XP, ouvre le volet d'options -->
     <button
       id="advPlayerBadge"
@@ -648,6 +670,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=26" type="module"></script>
+    <script src="./app.js?v=27" type="module"></script>
   </body>
 </html>

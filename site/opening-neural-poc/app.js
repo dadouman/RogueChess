@@ -7914,10 +7914,11 @@ function renderAdvShop() {
         }).`;
   }
 
-  // O — carrousel de pondération des choix d'ouverture de Stockfish (±5%).
+  // O — pondération des choix d'ouverture : la mise se fait en fin de défaite ;
+  // la boutique n'affiche qu'un récap en lecture seule.
   const host = document.querySelector('#advShopLines');
   if (host) {
-    renderAdvOpeningCarousel(host);
+    renderAdvWeightRecap(host);
   }
 }
 
@@ -9101,6 +9102,342 @@ function advChoiceByKey(key) {
   return advInfluenceableChoices().find((choice) => choice.key === key) || null;
 }
 
+// === Refonte boutique : surpondération d'un COUP à un NŒUD d'embranchement ======
+// On regroupe les coups noirs par nœud (position où les Noirs ont ≥2 réponses) ;
+// pour chaque coup candidat on calcule la suite la plus probable jusqu'au prochain
+// embranchement (aperçu de la ligne, pour décider quel coup pousser). Cache : le
+// livre est statique.
+let advNodesCache = null;
+function advInfluenceableNodes() {
+  if (advNodesCache) {
+    return advNodesCache;
+  }
+  const out = [];
+  if (!(state.edgesById instanceof Map)) {
+    return out;
+  }
+  const seen = new Set();
+  const queue = [{ id: 'root', sans: [] }];
+  let guard = 0;
+  while (queue.length && guard < 6000) {
+    guard += 1;
+    const { id, sans } = queue.shift();
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const node = getNode(id);
+    if (!node) {
+      continue;
+    }
+    const outs = getRawOutgoingEdges(id);
+    const blacks = outs.filter((edge) => edge.color === 'b');
+    if (blacks.length >= 2 && sans.length <= OPENING_BRANCH_MAX_PLY) {
+      const moves = blacks.map((edge) => {
+        const child = getNode(edge.to);
+        return {
+          uci: edge.uci,
+          san: edge.san,
+          baseProb: Number(edge.probability) || 0,
+          name: child?.opening || null,
+          eco: child?.eco || null,
+          line: advLineToNextBranch(edge.to)
+        };
+      });
+      out.push({ key: node.fen, fen: node.fen, sans: [...sans], moves });
+    }
+    if (sans.length < OPENING_BRANCH_MAX_PLY + 4) {
+      for (const edge of outs) {
+        if (!seen.has(edge.to)) {
+          queue.push({ id: edge.to, sans: [...sans, edge.san] });
+        }
+      }
+    }
+  }
+  advNodesCache = out;
+  return out;
+}
+
+// Suite la plus probable depuis un nœud, jusqu'au prochain embranchement noir (ou cap).
+function advLineToNextBranch(startId, maxPlies = 6) {
+  const lineSans = [];
+  let cur = startId;
+  const visited = new Set();
+  for (let i = 0; i < maxPlies; i += 1) {
+    if (visited.has(cur)) {
+      break;
+    }
+    visited.add(cur);
+    const outs = getRawOutgoingEdges(cur);
+    if (!outs.length) {
+      break;
+    }
+    if (i > 0 && outs.filter((e) => e.color === 'b').length >= 2) {
+      break; // prochain embranchement atteint
+    }
+    const best = outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
+    if (!best) {
+      break;
+    }
+    lineSans.push(best.san);
+    cur = best.to;
+  }
+  return lineSans;
+}
+
+// Surpondère un coup : +5 % au coup choisi, et −5 %/(nombre d'autres coups) à chacun
+// des autres (somme nulle). Coût 10 🪙, une seule fois par défaite. true si appliqué.
+function advOverweightMove(node, chosenUci) {
+  const adv = state.adventure;
+  if (!adv || !node) {
+    return false;
+  }
+  if (state.advRun?.overweightUsed) {
+    showAdventureToast({ icon: '🎚️', title: 'Déjà fait', text: 'Une seule surpondération par défaite.', kind: null });
+    return false;
+  }
+  if (advCoins() < OPENING_WEIGHT_COST) {
+    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
+    return false;
+  }
+  const moves = node.moves || [];
+  if (moves.length < 2 || !moves.some((m) => m.uci === chosenUci)) {
+    return false;
+  }
+  adv.openingWeights = adv.openingWeights || {};
+  const bump = (uci, delta) => {
+    const key = `${node.fen}|${uci}`;
+    const next = clamp((Number(adv.openingWeights[key]) || 0) + delta, -OPENING_WEIGHT_MAX, OPENING_WEIGHT_MAX);
+    if (Math.abs(next) < 1e-6) {
+      delete adv.openingWeights[key];
+    } else {
+      adv.openingWeights[key] = next;
+    }
+  };
+  const others = moves.filter((m) => m.uci !== chosenUci);
+  bump(chosenUci, OPENING_WEIGHT_STEP);
+  const per = OPENING_WEIGHT_STEP / others.length;
+  for (const m of others) {
+    bump(m.uci, -per);
+  }
+  adv.coins = Math.max(0, advCoins() - OPENING_WEIGHT_COST);
+  if (state.advRun) {
+    state.advRun.overweightUsed = true;
+  }
+  saveAdventure();
+  return true;
+}
+
+// --- Panneau « Influencer l'ouverture » (fin de défaite) ----------------------
+const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
+let advInfluence = null;
+
+function openAdvInfluence() {
+  const nodes = advInfluenceableNodes();
+  if (!nodes.length) {
+    showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
+    return;
+  }
+  advInfluence = { index: 0, selectedUci: nodes[0].moves[0]?.uci || null };
+  const overlay = document.querySelector('#advInfluence');
+  if (overlay) {
+    overlay.hidden = false;
+  }
+  document.body.classList.add('is-adv-influence-open');
+  renderAdvInfluence();
+}
+
+function closeAdvInfluence() {
+  const overlay = document.querySelector('#advInfluence');
+  if (overlay) {
+    overlay.hidden = true;
+  }
+  document.body.classList.remove('is-adv-influence-open');
+  advInfluence = null;
+}
+
+function advInfluenceStep(dir) {
+  if (!advInfluence) {
+    return;
+  }
+  const nodes = advInfluenceableNodes();
+  if (!nodes.length) {
+    return;
+  }
+  advInfluence.index = (advInfluence.index + dir + nodes.length) % nodes.length;
+  advInfluence.selectedUci = nodes[advInfluence.index].moves[0]?.uci || null;
+  renderAdvInfluence();
+}
+
+// Coordonnées centre→centre d'un coup UCI dans un repère 8×8 (vue des Blancs).
+function uciToBoardVec(uci) {
+  const file = (c) => c.charCodeAt(0) - 97;
+  const rank = (c) => parseInt(c, 10);
+  return {
+    fromX: file(uci[0]) + 0.5,
+    fromY: 8.5 - rank(uci[1]),
+    toX: file(uci[2]) + 0.5,
+    toY: 8.5 - rank(uci[3])
+  };
+}
+
+function advInfluenceArrows(moves, selectedUci) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 8 8');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.classList.add('adv-influence-arrows');
+  const defs = document.createElementNS(ns, 'defs');
+  moves.forEach((m, i) => {
+    const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
+    const marker = document.createElementNS(ns, 'marker');
+    marker.setAttribute('id', `advArrow${i}`);
+    marker.setAttribute('viewBox', '0 0 10 10');
+    marker.setAttribute('refX', '6');
+    marker.setAttribute('refY', '5');
+    marker.setAttribute('markerWidth', '4');
+    marker.setAttribute('markerHeight', '4');
+    marker.setAttribute('orient', 'auto-start-reverse');
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', 'M0,0 L10,5 L0,10 z');
+    path.setAttribute('fill', color);
+    marker.append(path);
+    defs.append(marker);
+  });
+  svg.append(defs);
+  moves.forEach((m, i) => {
+    const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
+    const sel = m.uci === selectedUci;
+    const v = uciToBoardVec(m.uci);
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', String(v.fromX));
+    line.setAttribute('y1', String(v.fromY));
+    line.setAttribute('x2', String(v.toX));
+    line.setAttribute('y2', String(v.toY));
+    line.setAttribute('stroke', color);
+    line.setAttribute('stroke-width', sel ? '0.3' : '0.15');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('opacity', sel ? '0.95' : '0.38');
+    line.setAttribute('marker-end', `url(#advArrow${i})`);
+    svg.append(line);
+  });
+  return svg;
+}
+
+function renderAdvInfluence() {
+  if (!advInfluence) {
+    return;
+  }
+  const nodes = advInfluenceableNodes();
+  const node = nodes[advInfluence.index];
+  if (!node) {
+    return;
+  }
+  advSetText('#advInfluenceNav', `Nœud ${advInfluence.index + 1} / ${nodes.length}`);
+  advSetText('#advInfluenceCoins', `${advCoins()} 🪙`);
+  const moveNo = Math.ceil(node.sans.length / 2) + 1;
+  advSetText('#advInfluenceTitle', advOpeningDisplayLabel(node.sans, `Coup ${moveNo} des Noirs`));
+
+  const board = document.querySelector('#advInfluenceBoard');
+  if (board) {
+    const frames = buildOpeningFrames(node.sans, node.sans.length);
+    const frame = frames ? frames[frames.length - 1] : null;
+    if (frame) {
+      fillOpeningBoard(board, frame);
+      board.append(advInfluenceArrows(node.moves, advInfluence.selectedUci));
+    }
+  }
+
+  const choices = document.querySelector('#advInfluenceMoves');
+  if (choices) {
+    choices.replaceChildren();
+    node.moves.forEach((m, i) => {
+      const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'adv-influence-move';
+      btn.classList.toggle('is-selected', m.uci === advInfluence.selectedUci);
+      const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
+      const wTxt = w > 0.01 ? ` · +${Math.round(w)}%` : w < -0.01 ? ` · ${Math.round(w)}%` : '';
+      const cont = m.line && m.line.length ? `${m.line.slice(0, 4).join(' ')}…` : '';
+      btn.innerHTML =
+        `<span class="adv-influence-dot" style="background:${color}"></span>` +
+        `<span class="adv-influence-move-main"><b>${escapeHtml(m.san)}</b>` +
+        `<i>base ${Math.round(m.baseProb * 100)}%${wTxt}</i></span>` +
+        `<span class="adv-influence-cont">${escapeHtml(cont)}</span>`;
+      btn.addEventListener('click', () => {
+        advInfluence.selectedUci = m.uci;
+        renderAdvInfluence();
+      });
+      choices.append(btn);
+    });
+  }
+
+  const validate = document.querySelector('#advInfluenceValidate');
+  if (validate) {
+    const used = Boolean(state.advRun?.overweightUsed);
+    const poor = advCoins() < OPENING_WEIGHT_COST;
+    validate.disabled = used || poor;
+    validate.textContent = used
+      ? '✓ Surpondération utilisée (1/défaite)'
+      : poor
+      ? `Pas assez de pièces (${OPENING_WEIGHT_COST}🪙)`
+      : `Surpondérer +5% (${OPENING_WEIGHT_COST}🪙)`;
+  }
+}
+
+function advInfluenceValidate() {
+  if (!advInfluence) {
+    return;
+  }
+  const node = advInfluenceableNodes()[advInfluence.index];
+  if (!node) {
+    return;
+  }
+  const chosen = node.moves.find((m) => m.uci === advInfluence.selectedUci);
+  if (advOverweightMove(node, advInfluence.selectedUci)) {
+    showAdventureToast({
+      icon: '🎚️',
+      title: 'Coup surpondéré',
+      text: `+5% sur ${chosen?.san || 'ce coup'} pour ta revanche.`,
+      kind: 'boss'
+    });
+    renderAdvInfluence();
+    renderAdvShop();
+  }
+}
+
+// Récap lecture seule (onglet Boutique) : pondérations actives + note explicative.
+function renderAdvWeightRecap(host) {
+  host.replaceChildren();
+  const note = document.createElement('p');
+  note.className = 'adv-shop-empty';
+  note.textContent =
+    "La surpondération se règle à la fin d'une partie de boss perdue : choisis un coup des Noirs à pousser de +5% (10🪙). L'effet s'accumule jusqu'à ta victoire.";
+  host.append(note);
+  const active = Object.entries(state.adventure?.openingWeights || {}).filter(
+    ([, v]) => Math.abs(v) > 0.01
+  );
+  if (!active.length) {
+    return;
+  }
+  const summary = document.createElement('div');
+  summary.className = 'adv-weight-summary';
+  summary.innerHTML = '<span class="adv-tally-label">Pondérations actives</span>';
+  const chips = document.createElement('div');
+  chips.className = 'adv-weight-chips';
+  for (const [k, v] of active) {
+    const choice = advChoiceByKey(k);
+    const chip = document.createElement('span');
+    chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
+    const nm = choice ? choice.san : k.split('|')[1];
+    chip.textContent = `${nm} ${v > 0 ? '+' : ''}${Math.round(v)}%`;
+    chips.append(chip);
+  }
+  summary.append(chips);
+  host.append(summary);
+}
+
 // Pondération (points de %) d'un coup noir donné — seulement en partie de boss.
 function advBlackChoiceWeight(fen, uci) {
   const weights = state.adventure?.openingWeights;
@@ -9956,9 +10293,11 @@ function adventureOnGameFinished(result) {
         kind: null
       });
     }
-    // O — la pondération d'ouverture ne valait que pour ce boss : on remet à zéro
-    // (les cadenas restent). Les propositions seront re-tirées au prochain passage.
-    advResetOpeningInfluence();
+    // O (refonte) — la surpondération s'accumule défaite après défaite et n'est
+    // remise à zéro qu'à la VICTOIRE (le buff a rempli son office).
+    if (result === 'won') {
+      advResetOpeningInfluence();
+    }
   }
   saveAdventure();
   updateHomeProgress();
@@ -10981,6 +11320,18 @@ function renderAdventureResult(el, game, run) {
     evalEl.hidden = true;
   }
 
+  // Refonte boutique : après une défaite de boss, surpondère un coup des Noirs pour
+  // la revanche (choix du nœud + du coup, +5% / 10🪙, une fois par défaite).
+  if (!win && run.kind === 'boss' && !run.tournament) {
+    const used = Boolean(run.overweightUsed);
+    actions.append(
+      advResultButton(
+        used ? '🎚️ Pondération réglée' : `🎚️ Influencer l'ouverture (${OPENING_WEIGHT_COST}🪙)`,
+        () => openAdvInfluence()
+      )
+    );
+  }
+
   // « Analyser la partie » : ouvre la revue (sous-variantes : meilleure suite Stockfish
   // + exploration perso) pour comprendre l'effondrement coup par coup.
   if (!win && game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
@@ -11311,6 +11662,11 @@ function bindAdventureEvents() {
   bind('#advBtnArena', () => setAdvMapView('arena'));
   bind('#advBtnTournament', advOpenOrStartTournament); // Mode Tournoi
   bind('#advTournamentClose', closeAdvTournament);
+  // Panneau « Influencer l'ouverture » (refonte boutique, fin de défaite)
+  bind('#advInfluenceClose', closeAdvInfluence);
+  bind('#advInfluencePrev', () => advInfluenceStep(-1));
+  bind('#advInfluenceNext', () => advInfluenceStep(1));
+  bind('#advInfluenceValidate', advInfluenceValidate);
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Revue d'une partie historique : navigation + fermeture.
   bind('#advReviewClose', closeGameReview);
