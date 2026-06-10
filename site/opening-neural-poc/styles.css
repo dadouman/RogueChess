@@ -3412,7 +3412,9 @@ body.is-adv-map-open {
 .adv-tournament {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* Au-dessus de la carte du cerveau (z-index 90) ; le lecteur de match
+     (opening-viewer, z-index 100) reste au-dessus pour « Voir ». */
+  z-index: 95;
   display: flex;
   align-items: stretch;
   justify-content: center;
