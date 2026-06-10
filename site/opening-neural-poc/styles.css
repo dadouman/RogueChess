@@ -5012,6 +5012,36 @@ body.screen-adventure.is-adv-board-view .adv-lives[hidden] {
   color: #ff9a6c;
 }
 
+/* Bandeau « vies contre les bots » sur la carte (vue principale) */
+.adv-lives-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 10px;
+}
+
+.adv-lives-banner[data-state='empty'] {
+  border-color: rgba(255, 110, 110, 0.42);
+  background: rgba(255, 110, 110, 0.09);
+}
+
+.adv-lives-banner-hearts {
+  display: flex;
+  gap: 3px;
+  font-size: 17px;
+  flex: 0 0 auto;
+}
+
+.adv-lives-banner-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted, #9ab);
+}
+
 /* === Niveau joueur : pastille discrète, le cadre est une jauge de progression === */
 .adv-player-badge {
   display: none;

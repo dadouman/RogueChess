@@ -7404,7 +7404,13 @@ function createAdventureState() {
     openingLocks: [],    // cadenas : propositions non consommées (cumulables)
     threatsEnabled: false, // R : aide « voir les menaces » activée
     mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
-    influenceDisabled: false // surpondération d'ouverture désactivée par le joueur
+    influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur
+    // Vies globales : nombre de défaites possibles contre les bots. 0 au départ ;
+    // 3 débloquées à 50 % d'apprentissage ; -1 par défaite ; rechargées par la
+    // révision ou le lendemain.
+    globalLives: 0,
+    livesUnlocked: false, // a déjà atteint 50 % une fois
+    livesDate: null // YYYY-MM-DD du dernier remplissage (reset quotidien)
   };
 }
 
@@ -7445,6 +7451,9 @@ function loadAdventure() {
       ? Number(data.mateHandover)
       : DEFAULT_MATE_HANDOVER;
     base.influenceDisabled = Boolean(data.influenceDisabled);
+    base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
+    base.livesUnlocked = Boolean(data.livesUnlocked);
+    base.livesDate = typeof data.livesDate === 'string' ? data.livesDate : null;
   } catch {
     return createAdventureState();
   }
@@ -7481,7 +7490,10 @@ function saveAdventure() {
         openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
         threatsEnabled: Boolean(state.adventure.threatsEnabled),
         mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
-        influenceDisabled: Boolean(state.adventure.influenceDisabled)
+        influenceDisabled: Boolean(state.adventure.influenceDisabled),
+        globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
+        livesUnlocked: Boolean(state.adventure.livesUnlocked),
+        livesDate: state.adventure.livesDate || null
       })
     );
   } catch {
@@ -7500,6 +7512,108 @@ function advCoverage() {
 
 function advCoveragePct() {
   return Math.round(advCoverage() * 100);
+}
+
+// === Vies globales (méta) : nombre de défaites possibles contre les bots ========
+const ADV_GLOBAL_LIVES_MAX = 3;
+const ADV_LIVES_UNLOCK_COVERAGE = 0.5; // 50 % d'apprentissage débloque les vies
+
+function advTodayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function advGlobalLives() {
+  return Math.max(0, Number(state.adventure?.globalLives) || 0);
+}
+
+function advLivesUnlocked() {
+  return Boolean(state.adventure?.livesUnlocked);
+}
+
+function advCanFightBots() {
+  return advGlobalLives() > 0;
+}
+
+// Déblocage à 50 % + reset quotidien. À appeler à l'ouverture de la carte / après
+// apprentissage. Renvoie true si l'état a changé.
+function advSyncGlobalLives() {
+  const adv = state.adventure;
+  if (!adv) {
+    return false;
+  }
+  let changed = false;
+  if (!adv.livesUnlocked && advCoverage() >= ADV_LIVES_UNLOCK_COVERAGE) {
+    adv.livesUnlocked = true;
+    adv.globalLives = ADV_GLOBAL_LIVES_MAX;
+    adv.livesDate = advTodayKey();
+    changed = true;
+    showAdventureToast({
+      icon: '❤️',
+      title: '3 vies débloquées !',
+      text: '50 % du cortex : tu peux affronter les bots. 3 défaites possibles.',
+      kind: 'boss'
+    });
+  }
+  if (adv.livesUnlocked && adv.livesDate !== advTodayKey()) {
+    adv.livesDate = advTodayKey();
+    if ((adv.globalLives || 0) < ADV_GLOBAL_LIVES_MAX) {
+      adv.globalLives = ADV_GLOBAL_LIVES_MAX;
+      showAdventureToast({
+        icon: '🌅',
+        title: 'Vies rechargées',
+        text: 'Nouveau jour : 3 défaites à nouveau possibles contre les bots.',
+        kind: null
+      });
+    }
+    changed = true;
+  }
+  if (changed) {
+    saveAdventure();
+  }
+  return changed;
+}
+
+function advConsumeGlobalLife() {
+  const adv = state.adventure;
+  if (!adv || !adv.livesUnlocked) {
+    return;
+  }
+  adv.globalLives = Math.max(0, (adv.globalLives || 0) - 1);
+  saveAdventure();
+}
+
+// Récupération des vies par l'apprentissage (révision réussie / leçon terminée).
+function advRefillGlobalLivesFromLearning() {
+  const adv = state.adventure;
+  if (!adv) {
+    return;
+  }
+  advSyncGlobalLives(); // peut débloquer si on vient de franchir 50 %
+  if (!adv.livesUnlocked || (adv.globalLives || 0) >= ADV_GLOBAL_LIVES_MAX) {
+    return;
+  }
+  adv.globalLives = ADV_GLOBAL_LIVES_MAX;
+  adv.livesDate = advTodayKey();
+  saveAdventure();
+  showAdventureToast({
+    icon: '❤️',
+    title: 'Vies rechargées',
+    text: 'Révision réussie : 3 défaites à nouveau possibles.',
+    kind: 'boss'
+  });
+}
+
+// Message quand on tente d'affronter un bot sans vie.
+function advNotifyNoLives() {
+  showAdventureToast({
+    icon: '💔',
+    title: 'Plus de vies',
+    text: advLivesUnlocked()
+      ? 'Révise une ligne (Illuminer le cerveau) ou reviens demain pour 3 nouvelles défaites.'
+      : 'Atteins 50 % du cortex (Illuminer le cerveau) pour débloquer 3 vies.',
+    kind: null
+  });
 }
 
 function advLevelSpan(level) {
@@ -8485,6 +8599,7 @@ function checkLessonMilestones() {
       kind: 'boss'
     });
   }
+  advSyncGlobalLives(); // déblocage des vies à 50 % d'apprentissage
 }
 
 function adventureLightEdge(edge) {
@@ -10435,6 +10550,14 @@ function adventureOnGameFinished(result) {
       showAdventureToast({ icon: '🪙', title: `+${reward} pièces`, text: 'À dépenser à la boutique.', kind: null });
     }
   }
+  // Apprentissage terminé (leçon/piège réussi) → recharge les vies globales.
+  if (result === 'won' && run.kind === 'lesson') {
+    advRefillGlobalLivesFromLearning();
+  }
+  // Défaite contre un bot d'arène → consomme une vie globale.
+  if (result === 'lost' && run.kind === 'boss' && !run.tournament) {
+    advConsumeGlobalLife();
+  }
   if (run.kind === 'boss' && !run.tournament) {
     const level = run.bossLevel;
     state.adventure.bossStreaks = state.adventure.bossStreaks || {};
@@ -10655,6 +10778,11 @@ function launchBoss(level) {
   if (!advBossUnlocked(level)) {
     return;
   }
+  advSyncGlobalLives();
+  if (!advCanFightBots()) {
+    advNotifyNoLives();
+    return;
+  }
   state.advRun = { kind: 'boss', bossLevel: level, streak: 0, wrongMoves: 0, resolved: false };
   state.playMode = 'challenge';
   state.stockfishLevel = level;
@@ -10720,6 +10848,12 @@ function advOpenOrStartTournament() {
     openAdvTournament();
     advRenderTournament();
     advTournamentEnsureBotSims();
+    return;
+  }
+  // Affronter des bots exige des vies (apprends d'abord).
+  advSyncGlobalLives();
+  if (!advCanFightBots()) {
+    advNotifyNoLives();
     return;
   }
   advStartTournament();
@@ -10936,6 +11070,11 @@ function advTournamentPlayMatch() {
   if (!match || match.a == null || match.b == null) {
     return;
   }
+  advSyncGlobalLives();
+  if (!advCanFightBots()) {
+    advNotifyNoLives();
+    return;
+  }
   const oppSeed = t.participants[match.a].isPlayer ? match.b : match.a;
   const oppLevel = t.participants[oppSeed].level;
   state.advRun = {
@@ -10982,6 +11121,7 @@ function advTournamentResolveMatch(result) {
         match.playerRetryUsed = true; // une dernière chance
       } else {
         t.status = 'eliminated';
+        advConsumeGlobalLife(); // élimination du tournoi = défaite contre les bots
       }
     }
   }
@@ -11759,6 +11899,45 @@ function renderAdvMainActions() {
       ? `Affronte Stockfish · meilleur N${state.adventure.highestBoss}/10`
       : `Verrouillé · illumine ${Math.round(ADV_ACT2_UNLOCK * 100)} % du cortex`;
   }
+  renderAdvLivesBanner();
+}
+
+// Bandeau « vies contre les bots » : cœurs + statut (verrou / révise / demain).
+function renderAdvLivesBanner() {
+  const host = document.querySelector('#advLivesBanner');
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  const lives = advGlobalLives();
+  const unlocked = advLivesUnlocked();
+  host.dataset.state = !unlocked ? 'locked' : lives > 0 ? 'ok' : 'empty';
+
+  const hearts = document.createElement('div');
+  hearts.className = 'adv-lives-banner-hearts';
+  if (!unlocked) {
+    const lock = document.createElement('span');
+    lock.className = 'adv-life is-empty';
+    lock.textContent = '🔒';
+    hearts.append(lock);
+  } else {
+    for (let i = 0; i < ADV_GLOBAL_LIVES_MAX; i += 1) {
+      const h = document.createElement('span');
+      h.className = `adv-life ${i < lives ? 'is-full' : 'is-empty'}`;
+      h.textContent = '♥';
+      hearts.append(h);
+    }
+  }
+  host.append(hearts);
+
+  const txt = document.createElement('span');
+  txt.className = 'adv-lives-banner-text';
+  txt.textContent = !unlocked
+    ? `Atteins 50 % du cortex pour débloquer 3 vies (cortex ${advCoveragePct()} %).`
+    : lives > 0
+      ? `${lives} défaite${lives > 1 ? 's' : ''} possible${lives > 1 ? 's' : ''} contre les bots.`
+      : 'Plus de vies : révise une ligne ou reviens demain.';
+  host.append(txt);
 }
 
 // Vue « Illuminer le cerveau » : anneau cortex + choix du parcours (libre / piège).
@@ -11802,6 +11981,7 @@ function renderAdventureMap() {
   if (!state.adventure) {
     return;
   }
+  advSyncGlobalLives(); // déblocage 50 % + reset quotidien à l'ouverture de la carte
   const coveragePct = advCoveragePct();
   // Pastille « niveau joueur » en haut à gauche de la carte (cadre = jauge d'XP),
   // comme sur les autres écrans. La cartouche de stats a été supprimée.

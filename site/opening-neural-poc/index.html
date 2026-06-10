@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=30" />
+    <link rel="stylesheet" href="./styles.css?v=31" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -407,6 +407,7 @@
         <div class="adv-tab-content">
           <!-- Vue principale : 2 gros boutons + historique (stats joueur retirées) -->
           <section class="adv-view adv-view-main">
+            <div id="advLivesBanner" class="adv-lives-banner" aria-label="Vies contre les bots"></div>
             <div class="adv-main-actions">
               <button id="advBtnLesson" class="adv-big-btn" type="button">
                 <span class="adv-big-btn-ico" aria-hidden="true">🧠</span>
@@ -688,6 +689,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=30" type="module"></script>
+    <script src="./app.js?v=31" type="module"></script>
   </body>
 </html>
