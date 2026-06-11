@@ -209,8 +209,10 @@ body.is-human-view .graph-info-content {
 }
 
 body.is-left-panel-collapsed .poc-sidebar,
+body.is-left-panel-collapsed.screen-adventure #adventurePanel,
 body.is-right-panel-collapsed.is-human-view .graph-stage,
-body.is-right-panel-collapsed.is-brain-view .detail-panel {
+body.is-right-panel-collapsed.is-brain-view:not(.screen-adventure) .detail-panel,
+body.is-right-panel-collapsed.screen-adventure.is-adv-board-view .graph-stage {
   visibility: hidden;
   padding: 0;
   border-width: 0;
@@ -2600,6 +2602,13 @@ body.screen-adventure #adventurePanel {
 
 body.screen-adventure .resize-handle {
   display: none;
+}
+
+/* Vue joueur desktop : volets redimensionnables/masquables comme en créatif. */
+@media (min-width: 1061px) {
+  body.screen-adventure.is-adv-board-view .resize-handle {
+    display: block;
+  }
 }
 
 body.screen-adventure .detail-panel .detail-section,
@@ -5554,16 +5563,32 @@ body.is-victory-cinematic .adv-board-top {
 
 /* --- Panneau gauche : épuration des textes verbeux --- */
 body.screen-adventure.is-adv-board-view .adv-gauges,
-body.screen-adventure.is-adv-board-view .adv-xp,
 body.screen-adventure.is-adv-board-view .adv-objective,
 body.screen-adventure.is-adv-board-view #advExpected,
 body.screen-adventure.is-adv-board-view #advMessage {
   display: none;
 }
 
+/* Bandeau gauche unique, façon créatif : le cerveau (niveau + jauge XP) trône
+   au-dessus du reste (nav, étape, coup), dans un seul volet cohérent. */
+body.screen-adventure.is-adv-board-view #adventurePanel {
+  gap: 16px;
+  padding: 46px 18px 22px; /* dégage la pastille de vies fixe en haut à gauche */
+}
+
 body.screen-adventure.is-adv-board-view .adv-brain-bar {
-  grid-template-columns: auto;
-  justify-content: center;
+  order: -2;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(12, 15, 11, 0.55);
+}
+
+body.screen-adventure.is-adv-board-view .adv-topbar {
+  order: -1;
 }
 
 body.screen-adventure.is-adv-board-view .adv-level-badge {
@@ -5601,8 +5626,10 @@ body.screen-adventure.is-adv-board-view #advStreak[data-streak-count="7"] {
   to   { filter: drop-shadow(0 0 8px rgba(255, 200, 30, 0.9)); }
 }
 /* Plus de place pour l'échiquier + rail : on resserre les colonnes latérales. */
+/* Colonnes pilotées par les mêmes variables que le mode créatif : les volets
+   gauche/droit se redimensionnent (poignées) et se masquent (boutons ‹ ›). */
 body.screen-adventure.is-adv-board-view .poc-shell {
-  grid-template-columns: 300px minmax(0, 1fr) 320px;
+  grid-template-columns: var(--left-panel) minmax(0, 1fr) var(--right-panel);
 }
 
 /* col 2 = échiquier (héros) à gauche + rail d'infos à droite. */
