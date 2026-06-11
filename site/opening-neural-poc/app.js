@@ -6571,6 +6571,11 @@ function makeGameBoardNode() {
     };
   }
 
+  // Influence « nœud aléatoire » : l'échiquier affiche la ligne du livre tirée.
+  if (game?.influence?.lineSans) {
+    return makeInfluenceLineBoardNode(game);
+  }
+
   // Revue de l'historique : on prévisualise une position passée (lecture seule).
   if (game && game.historyView != null) {
     return makeHistoryBoardNode(game);
@@ -7471,6 +7476,7 @@ function createAdventureState() {
     threatsEnabled: false, // R : aide « voir les menaces » activée
     mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
     influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur
+    influenceMode: 'random', // 'random' = nœud tiré au hasard ; 'game' = nœuds de la partie jouée
     // Vies globales : nombre de défaites possibles contre les bots. 0 au départ ;
     // 3 débloquées à 50 % d'apprentissage ; -1 par défaite ; rechargées par la
     // révision ou le lendemain.
@@ -7517,6 +7523,7 @@ function loadAdventure() {
       ? Number(data.mateHandover)
       : DEFAULT_MATE_HANDOVER;
     base.influenceDisabled = Boolean(data.influenceDisabled);
+    base.influenceMode = data.influenceMode === 'game' ? 'game' : 'random';
     base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
     base.livesUnlocked = Boolean(data.livesUnlocked);
     base.livesDate = typeof data.livesDate === 'string' ? data.livesDate : null;
@@ -7557,6 +7564,7 @@ function saveAdventure() {
         threatsEnabled: Boolean(state.adventure.threatsEnabled),
         mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
         influenceDisabled: Boolean(state.adventure.influenceDisabled),
+        influenceMode: state.adventure.influenceMode === 'game' ? 'game' : 'random',
         globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
         livesUnlocked: Boolean(state.adventure.livesUnlocked),
         livesDate: state.adventure.livesDate || null
@@ -8078,16 +8086,51 @@ function setAdvCustomClock(minutesRaw) {
   renderAdvTimeControl();
 }
 
-// Réglage : activer/désactiver l'influence des lignes d'ouverture (surpondération).
+// Réglage : activer/désactiver l'influence des lignes d'ouverture (surpondération)
+// + choix du mode (nœud aléatoire vs nœuds de la partie jouée).
 function renderAdvInfluenceSetting() {
   const btn = document.querySelector('#advInfluenceToggle');
-  if (!btn) {
+  if (btn) {
+    const enabled = advInfluenceEnabled();
+    btn.textContent = enabled ? 'Activé' : 'Désactivé';
+    btn.classList.toggle('is-active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+  const host = document.querySelector('#advInfluenceModeButtons');
+  if (host) {
+    const current = advInfluenceMode();
+    host.replaceChildren();
+    for (const opt of [
+      { id: 'random', icon: '🎲', label: 'Nœud aléatoire' },
+      { id: 'game', icon: '📖', label: 'Partie jouée' }
+    ]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `adv-diff-btn${opt.id === current ? ' is-active' : ''}`;
+      b.setAttribute('aria-pressed', opt.id === current ? 'true' : 'false');
+      b.innerHTML =
+        `<span class="adv-diff-ico" aria-hidden="true">${opt.icon}</span>` +
+        `<span class="adv-diff-label">${escapeHtml(opt.label)}</span>`;
+      b.addEventListener('click', () => setAdvInfluenceMode(opt.id));
+      host.append(b);
+    }
+  }
+  const desc = document.querySelector('#advInfluenceModeDesc');
+  if (desc) {
+    desc.textContent =
+      advInfluenceMode() === 'random'
+        ? 'Après une défaite : UN embranchement du livre est tiré au hasard, tu rejoues sa ligne avec ‹ › et tu pousses un coup des Noirs.'
+        : 'Après une défaite : tu revois ta partie avec ‹ › et tu pousses un coup des Noirs sur un embranchement réellement traversé.';
+  }
+}
+
+function setAdvInfluenceMode(mode) {
+  if (!state.adventure) {
     return;
   }
-  const enabled = advInfluenceEnabled();
-  btn.textContent = enabled ? 'Activé' : 'Désactivé';
-  btn.classList.toggle('is-active', enabled);
-  btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  state.adventure.influenceMode = mode === 'game' ? 'game' : 'random';
+  saveAdventure();
+  renderAdvInfluenceSetting();
 }
 
 function advToggleInfluenceFeature() {
@@ -9588,11 +9631,42 @@ function advInfluenceNodeByFen(fen) {
   return advInfluenceFenIndex.get(fenPositionKey(fen)) || null;
 }
 
-// Position actuellement affichée (revue ‹ › en cours, sinon position courante).
+// Mode d'influence configuré : nœud aléatoire du livre, ou nœuds de la partie jouée.
+function advInfluenceMode() {
+  return state.adventure?.influenceMode === 'game' ? 'game' : 'random';
+}
+
+// Position de la ligne d'influence (mode aléatoire) après lineIndex demi-coups.
+function makeInfluenceLineBoardNode(game) {
+  const infl = game.influence;
+  const probe = new Chess();
+  let last = null;
+  const idx = clamp(infl.lineIndex ?? infl.lineSans.length, 0, infl.lineSans.length);
+  for (let i = 0; i < idx; i += 1) {
+    try {
+      last = probe.move(infl.lineSans[i]);
+    } catch {
+      break;
+    }
+  }
+  return {
+    id: 'influence-line',
+    san: last?.san ?? 'Départ',
+    fen: probe.fen(),
+    from: last?.from ?? '',
+    to: last?.to ?? '',
+    sideToMove: probe.turn()
+  };
+}
+
+// Position actuellement affichée (ligne d'influence, revue ‹ ›, ou position courante).
 function advViewedFen() {
   const game = state.game;
   if (!game) {
     return null;
+  }
+  if (game.influence?.lineSans) {
+    return makeInfluenceLineBoardNode(game).fen;
   }
   return game.historyView != null ? makeHistoryBoardNode(game).fen : game.chess.fen();
 }
@@ -9607,14 +9681,32 @@ function advInfluenceViewedNode() {
   return fen ? advInfluenceNodeByFen(fen) : null;
 }
 
-// Entre en mode influence : place la revue de la partie sur l'embranchement le
-// plus profond traversé. La suite se joue avec ‹ › et le bandeau de coups.
+// Entre en mode influence, selon le réglage :
+// - « partie jouée » : place la revue ‹ › sur l'embranchement le plus profond traversé ;
+// - « aléatoire » : tire UN nœud du livre au hasard, sa ligne se parcourt avec ‹ ›.
 function openAdvInfluence() {
   const game = state.game;
   if (!advInfluenceEnabled() || !game) {
     return;
   }
-  // Cherche, dans la partie jouée, la position d'embranchement la plus profonde.
+  if (advInfluenceMode() === 'random') {
+    const nodes = advInfluenceableNodes();
+    if (!nodes.length) {
+      showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
+      return;
+    }
+    const node = nodes[Math.floor(randomUnit() * nodes.length)];
+    game.influence = {
+      selectedUci: null,
+      lineSans: node.sans, // la ligne du livre jusqu'au nœud, navigable avec ‹ ›
+      lineIndex: node.sans.length
+    };
+    game.historyView = null;
+    renderGameDetails();
+    renderGamePanel();
+    return;
+  }
+  // Mode « partie jouée » : cherche la position d'embranchement la plus profonde.
   let bestIdx = -1;
   try {
     const history = game.chess.history({ verbose: true });
@@ -11893,6 +11985,13 @@ function advHistoryStep(delta) {
   if (!game) {
     return;
   }
+  // Influence « nœud aléatoire » : ‹ › parcourent la ligne du livre tirée.
+  if (game.influence?.lineSans) {
+    const len = game.influence.lineSans.length;
+    game.influence.lineIndex = clamp((game.influence.lineIndex ?? len) + delta, 0, len);
+    renderGameDetails();
+    return;
+  }
   const current = game.historyView ?? advHistoryLength(); // position en cours = total demi-coups
   advHistoryGoto(current + delta);
 }
@@ -11925,6 +12024,23 @@ function renderAdvHistory() {
   const prev = document.querySelector('#advHistPrev');
   const next = document.querySelector('#advHistNext');
   const label = document.querySelector('#advHistLabel');
+  // Influence « nœud aléatoire » : la bande ‹ › navigue la ligne du livre tirée.
+  const infl = game?.influence?.lineSans ? game.influence : null;
+  if (infl) {
+    const len = infl.lineSans.length;
+    const cur = clamp(infl.lineIndex ?? len, 0, len);
+    document.body.classList.toggle('is-reviewing-history', cur < len);
+    host.classList.toggle('is-reviewing', true);
+    if (label) {
+      const san = cur > 0 ? infl.lineSans[cur - 1] : null;
+      const moveNo = Math.ceil(cur / 2);
+      const moveLabel = san ? (cur % 2 === 1 ? `${moveNo}. ${san}` : `${moveNo}… ${san}`) : 'Départ';
+      label.textContent = `${moveLabel} · ${cur}/${len}`;
+    }
+    if (prev) prev.disabled = cur <= 0;
+    if (next) next.disabled = cur >= len;
+    return;
+  }
   const reviewing = Boolean(game && game.historyView != null);
   document.body.classList.toggle('is-reviewing-history', reviewing);
   host.classList.toggle('is-reviewing', reviewing);
