@@ -9717,6 +9717,379 @@ function advInfluenceValidate() {
   }
 }
 
+// === Révision : quiz « trouve le coup » + refaire un mat passé =================
+// Rejeu accéléré d'une ligne (livre) ou d'une partie gagnée, puis on interroge le
+// joueur sur les coups blancs. Réussir une révision recharge les vies globales.
+let advRevision = null;
+
+function advShuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(randomUnit() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Options d'un quiz : coup correct + 2 leurres légaux, à une position (leadSans).
+function advQuizOptions(leadSans, correctUci) {
+  let chess;
+  try {
+    chess = new Chess();
+  } catch {
+    return [];
+  }
+  for (const s of leadSans) {
+    try {
+      if (!chess.move(s)) return [];
+    } catch {
+      return [];
+    }
+  }
+  const all = chess
+    .moves({ verbose: true })
+    .map((m) => ({ uci: m.from + m.to + (m.promotion || ''), san: m.san }));
+  const correct = all.find((o) => o.uci === correctUci);
+  if (!correct) {
+    return [];
+  }
+  const decoys = advShuffle(all.filter((o) => o.uci !== correctUci)).slice(0, 2);
+  return advShuffle([correct, ...decoys]);
+}
+
+// Quiz « trouve le coup » : ligne principale du livre, interrogation des coups blancs.
+function advBuildQuizSteps() {
+  const lineSans = [];
+  const lineUcis = [];
+  let nodeId = 'root';
+  const visited = new Set();
+  for (let i = 0; i < 16; i += 1) {
+    if (visited.has(nodeId)) break;
+    visited.add(nodeId);
+    const outs = getRawOutgoingEdges(nodeId);
+    if (!outs.length) break;
+    const best = outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
+    if (!best) break;
+    lineSans.push(best.san);
+    lineUcis.push(best.uci);
+    nodeId = best.to;
+  }
+  const steps = [];
+  for (let idx = 4; idx < lineSans.length && steps.length < 3; idx += 2) {
+    const options = advQuizOptions(lineSans.slice(0, idx), lineUcis[idx]);
+    if (options.length >= 2) {
+      steps.push({
+        lead: lineSans.slice(0, idx),
+        correctUci: lineUcis[idx],
+        correctSan: lineSans[idx],
+        options
+      });
+    }
+  }
+  return steps;
+}
+
+// Refaire un mat : reprend la partie gagnée la plus récente, interroge les 2 derniers
+// coups blancs (la mise à mort).
+function advBuildMateSteps() {
+  const games = (state.adventure?.games || []).filter(
+    (g) => g.result === 'won' && Array.isArray(g.moves) && g.moves.length >= 6
+  );
+  if (!games.length) {
+    return { steps: [], label: null };
+  }
+  const game = games[0];
+  const sans = game.moves.map((m) => m.san || m.move?.san).filter((s) => typeof s === 'string');
+  let chess;
+  try {
+    chess = new Chess();
+  } catch {
+    return { steps: [], label: null };
+  }
+  const ucis = [];
+  const playedSans = [];
+  for (const s of sans) {
+    let mv = null;
+    try {
+      mv = chess.move(s);
+    } catch {
+      mv = null;
+    }
+    if (!mv) break;
+    ucis.push(mv.from + mv.to + (mv.promotion || ''));
+    playedSans.push(mv.san);
+  }
+  const n = Math.min(playedSans.length, ucis.length);
+  const steps = [];
+  for (let idx = n - 1; idx >= 0 && steps.length < 2; idx -= 1) {
+    if (idx % 2 !== 0) continue; // coups blancs = indices pairs
+    const options = advQuizOptions(playedSans.slice(0, idx), ucis[idx]);
+    if (options.length >= 2) {
+      steps.unshift({
+        lead: playedSans.slice(0, idx),
+        correctUci: ucis[idx],
+        correctSan: playedSans[idx],
+        options
+      });
+    }
+  }
+  return { steps, label: advFormatGameOpponent(game) };
+}
+
+// Flèches de correction (vert = bon coup, rouge = coup choisi erroné).
+function advFeedbackArrows(correctUci, wrongUci) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 8 8');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.classList.add('adv-influence-arrows');
+  const defs = document.createElementNS(ns, 'defs');
+  const mk = (id, color) => {
+    const m = document.createElementNS(ns, 'marker');
+    m.setAttribute('id', id);
+    m.setAttribute('viewBox', '0 0 10 10');
+    m.setAttribute('refX', '6');
+    m.setAttribute('refY', '5');
+    m.setAttribute('markerWidth', '4');
+    m.setAttribute('markerHeight', '4');
+    m.setAttribute('orient', 'auto-start-reverse');
+    const p = document.createElementNS(ns, 'path');
+    p.setAttribute('d', 'M0,0 L10,5 L0,10 z');
+    p.setAttribute('fill', color);
+    m.append(p);
+    return m;
+  };
+  defs.append(mk('revOk', '#7fe7a4'), mk('revBad', '#ff6b6b'));
+  svg.append(defs);
+  const line = (uci, color, marker, width) => {
+    const v = uciToBoardVec(uci);
+    const l = document.createElementNS(ns, 'line');
+    l.setAttribute('x1', String(v.fromX));
+    l.setAttribute('y1', String(v.fromY));
+    l.setAttribute('x2', String(v.toX));
+    l.setAttribute('y2', String(v.toY));
+    l.setAttribute('stroke', color);
+    l.setAttribute('stroke-width', width);
+    l.setAttribute('stroke-linecap', 'round');
+    l.setAttribute('opacity', '0.92');
+    l.setAttribute('marker-end', `url(#${marker})`);
+    return l;
+  };
+  if (wrongUci && wrongUci !== correctUci) {
+    svg.append(line(wrongUci, '#ff6b6b', 'revBad', '0.18'));
+  }
+  if (correctUci) {
+    svg.append(line(correctUci, '#7fe7a4', 'revOk', '0.3'));
+  }
+  return svg;
+}
+
+function openAdvRevision(mode) {
+  let steps = [];
+  let label = '';
+  if (mode === 'mate') {
+    const built = advBuildMateSteps();
+    steps = built.steps;
+    label = built.label;
+    if (!steps.length) {
+      showAdventureToast({
+        icon: '🏆',
+        title: 'Pas encore de mat à rejouer',
+        text: 'Gagne d’abord une partie d’arène par mat, puis reviens la rejouer.',
+        kind: null
+      });
+      return;
+    }
+  } else {
+    steps = advBuildQuizSteps();
+    if (!steps.length) {
+      showAdventureToast({ icon: '⚡', title: 'Quiz indisponible', text: 'Le livre est trop court.', kind: null });
+      return;
+    }
+  }
+  advRevision = { mode, steps, index: 0, shownPly: 0, answered: false, correctCount: 0, label };
+  closeAdventureMap();
+  const overlay = document.querySelector('#advRevision');
+  if (overlay) {
+    overlay.hidden = false;
+  }
+  document.body.classList.add('is-adv-influence-open');
+  advSetText(
+    '#advRevisionKicker',
+    mode === 'mate' ? `Refaire un mat${label ? ' · ' + label : ''}` : 'Quiz · trouve le coup'
+  );
+  advRevisionLoadStep();
+}
+
+function advRevisionStopAnim() {
+  if (advRevision?.animTimer) {
+    clearInterval(advRevision.animTimer);
+    advRevision.animTimer = null;
+  }
+}
+
+function closeAdvRevision() {
+  advRevisionStopAnim();
+  const overlay = document.querySelector('#advRevision');
+  if (overlay) {
+    overlay.hidden = true;
+  }
+  document.body.classList.remove('is-adv-influence-open');
+  advRevision = null;
+}
+
+// Rejeu accéléré (NON bloquant) de la ligne jusqu'à la position du coup à deviner :
+// pur effet visuel, la question est posée tout de suite.
+function advRevisionAnimateTo(leadSans) {
+  const rev = advRevision;
+  const board = document.querySelector('#advRevisionBoard');
+  const frames = buildOpeningFrames(leadSans, leadSans.length);
+  if (!rev || !board || !frames) {
+    return;
+  }
+  advRevisionStopAnim();
+  let ply = clamp(rev.shownPly || 0, 0, frames.length - 1);
+  fillOpeningBoard(board, frames[ply]);
+  if (ply >= frames.length - 1) {
+    rev.shownPly = leadSans.length;
+    return;
+  }
+  rev.animTimer = setInterval(() => {
+    if (advRevision !== rev || !document.querySelector('#advRevisionBoard')) {
+      advRevisionStopAnim();
+      return;
+    }
+    ply += 1;
+    fillOpeningBoard(board, frames[ply]);
+    if (ply >= frames.length - 1) {
+      advRevisionStopAnim();
+      rev.shownPly = leadSans.length;
+    }
+  }, 320);
+}
+
+function advRevisionLoadStep() {
+  const rev = advRevision;
+  if (!rev) {
+    return;
+  }
+  const step = rev.steps[rev.index];
+  if (!step) {
+    advRevisionComplete();
+    return;
+  }
+  rev.answered = false;
+  advSetText('#advRevisionProgress', `Coup ${rev.index + 1} / ${rev.steps.length}`);
+  advSetText('#advRevisionTitle', rev.mode === 'mate' ? 'Reporte le bon coup' : 'Trouve le bon coup');
+  const next = document.querySelector('#advRevisionNext');
+  if (next) {
+    next.hidden = true;
+  }
+  advRevisionAnimateTo(step.lead); // flourish non bloquant
+  advRevisionRenderQuestion(); // question disponible immédiatement
+}
+
+function advRevisionRenderQuestion() {
+  const rev = advRevision;
+  if (!rev) {
+    return;
+  }
+  const step = rev.steps[rev.index];
+  const prompt = document.querySelector('#advRevisionPrompt');
+  if (prompt) {
+    prompt.textContent = 'Quel est le bon coup des Blancs ?';
+  }
+  const host = document.querySelector('#advRevisionMoves');
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  for (const opt of step.options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'adv-influence-key adv-revision-key';
+    btn.dataset.uci = opt.uci;
+    btn.innerHTML =
+      `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
+      `<span class="adv-move-key-san">${escapeHtml(opt.san)}</span>`;
+    btn.addEventListener('click', () => advRevisionAnswer(opt.uci));
+    host.append(btn);
+  }
+}
+
+function advRevisionAnswer(uci) {
+  const rev = advRevision;
+  if (!rev || rev.answered) {
+    return;
+  }
+  const step = rev.steps[rev.index];
+  rev.answered = true;
+  advRevisionStopAnim();
+  // Cale le plateau sur la position du coup (le rejeu pouvait être en cours).
+  const fbBoard = document.querySelector('#advRevisionBoard');
+  const fbFrames = buildOpeningFrames(step.lead, step.lead.length);
+  if (fbBoard && fbFrames) {
+    fillOpeningBoard(fbBoard, fbFrames[fbFrames.length - 1]);
+    rev.shownPly = step.lead.length;
+  }
+  const correct = uci === step.correctUci;
+  if (correct) {
+    rev.correctCount += 1;
+  }
+  for (const btn of document.querySelectorAll('#advRevisionMoves .adv-revision-key')) {
+    const u = btn.dataset.uci;
+    if (u === step.correctUci) {
+      btn.classList.add('is-correct');
+    } else if (u === uci) {
+      btn.classList.add('is-wrong');
+    }
+    btn.disabled = true;
+  }
+  const board = document.querySelector('#advRevisionBoard');
+  if (board) {
+    board.append(advFeedbackArrows(step.correctUci, correct ? null : uci));
+  }
+  const prompt = document.querySelector('#advRevisionPrompt');
+  if (prompt) {
+    prompt.textContent = correct ? `✅ Bravo : ${step.correctSan} !` : `❌ Le bon coup était ${step.correctSan}.`;
+  }
+  const next = document.querySelector('#advRevisionNext');
+  if (next) {
+    next.hidden = false;
+    next.textContent = rev.index >= rev.steps.length - 1 ? 'Terminer ✓' : 'Suivant ›';
+  }
+}
+
+function advRevisionNext() {
+  const rev = advRevision;
+  if (!rev) {
+    return;
+  }
+  if (rev.index >= rev.steps.length - 1) {
+    advRevisionComplete();
+    return;
+  }
+  rev.index += 1;
+  advRevisionLoadStep();
+}
+
+function advRevisionComplete() {
+  const rev = advRevision;
+  const total = rev?.steps.length || 0;
+  const correct = rev?.correctCount || 0;
+  const mode = rev?.mode;
+  closeAdvRevision();
+  advAddXp(ADV_XP_BOOK_MOVE * Math.max(1, correct));
+  advRefillGlobalLivesFromLearning();
+  saveAdventure();
+  openAdventureMap();
+  showAdventureToast({
+    icon: mode === 'mate' ? '🏆' : '⚡',
+    title: `Révision : ${correct}/${total}`,
+    text: correct === total ? 'Sans faute ! Apprentissage validé.' : 'Révision terminée.',
+    kind: 'boss'
+  });
+}
+
 // Récap lecture seule (onglet Boutique) : pondérations actives + note explicative.
 function renderAdvWeightRecap(host) {
   host.replaceChildren();
@@ -12063,6 +12436,10 @@ function bindAdventureEvents() {
   bind('#advBtnLesson', () => setAdvMapView('lesson'));
   bind('#advLessonBack', () => setAdvMapView('main'));
   bind('#advLessonFree', launchLesson);
+  bind('#advLessonQuiz', () => openAdvRevision('quiz')); // révision : quiz « trouve le coup »
+  bind('#advLessonMate', () => openAdvRevision('mate')); // révision : refaire un mat passé
+  bind('#advRevisionClose', closeAdvRevision);
+  bind('#advRevisionNext', advRevisionNext);
   bind('#advLessonTrap', () => {
     if (advTrapsUnlocked()) {
       launchTrapsLesson();

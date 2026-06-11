@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>POC Solo - Graphe neuronal d'ouverture</title>
-    <link rel="stylesheet" href="./styles.css?v=31" />
+    <link rel="stylesheet" href="./styles.css?v=33" />
   </head>
   <body class="is-human-view screen-home">
     <div id="homeScreen" class="home-screen" aria-label="Accueil RogueChess">
@@ -462,6 +462,14 @@
                   <span class="adv-pick-ico" aria-hidden="true">🧭</span>
                   <span class="adv-pick-text"><b>Libre</b><i>Apprends les lignes du livre</i></span>
                 </button>
+                <button id="advLessonQuiz" class="adv-pick-btn" type="button">
+                  <span class="adv-pick-ico" aria-hidden="true">⚡</span>
+                  <span class="adv-pick-text"><b>Quiz</b><i>Rejeu accéléré : trouve le bon coup</i></span>
+                </button>
+                <button id="advLessonMate" class="adv-pick-btn" type="button">
+                  <span class="adv-pick-ico" aria-hidden="true">🏆</span>
+                  <span class="adv-pick-text"><b>Refaire un mat</b><i id="advLessonMateSub">Reporte un mat d'une partie passée</i></span>
+                </button>
                 <button id="advLessonTrap" class="adv-pick-btn" type="button">
                   <span class="adv-pick-ico" aria-hidden="true">🎯</span>
                   <span class="adv-pick-text"><b>Piège</b><i id="advLessonTrapSub">Fais tomber Stockfish dans un piège</i></span>
@@ -613,6 +621,26 @@
       </div>
     </div>
 
+    <!-- Révision : quiz « trouve le coup » + refaire un mat passé (regagne des vies) -->
+    <div id="advRevision" class="adv-influence" hidden aria-label="Révision">
+      <div class="adv-influence-panel">
+        <header class="adv-influence-head">
+          <div>
+            <span class="kicker" id="advRevisionKicker">Révision</span>
+            <strong id="advRevisionTitle">Trouve le coup</strong>
+          </div>
+          <button id="advRevisionClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+        </header>
+        <div class="adv-influence-navrow">
+          <span id="advRevisionProgress" class="adv-influence-navlabel">1 / 3</span>
+        </div>
+        <div id="advRevisionBoard" class="opening-board adv-influence-board"></div>
+        <p id="advRevisionPrompt" class="adv-influence-hint">Quel est le bon coup des Blancs ?</p>
+        <div id="advRevisionMoves" class="adv-influence-moves"></div>
+        <button id="advRevisionNext" class="adv-bottom-btn" type="button" hidden>Suivant ›</button>
+      </div>
+    </div>
+
     <!-- Bulle menu (haut à droite en partie) : niveau joueur + jauge XP, ouvre le volet d'options -->
     <button
       id="advPlayerBadge"
@@ -689,6 +717,6 @@
 
     <div id="adventureToasts" class="adventure-toasts" aria-live="polite"></div>
 
-    <script src="./app.js?v=31" type="module"></script>
+    <script src="./app.js?v=33" type="module"></script>
   </body>
 </html>

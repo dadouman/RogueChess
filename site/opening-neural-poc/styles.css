@@ -3676,6 +3676,25 @@ body.is-adv-map-open {
   box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.4);
 }
 
+/* Révision : feedback bon / mauvais coup */
+.adv-revision-key {
+  border-top-color: rgba(255, 255, 255, 0.18);
+}
+
+.adv-revision-key.is-correct {
+  border-color: rgba(127, 231, 164, 0.8);
+  background: rgba(127, 231, 164, 0.18);
+}
+
+.adv-revision-key.is-wrong {
+  border-color: rgba(255, 107, 107, 0.8);
+  background: rgba(255, 107, 107, 0.16);
+}
+
+.adv-revision-key:disabled {
+  cursor: default;
+}
+
 .adv-influence-key .adv-move-key-piece {
   width: 22px;
   height: 22px;
