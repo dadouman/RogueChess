@@ -4094,6 +4094,21 @@ function advBoardTopText() {
   if (!game || game.status !== 'playing') {
     return '';
   }
+  // Révision : le bandeau suit le rejeu / la question / le feedback.
+  const rev = state.advRun?.revisionMode ? game.revision : null;
+  if (rev) {
+    return rev.phase === 'replay'
+      ? '⏩ Révision · rejeu accéléré de la ligne…'
+      : rev.phase === 'question'
+        ? rev.keysRevealed
+          ? '🧠 Quel est le bon coup des Blancs ?'
+          : '🧠 Joue le bon coup sur l’échiquier'
+        : rev.phase === 'feedback'
+          ? rev.answerUci === rev.step?.correctUci
+            ? `✅ Bravo : ${rev.step?.correctSan} !`
+            : `❌ Le bon coup était ${rev.step?.correctSan}.`
+          : '';
+  }
   // Conversion automatique en cours : bandeau dédié au-dessus de l'échiquier.
   if (game.victoryCinematic) {
     return '🎬 Conversion automatique vers le mat…';

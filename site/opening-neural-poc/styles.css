@@ -5873,6 +5873,158 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
   }
 }
 
+/* =====================================================================
+   Rattrapage desktop (>640px) : la vue joueur récupère les évolutions
+   du portable — bandeau de contexte, touches de coups (et QCM révision),
+   historique ‹ › — et le cerveau de droite est ravivé (style créatif).
+   ===================================================================== */
+@media (min-width: 641px) {
+  /* Bandeau de contexte au-dessus de l'échiquier (« Ouverture · encore N coups »). */
+  body.screen-adventure.is-adv-board-view .adv-board-top {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    justify-self: center;
+    margin: 0;
+    padding: 5px 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(12, 15, 11, 0.66);
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--soft);
+    letter-spacing: 0.01em;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-board-top:empty {
+    display: none;
+  }
+
+  body.screen-adventure.is-adv-board-view.is-engine-thinking .adv-board-top {
+    visibility: hidden; /* cède la place à « Stockfish réfléchit » */
+  }
+
+  /* Ligne d'éval en tête du rail : touche historique + jauge. */
+  body.screen-adventure.is-adv-board-view .adv-eval-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-eval-row #liveEvalBar {
+    flex: 1 1 auto;
+    margin: 0;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-hist-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 26px;
+    min-height: 26px;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--soft);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-hist-toggle svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  body.screen-adventure.is-adv-board-view:not(.is-history-hidden) .adv-hist-toggle {
+    color: var(--cyan);
+    border-color: var(--cyan);
+  }
+
+  /* Touches de coups (et QCM de révision) dans le rail, sous la jauge d'éval :
+     l'échiquier ne bouge pas quand les touches apparaissent/disparaissent. */
+  body.screen-adventure.is-adv-board-view #advMovesStrip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    min-height: 60px;
+  }
+
+  body.screen-adventure.is-adv-board-view #advMovesStrip.is-empty {
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+  }
+
+  /* Historique ‹ — › sous les touches de coups. */
+  body.screen-adventure.is-adv-board-view #advHistory {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    min-height: 36px;
+  }
+
+  body.is-history-hidden.is-adv-board-view #advHistNav {
+    display: none;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-history .adv-hist-nav {
+    width: 40px;
+    height: 32px;
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-size: 19px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-history .adv-hist-nav:disabled {
+    opacity: 0.32;
+    cursor: default;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-hist-label {
+    min-width: 116px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  body.screen-adventure.is-adv-board-view .adv-history.is-reviewing .adv-hist-label {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+
+  /* Plateau en cours de revue : même liseré cyan qu'en portable. */
+  body.is-reviewing-history.is-adv-board-view #boardPreview {
+    outline: 3px solid rgba(117, 231, 232, 0.72);
+    outline-offset: 2px;
+  }
+
+  /* Le panneau gauche laisse la place à la pastille de vies (fixe, en haut à gauche). */
+  body.screen-adventure.is-adv-board-view #adventurePanel {
+    padding-top: 46px;
+  }
+}
+
+/* Cerveau de droite ravivé (vue joueur) : les neurones non appris restent
+   visibles — le brouillard complet ne s'applique qu'à la vue cerveau / carte. */
+body.screen-adventure.is-adv-board-view .neural-node:not(.is-mastered):not(.is-path):not(.is-selected) circle {
+  opacity: 0.62;
+}
+
 @media (max-width: 1060px) {
   body.screen-adventure.is-adv-board-view .poc-shell {
     grid-template-columns: 1fr;
