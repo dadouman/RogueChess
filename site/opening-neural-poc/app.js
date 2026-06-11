@@ -3343,6 +3343,7 @@ function isPremoveContext() {
     game &&
       game.status === 'playing' &&
       !game.cinematic &&
+      !game.revision && // pas de prémouvement pendant une révision scriptée
       game.historyView == null &&
       !getActiveFreeReviewEntry() &&
       game.chess.turn() === 'b'
@@ -3988,7 +3989,11 @@ function applyAdvBoardHints() {
     return;
   }
   const inOpening =
-    game && game.status === 'playing' && game.chess.turn() === 'w' && game.phase === 'opening';
+    game &&
+    !game.revision &&
+    game.status === 'playing' &&
+    game.chess.turn() === 'w' &&
+    game.phase === 'opening';
   // L'indice n'apparaît que si l'aide « point vert » est active (révélée).
   const edges = inOpening && advAids().legalDots ? getExpectedWhiteBookEdges() : [];
   const toSquares = new Set(edges.map((e) => e.uci.slice(2, 4)));
@@ -4020,6 +4025,21 @@ function updateAdvBoardFeedback() {
   }
   if (game.status !== 'playing') {
     caption.textContent = '';
+    return;
+  }
+  // Révision : la légende suit le rejeu / la question / le feedback.
+  const rev = state.advRun?.revisionMode ? game.revision : null;
+  if (rev) {
+    caption.textContent =
+      rev.phase === 'replay'
+        ? '⏩ Rejeu accéléré…'
+        : rev.phase === 'question'
+          ? '🧠 Quel est le bon coup des Blancs ?'
+          : rev.phase === 'feedback'
+            ? rev.answerUci === rev.step?.correctUci
+              ? `✅ Bravo : ${rev.step?.correctSan} !`
+              : `❌ Le bon coup était ${rev.step?.correctSan}.`
+            : '';
     return;
   }
   if (game.phase === 'opening') {
@@ -4236,7 +4256,8 @@ function createInitialGameState(level = state.campaignLevel) {
     mateExpected: null,      // distance au mat attendue (mat en X) pendant la conversion
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
     premove: null,           // T : { from, to } armé pendant la réflexion adverse
-    premoveSelect: null      // T : case source sélectionnée pour armer le prémouvement
+    premoveSelect: null,     // T : case source sélectionnée pour armer le prémouvement
+    revision: null           // Révision : { phase: replay|question|feedback|done, step, answerUci }
   };
 }
 
@@ -8098,6 +8119,7 @@ function renderAdvLives() {
     state.screen === 'adventure' &&
     state.advViewMode === 'board' &&
     Boolean(game) &&
+    !game.revision &&
     game.status === 'playing' &&
     !isExplorationMode();
   el.hidden = !show;
@@ -9720,8 +9742,6 @@ function advInfluenceValidate() {
 // === Révision : quiz « trouve le coup » + refaire un mat passé =================
 // Rejeu accéléré d'une ligne (livre) ou d'une partie gagnée, puis on interroge le
 // joueur sur les coups blancs. Réussir une révision recharge les vies globales.
-let advRevision = null;
-
 function advShuffle(arr) {
   for (let i = arr.length - 1; i > 0; i -= 1) {
     const j = Math.floor(randomUnit() * (i + 1));
@@ -9835,57 +9855,11 @@ function advBuildMateSteps() {
   return { steps, label: advFormatGameOpponent(game) };
 }
 
-// Flèches de correction (vert = bon coup, rouge = coup choisi erroné).
-function advFeedbackArrows(correctUci, wrongUci) {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 8 8');
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.classList.add('adv-influence-arrows');
-  const defs = document.createElementNS(ns, 'defs');
-  const mk = (id, color) => {
-    const m = document.createElementNS(ns, 'marker');
-    m.setAttribute('id', id);
-    m.setAttribute('viewBox', '0 0 10 10');
-    m.setAttribute('refX', '6');
-    m.setAttribute('refY', '5');
-    m.setAttribute('markerWidth', '4');
-    m.setAttribute('markerHeight', '4');
-    m.setAttribute('orient', 'auto-start-reverse');
-    const p = document.createElementNS(ns, 'path');
-    p.setAttribute('d', 'M0,0 L10,5 L0,10 z');
-    p.setAttribute('fill', color);
-    m.append(p);
-    return m;
-  };
-  defs.append(mk('revOk', '#7fe7a4'), mk('revBad', '#ff6b6b'));
-  svg.append(defs);
-  const line = (uci, color, marker, width) => {
-    const v = uciToBoardVec(uci);
-    const l = document.createElementNS(ns, 'line');
-    l.setAttribute('x1', String(v.fromX));
-    l.setAttribute('y1', String(v.fromY));
-    l.setAttribute('x2', String(v.toX));
-    l.setAttribute('y2', String(v.toY));
-    l.setAttribute('stroke', color);
-    l.setAttribute('stroke-width', width);
-    l.setAttribute('stroke-linecap', 'round');
-    l.setAttribute('opacity', '0.92');
-    l.setAttribute('marker-end', `url(#${marker})`);
-    return l;
-  };
-  if (wrongUci && wrongUci !== correctUci) {
-    svg.append(line(wrongUci, '#ff6b6b', 'revBad', '0.18'));
-  }
-  if (correctUci) {
-    svg.append(line(correctUci, '#7fe7a4', 'revOk', '0.3'));
-  }
-  return svg;
-}
-
-function openAdvRevision(mode) {
+// La révision se joue DANS la vue de partie standard : le rejeu accéléré anime
+// l'échiquier de jeu, et le QCM réutilise le bandeau « choix du coup » du bas.
+function launchRevision(mode) {
   let steps = [];
-  let label = '';
+  let label = null;
   if (mode === 'mate') {
     const built = advBuildMateSteps();
     steps = built.steps;
@@ -9906,188 +9880,136 @@ function openAdvRevision(mode) {
       return;
     }
   }
-  advRevision = { mode, steps, index: 0, shownPly: 0, answered: false, correctCount: 0, label };
+  // Run de type « lesson » (recharge des vies, hors historique) avec un mode de
+  // révision qui pilote le rejeu scripté + QCM.
+  state.advRun = {
+    kind: 'lesson',
+    revisionMode: mode,
+    revisionLabel: label,
+    steps,
+    stepIndex: 0,
+    correctCount: 0,
+    streak: 0,
+    wrongMoves: 0,
+    bookMoves: 0,
+    completed: false
+  };
+  state.playMode = 'challenge';
   closeAdventureMap();
-  const overlay = document.querySelector('#advRevision');
-  if (overlay) {
-    overlay.hidden = false;
+  setViewMode('brain');
+  setAdvViewMode('board');
+  startNewGame(FIRST_LEVEL_NUMBER);
+  if (state.game) {
+    state.game.clock = null; // pas de pendule en révision
+    state.game.revision = { phase: 'replay', step: null, answerUci: null };
+    setGameLocked(true); // on répond via les touches du bandeau, pas sur l'échiquier
   }
-  document.body.classList.add('is-adv-influence-open');
-  advSetText(
-    '#advRevisionKicker',
-    mode === 'mate' ? `Refaire un mat${label ? ' · ' + label : ''}` : 'Quiz · trouve le coup'
-  );
-  advRevisionLoadStep();
+  renderAdventureHud();
+  advRevisionPlayStep();
 }
 
-function advRevisionStopAnim() {
-  if (advRevision?.animTimer) {
-    clearInterval(advRevision.animTimer);
-    advRevision.animTimer = null;
-  }
-}
-
-function closeAdvRevision() {
-  advRevisionStopAnim();
-  const overlay = document.querySelector('#advRevision');
-  if (overlay) {
-    overlay.hidden = true;
-  }
-  document.body.classList.remove('is-adv-influence-open');
-  advRevision = null;
-}
-
-// Rejeu accéléré (NON bloquant) de la ligne jusqu'à la position du coup à deviner :
-// pur effet visuel, la question est posée tout de suite.
-function advRevisionAnimateTo(leadSans) {
-  const rev = advRevision;
-  const board = document.querySelector('#advRevisionBoard');
-  const frames = buildOpeningFrames(leadSans, leadSans.length);
-  if (!rev || !board || !frames) {
+// Rejoue (accéléré) les coups de la ligne sur l'échiquier de jeu jusqu'à la
+// position de la question, puis pose le QCM.
+function advRevisionPlayStep() {
+  const run = state.advRun;
+  const game = state.game;
+  if (!run?.revisionMode || !game) {
     return;
   }
-  advRevisionStopAnim();
-  let ply = clamp(rev.shownPly || 0, 0, frames.length - 1);
-  fillOpeningBoard(board, frames[ply]);
-  if (ply >= frames.length - 1) {
-    rev.shownPly = leadSans.length;
+  const step = run.steps[run.stepIndex];
+  if (!step) {
+    advRevisionFinish();
     return;
   }
-  rev.animTimer = setInterval(() => {
-    if (advRevision !== rev || !document.querySelector('#advRevisionBoard')) {
-      advRevisionStopAnim();
+  game.revision = { phase: 'replay', step, answerUci: null };
+  game.message = 'Rejeu accéléré de la ligne…';
+  renderGameDetails();
+  renderGamePanel();
+  const timer = setInterval(() => {
+    if (state.game !== game || state.advRun !== run || game.status !== 'playing') {
+      clearInterval(timer);
       return;
     }
-    ply += 1;
-    fillOpeningBoard(board, frames[ply]);
-    if (ply >= frames.length - 1) {
-      advRevisionStopAnim();
-      rev.shownPly = leadSans.length;
+    const played = game.chess.history().length;
+    if (played >= step.lead.length) {
+      clearInterval(timer);
+      game.revision = { phase: 'question', step, answerUci: null };
+      game.message = 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.';
+      renderGameDetails();
+      renderGamePanel();
+      return;
     }
-  }, 320);
+    let mv = null;
+    try {
+      mv = game.chess.move(step.lead[played]);
+    } catch {
+      mv = null;
+    }
+    if (!mv) {
+      clearInterval(timer);
+      advRevisionFinish();
+      return;
+    }
+    game.lastMove = mv;
+    renderGameDetails();
+  }, 420);
 }
 
-function advRevisionLoadStep() {
-  const rev = advRevision;
-  if (!rev) {
-    return;
-  }
-  const step = rev.steps[rev.index];
-  if (!step) {
-    advRevisionComplete();
-    return;
-  }
-  rev.answered = false;
-  advSetText('#advRevisionProgress', `Coup ${rev.index + 1} / ${rev.steps.length}`);
-  advSetText('#advRevisionTitle', rev.mode === 'mate' ? 'Reporte le bon coup' : 'Trouve le bon coup');
-  const next = document.querySelector('#advRevisionNext');
-  if (next) {
-    next.hidden = true;
-  }
-  advRevisionAnimateTo(step.lead); // flourish non bloquant
-  advRevisionRenderQuestion(); // question disponible immédiatement
-}
-
-function advRevisionRenderQuestion() {
-  const rev = advRevision;
-  if (!rev) {
-    return;
-  }
-  const step = rev.steps[rev.index];
-  const prompt = document.querySelector('#advRevisionPrompt');
-  if (prompt) {
-    prompt.textContent = 'Quel est le bon coup des Blancs ?';
-  }
-  const host = document.querySelector('#advRevisionMoves');
-  if (!host) {
-    return;
-  }
-  host.replaceChildren();
-  for (const opt of step.options) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'adv-influence-key adv-revision-key';
-    btn.dataset.uci = opt.uci;
-    btn.innerHTML =
-      `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
-      `<span class="adv-move-key-san">${escapeHtml(opt.san)}</span>`;
-    btn.addEventListener('click', () => advRevisionAnswer(opt.uci));
-    host.append(btn);
-  }
-}
-
+// Réponse au QCM (clic sur une touche du bandeau de coups).
 function advRevisionAnswer(uci) {
-  const rev = advRevision;
-  if (!rev || rev.answered) {
+  const run = state.advRun;
+  const game = state.game;
+  const rev = game?.revision;
+  if (!run?.revisionMode || !rev || rev.phase !== 'question') {
     return;
   }
-  const step = rev.steps[rev.index];
-  rev.answered = true;
-  advRevisionStopAnim();
-  // Cale le plateau sur la position du coup (le rejeu pouvait être en cours).
-  const fbBoard = document.querySelector('#advRevisionBoard');
-  const fbFrames = buildOpeningFrames(step.lead, step.lead.length);
-  if (fbBoard && fbFrames) {
-    fillOpeningBoard(fbBoard, fbFrames[fbFrames.length - 1]);
-    rev.shownPly = step.lead.length;
-  }
+  const step = rev.step;
   const correct = uci === step.correctUci;
   if (correct) {
-    rev.correctCount += 1;
+    run.correctCount += 1;
   }
-  for (const btn of document.querySelectorAll('#advRevisionMoves .adv-revision-key')) {
-    const u = btn.dataset.uci;
-    if (u === step.correctUci) {
-      btn.classList.add('is-correct');
-    } else if (u === uci) {
-      btn.classList.add('is-wrong');
+  rev.phase = 'feedback';
+  rev.answerUci = uci;
+  // Le bon coup s'exécute sur l'échiquier (on le voit, même après une erreur).
+  let mv = null;
+  try {
+    mv = game.chess.move(step.correctSan);
+  } catch {
+    mv = null;
+  }
+  if (mv) {
+    game.lastMove = mv;
+  }
+  game.message = correct ? `✅ Bravo : ${step.correctSan} !` : `❌ Le bon coup était ${step.correctSan}.`;
+  flashAdvBoard(correct ? 'good' : 'bad');
+  renderGameDetails();
+  renderGamePanel();
+  setTimeout(() => {
+    if (state.game !== game || state.advRun !== run) {
+      return;
     }
-    btn.disabled = true;
-  }
-  const board = document.querySelector('#advRevisionBoard');
-  if (board) {
-    board.append(advFeedbackArrows(step.correctUci, correct ? null : uci));
-  }
-  const prompt = document.querySelector('#advRevisionPrompt');
-  if (prompt) {
-    prompt.textContent = correct ? `✅ Bravo : ${step.correctSan} !` : `❌ Le bon coup était ${step.correctSan}.`;
-  }
-  const next = document.querySelector('#advRevisionNext');
-  if (next) {
-    next.hidden = false;
-    next.textContent = rev.index >= rev.steps.length - 1 ? 'Terminer ✓' : 'Suivant ›';
-  }
+    run.stepIndex += 1;
+    if (run.stepIndex >= run.steps.length) {
+      advRevisionFinish();
+    } else {
+      advRevisionPlayStep();
+    }
+  }, 1500);
 }
 
-function advRevisionNext() {
-  const rev = advRevision;
-  if (!rev) {
+function advRevisionFinish() {
+  const run = state.advRun;
+  const game = state.game;
+  if (!run?.revisionMode || !game || run.completed) {
     return;
   }
-  if (rev.index >= rev.steps.length - 1) {
-    advRevisionComplete();
-    return;
-  }
-  rev.index += 1;
-  advRevisionLoadStep();
-}
-
-function advRevisionComplete() {
-  const rev = advRevision;
-  const total = rev?.steps.length || 0;
-  const correct = rev?.correctCount || 0;
-  const mode = rev?.mode;
-  closeAdvRevision();
-  advAddXp(ADV_XP_BOOK_MOVE * Math.max(1, correct));
-  advRefillGlobalLivesFromLearning();
-  saveAdventure();
-  openAdventureMap();
-  showAdventureToast({
-    icon: mode === 'mate' ? '🏆' : '⚡',
-    title: `Révision : ${correct}/${total}`,
-    text: correct === total ? 'Sans faute ! Apprentissage validé.' : 'Révision terminée.',
-    kind: 'boss'
-  });
+  run.completed = true;
+  game.revision = { phase: 'done', step: null, answerUci: null };
+  advAddXp(ADV_XP_BOOK_MOVE * Math.max(1, run.correctCount));
+  // finishGame → adventureOnGameFinished (won + lesson) → recharge des vies.
+  finishGame('won', `Révision terminée : ${run.correctCount}/${run.steps.length}.`);
+  renderGameDetails();
+  renderGamePanel(); // affiche l'écran de résultat (score + rejouer)
 }
 
 // Récap lecture seule (onglet Boutique) : pondérations actives + note explicative.
@@ -11704,6 +11626,36 @@ function renderAdvMovesStrip() {
   }
   host.replaceChildren();
   const game = state.game;
+  // Révision : le bandeau devient le QCM — mêmes touches que le choix du coup.
+  const rev = state.advRun?.revisionMode ? game?.revision : null;
+  if (rev && game?.status === 'playing') {
+    if ((rev.phase === 'question' || rev.phase === 'feedback') && rev.step) {
+      for (const opt of rev.step.options) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'adv-move-key';
+        btn.dataset.revUci = opt.uci;
+        btn.innerHTML =
+          `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
+          `<span class="adv-move-key-san">${escapeHtml(opt.san)}</span>`;
+        if (rev.phase === 'feedback') {
+          btn.disabled = true;
+          if (opt.uci === rev.step.correctUci) {
+            btn.classList.add('is-correct');
+          } else if (opt.uci === rev.answerUci) {
+            btn.classList.add('is-wrong');
+          }
+        }
+        host.append(btn);
+      }
+    } else {
+      const ph = document.createElement('span');
+      ph.className = 'adv-moves-placeholder';
+      ph.textContent = '⏩ Rejeu accéléré…';
+      host.append(ph);
+    }
+    return;
+  }
   const reviewing = Boolean(game && game.historyView != null);
   const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
   // « choix du coup » : aide désactivée aux niveaux Normal/Difficile → le joueur
@@ -11989,6 +11941,17 @@ function renderAdventureResult(el, game, run) {
     if (level < 10 && advBossUnlocked(level + 1)) {
       actions.append(advResultButton(`Boss N${level + 1} ▸`, () => launchBoss(level + 1)));
     }
+  } else if (run.revisionMode) {
+    const total = run.steps?.length || 0;
+    const score = run.correctCount || 0;
+    heading.textContent = `Révision : ${score}/${total}`;
+    note.textContent =
+      score === total
+        ? 'Sans faute ! Vies rechargées — les bots n’ont qu’à bien se tenir.'
+        : 'Révision terminée, les lignes rentrent. Vies rechargées.';
+    actions.append(
+      advResultButton('Encore une révision ▸', () => launchRevision(run.revisionMode), true)
+    );
   } else if (run.trapsMode) {
     if (win) {
       heading.textContent = 'Piège livré !';
@@ -12153,7 +12116,17 @@ function renderAdventureHud() {
     return;
   }
 
-  if (run.kind === 'lesson') {
+  if (run.kind === 'lesson' && run.revisionMode) {
+    const total = run.steps?.length || 0;
+    if (kicker)
+      kicker.textContent =
+        run.revisionMode === 'mate'
+          ? `Révision · Refaire un mat${run.revisionLabel ? ' · ' + run.revisionLabel : ''}`
+          : 'Révision · Quiz';
+    if (title) title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total}`;
+    if (objective)
+      objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
+  } else if (run.kind === 'lesson') {
     if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
     if (title) title.textContent = 'Apprends la ligne';
     if (objective)
@@ -12436,10 +12409,8 @@ function bindAdventureEvents() {
   bind('#advBtnLesson', () => setAdvMapView('lesson'));
   bind('#advLessonBack', () => setAdvMapView('main'));
   bind('#advLessonFree', launchLesson);
-  bind('#advLessonQuiz', () => openAdvRevision('quiz')); // révision : quiz « trouve le coup »
-  bind('#advLessonMate', () => openAdvRevision('mate')); // révision : refaire un mat passé
-  bind('#advRevisionClose', closeAdvRevision);
-  bind('#advRevisionNext', advRevisionNext);
+  bind('#advLessonQuiz', () => launchRevision('quiz')); // révision : quiz « trouve le coup »
+  bind('#advLessonMate', () => launchRevision('mate')); // révision : refaire un mat passé
   bind('#advLessonTrap', () => {
     if (advTrapsUnlocked()) {
       launchTrapsLesson();
@@ -12556,8 +12527,16 @@ function bindAdventureEvents() {
   if (movesStrip) {
     movesStrip.addEventListener('click', (event) => {
       const btn = event.target.closest('.adv-move-key');
+      if (!btn || btn.disabled) {
+        return;
+      }
+      // Révision : la touche répond au QCM au lieu de jouer un coup.
+      if (btn.dataset.revUci) {
+        advRevisionAnswer(btn.dataset.revUci);
+        return;
+      }
       // Les touches « fantômes » (réponses de Stockfish) n'ont pas d'UCI : non jouables.
-      if (btn && !btn.disabled && btn.dataset.uci) {
+      if (btn.dataset.uci) {
         submitHumanMove(btn.dataset.uci);
       }
     });

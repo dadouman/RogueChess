@@ -3676,23 +3676,21 @@ body.is-adv-map-open {
   box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.4);
 }
 
-/* Révision : feedback bon / mauvais coup */
-.adv-revision-key {
-  border-top-color: rgba(255, 255, 255, 0.18);
+/* Révision : feedback bon / mauvais coup sur les touches du bandeau de coups */
+.adv-move-key.is-correct {
+  border-color: rgba(127, 231, 164, 0.85);
+  background: rgba(127, 231, 164, 0.2);
+  box-shadow: 0 0 0 1px rgba(127, 231, 164, 0.45);
 }
 
-.adv-revision-key.is-correct {
-  border-color: rgba(127, 231, 164, 0.8);
-  background: rgba(127, 231, 164, 0.18);
+.adv-move-key.is-wrong {
+  border-color: rgba(255, 107, 107, 0.85);
+  background: rgba(255, 107, 107, 0.18);
 }
 
-.adv-revision-key.is-wrong {
-  border-color: rgba(255, 107, 107, 0.8);
-  background: rgba(255, 107, 107, 0.16);
-}
-
-.adv-revision-key:disabled {
-  cursor: default;
+.adv-move-key.is-correct:disabled,
+.adv-move-key.is-wrong:disabled {
+  opacity: 1; /* le feedback reste lisible même touche désactivée */
 }
 
 .adv-influence-key .adv-move-key-piece {
