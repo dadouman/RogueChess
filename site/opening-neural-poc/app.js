@@ -4034,7 +4034,11 @@ function updateAdvBoardFeedback() {
       rev.phase === 'replay'
         ? '⏩ Rejeu accéléré…'
         : rev.phase === 'question'
-          ? '🧠 Quel est le bon coup des Blancs ?'
+          ? rev.keysRevealed
+            ? rev.errorHint
+              ? '❌ Pas celui-là — choisis parmi les propositions'
+              : '🧠 Quel est le bon coup des Blancs ?'
+            : '🧠 Joue le bon coup sur l’échiquier'
           : rev.phase === 'feedback'
             ? rev.answerUci === rev.step?.correctUci
               ? `✅ Bravo : ${rev.step?.correctSan} !`
@@ -5665,6 +5669,17 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
   if (!input) {
     game.message = 'Entre un coup blanc en SAN ou en UCI.';
     renderGamePanel();
+    return;
+  }
+
+  // Révision : pendant la question, un coup joué (échiquier ou champ texte) répond
+  // à la question au lieu de suivre le flux de partie normal.
+  if (game.revision) {
+    if (game.revision.phase === 'question') {
+      game.selectedSquare = null;
+      advRevisionAnswerInput(input);
+      elements.moveInput.value = '';
+    }
     return;
   }
 
@@ -9908,8 +9923,15 @@ function launchRevision(mode) {
   advRevisionPlayStep();
 }
 
+// Les touches QCM suivent la difficulté (mêmes règles que les aides en partie) :
+// faciles → visibles d'emblée ; Normal → seulement après une erreur ; Difficile →
+// jamais (on joue le coup directement sur l'échiquier).
+function advRevisionKeysRevealableOnError() {
+  return Boolean(advCurrentDifficulty().legalDotsRevealable); // Normal uniquement
+}
+
 // Rejoue (accéléré) les coups de la ligne sur l'échiquier de jeu jusqu'à la
-// position de la question, puis pose le QCM.
+// position de la question, puis pose la question (QCM ou coup à jouer).
 function advRevisionPlayStep() {
   const run = state.advRun;
   const game = state.game;
@@ -9921,7 +9943,14 @@ function advRevisionPlayStep() {
     advRevisionFinish();
     return;
   }
-  game.revision = { phase: 'replay', step, answerUci: null };
+  setGameLocked(true); // verrouillé pendant le rejeu
+  game.revision = {
+    phase: 'replay',
+    step,
+    answerUci: null,
+    keysRevealed: advAids().moveChoices, // faciles : propositions immédiates
+    attempted: false
+  };
   game.message = 'Rejeu accéléré de la ligne…';
   renderGameDetails();
   renderGamePanel();
@@ -9933,8 +9962,11 @@ function advRevisionPlayStep() {
     const played = game.chess.history().length;
     if (played >= step.lead.length) {
       clearInterval(timer);
-      game.revision = { phase: 'question', step, answerUci: null };
-      game.message = 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.';
+      game.revision.phase = 'question';
+      game.message = game.revision.keysRevealed
+        ? 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.'
+        : 'Joue le bon coup des Blancs directement sur l’échiquier.';
+      setGameLocked(false); // question : l'échiquier devient jouable
       renderGameDetails();
       renderGamePanel();
       return;
@@ -9955,7 +9987,7 @@ function advRevisionPlayStep() {
   }, 420);
 }
 
-// Réponse au QCM (clic sur une touche du bandeau de coups).
+// Réponse à la question — par touche QCM ou coup joué sur l'échiquier.
 function advRevisionAnswer(uci) {
   const run = state.advRun;
   const game = state.game;
@@ -9965,11 +9997,28 @@ function advRevisionAnswer(uci) {
   }
   const step = rev.step;
   const correct = uci === step.correctUci;
-  if (correct) {
-    run.correctCount += 1;
+  // Seul le PREMIER essai compte pour le score.
+  if (!rev.attempted) {
+    rev.attempted = true;
+    if (correct) {
+      run.correctCount += 1;
+    }
+  }
+  // Normal : une erreur révèle les propositions et laisse réessayer.
+  if (!correct && !rev.keysRevealed && advRevisionKeysRevealableOnError()) {
+    rev.keysRevealed = true;
+    rev.errorHint = true; // légende : signale l'erreur au moment de la révélation
+    game.selectedSquare = null;
+    game.message = '❌ Pas celui-là. Les propositions apparaissent : choisis le bon coup.';
+    flashAdvBoard('bad');
+    renderGameDetails();
+    renderGamePanel();
+    return;
   }
   rev.phase = 'feedback';
   rev.answerUci = uci;
+  game.selectedSquare = null;
+  setGameLocked(true); // plus d'entrée pendant le feedback
   // Le bon coup s'exécute sur l'échiquier (on le voit, même après une erreur).
   let mv = null;
   try {
@@ -9995,6 +10044,29 @@ function advRevisionAnswer(uci) {
       advRevisionPlayStep();
     }
   }, 1500);
+}
+
+// Normalise une entrée (SAN ou UCI, échiquier ou champ texte) vers l'UCI de la
+// position de la question, puis répond.
+function advRevisionAnswerInput(input) {
+  const game = state.game;
+  const step = game?.revision?.step;
+  if (!step) {
+    return;
+  }
+  let probe;
+  try {
+    probe = new Chess(game.chess.fen());
+  } catch {
+    return;
+  }
+  const mv = tryMoveInput(probe, input);
+  if (!mv) {
+    game.message = 'Coup illégal ou illisible.';
+    renderGamePanel();
+    return;
+  }
+  advRevisionAnswer(`${mv.from}${mv.to}${mv.promotion ?? ''}`);
 }
 
 function advRevisionFinish() {
@@ -11627,9 +11699,13 @@ function renderAdvMovesStrip() {
   host.replaceChildren();
   const game = state.game;
   // Révision : le bandeau devient le QCM — mêmes touches que le choix du coup.
+  // Les propositions suivent la difficulté (faciles : d'emblée ; Normal : après
+  // une erreur ; Difficile : jamais — on joue sur l'échiquier).
   const rev = state.advRun?.revisionMode ? game?.revision : null;
   if (rev && game?.status === 'playing') {
-    if ((rev.phase === 'question' || rev.phase === 'feedback') && rev.step) {
+    const showKeys =
+      (rev.phase === 'question' || rev.phase === 'feedback') && rev.step && rev.keysRevealed;
+    if (showKeys) {
       for (const opt of rev.step.options) {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -11651,7 +11727,14 @@ function renderAdvMovesStrip() {
     } else {
       const ph = document.createElement('span');
       ph.className = 'adv-moves-placeholder';
-      ph.textContent = '⏩ Rejeu accéléré…';
+      ph.textContent =
+        rev.phase === 'question'
+          ? '🧠 Joue le bon coup sur l’échiquier'
+          : rev.phase === 'feedback'
+            ? rev.answerUci === rev.step?.correctUci
+              ? `✅ ${rev.step?.correctSan} !`
+              : `❌ Le bon coup : ${rev.step?.correctSan}`
+            : '⏩ Rejeu accéléré…';
       host.append(ph);
     }
     return;
