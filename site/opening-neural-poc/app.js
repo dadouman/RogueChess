@@ -4091,7 +4091,19 @@ function advRemainingBookPlies() {
  *  ouverture → nom de la ligne / coups restants ; sinon → Stockfish affronté. */
 function advBoardTopText() {
   const game = state.game;
-  if (!game || game.status !== 'playing') {
+  if (!game) {
+    return '';
+  }
+  // Influence (partie finie) : guide la navigation ‹ › vers un embranchement.
+  if (game.influence) {
+    if (state.advRun?.overweightUsed) {
+      return '✓ Pondération réglée pour la revanche';
+    }
+    return advInfluenceViewedNode()
+      ? '🎚️ Choisis le coup des Noirs à pousser (+5 %)'
+      : '🎚️ Reviens avec ‹ › sur un choix des Noirs';
+  }
+  if (game.status !== 'playing') {
     return '';
   }
   // Révision : le bandeau suit le rejeu / la question / le feedback.
@@ -4276,7 +4288,8 @@ function createInitialGameState(level = state.campaignLevel) {
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
     premove: null,           // T : { from, to } armé pendant la réflexion adverse
     premoveSelect: null,     // T : case source sélectionnée pour armer le prémouvement
-    revision: null           // Révision : { phase: replay|question|feedback|done, step, answerUci }
+    revision: null,          // Révision : { phase: replay|question|feedback|done, step, answerUci }
+    influence: null          // Influence : { selectedUci } — revue ‹ › + choix du coup noir
   };
 }
 
@@ -6699,6 +6712,8 @@ function renderGameDetails() {
   applyAdvBoardHints();
   updateAdvBoardFeedback();
   renderAdvLives(); // indicateur de vies unifié (ouverture / mat) + mat en X
+  applyAdvInfluenceArrows(); // candidats noirs (mode influence, à un embranchement)
+  document.body.classList.toggle('is-influence-review', Boolean(game.influence));
   // Effet « cinématique » pendant la conversion automatique vers le mat.
   document.body.classList.toggle('is-victory-cinematic', Boolean(game.victoryCinematic));
 }
@@ -8083,8 +8098,9 @@ function advToggleInfluenceFeature() {
   saveAdventure();
   renderAdvInfluenceSetting();
   renderAdvShop();
-  if (state.adventure.influenceDisabled) {
-    closeAdvInfluence(); // si désactivé pendant que le panneau est ouvert
+  if (state.adventure.influenceDisabled && state.game?.influence) {
+    state.game.influence = null; // si désactivé pendant le mode influence
+    advHistoryGoto(null);
   }
 }
 
@@ -9554,81 +9570,90 @@ function advOverweightMove(node, chosenUci) {
   return true;
 }
 
-// --- Panneau « Influencer l'ouverture » (fin de défaite) ----------------------
+// --- « Influencer l'ouverture » (fin de défaite, dans la vue de jeu) -----------
 const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
-let advInfluence = null;
 
-// Choisit l'UNIQUE nœud proposé : de préférence l'embranchement le plus profond
-// que la partie perdue a réellement traversé (le plus pertinent), sinon le premier
-// embranchement du livre.
-function advInfluencePickNode() {
-  const nodes = advInfluenceableNodes();
-  if (!nodes.length) {
+// === Influence intégrée à la vue de jeu : pas d'écran à part. Après une défaite
+// de boss, on navigue la partie comme une revue (‹ ›) ; aux positions
+// d'embranchement des Noirs, le bandeau de coups propose les candidats (+5 %).
+
+// Index FEN (4 premiers champs) → nœud influençable.
+let advInfluenceFenIndex = null;
+function advInfluenceNodeByFen(fen) {
+  if (!advInfluenceFenIndex) {
+    advInfluenceFenIndex = new Map(
+      advInfluenceableNodes().map((n) => [fenPositionKey(n.fen), n])
+    );
+  }
+  return advInfluenceFenIndex.get(fenPositionKey(fen)) || null;
+}
+
+// Position actuellement affichée (revue ‹ › en cours, sinon position courante).
+function advViewedFen() {
+  const game = state.game;
+  if (!game) {
     return null;
   }
-  let history = [];
-  try {
-    history = state.game?.chess ? state.game.chess.history() : [];
-  } catch {
-    history = [];
+  return game.historyView != null ? makeHistoryBoardNode(game).fen : game.chess.fen();
+}
+
+// Nœud influençable correspondant à la position affichée (mode influence actif).
+function advInfluenceViewedNode() {
+  const game = state.game;
+  if (!game?.influence) {
+    return null;
   }
-  if (history.length) {
-    let best = null;
-    for (const node of nodes) {
-      if (
-        node.sans.length &&
-        node.sans.length <= history.length &&
-        node.sans.every((s, i) => s === history[i])
-      ) {
-        if (!best || node.sans.length > best.sans.length) {
-          best = node;
-        }
+  const fen = advViewedFen();
+  return fen ? advInfluenceNodeByFen(fen) : null;
+}
+
+// Entre en mode influence : place la revue de la partie sur l'embranchement le
+// plus profond traversé. La suite se joue avec ‹ › et le bandeau de coups.
+function openAdvInfluence() {
+  const game = state.game;
+  if (!advInfluenceEnabled() || !game) {
+    return;
+  }
+  // Cherche, dans la partie jouée, la position d'embranchement la plus profonde.
+  let bestIdx = -1;
+  try {
+    const history = game.chess.history({ verbose: true });
+    const probe = new Chess();
+    if (advInfluenceNodeByFen(probe.fen())) {
+      bestIdx = 0;
+    }
+    for (let i = 0; i < history.length; i += 1) {
+      probe.move(history[i]);
+      if (advInfluenceNodeByFen(probe.fen())) {
+        bestIdx = i + 1;
       }
     }
-    if (best) {
-      return best;
-    }
+  } catch {
+    bestIdx = -1;
   }
-  return nodes[0];
-}
-
-function openAdvInfluence() {
-  if (!advInfluenceEnabled()) {
+  if (bestIdx < 0) {
+    showAdventureToast({
+      icon: '🎚️',
+      title: 'Aucun embranchement',
+      text: 'Cette partie n’a pas traversé de choix des Noirs à influencer.',
+      kind: null
+    });
     return;
   }
-  const node = advInfluencePickNode();
-  if (!node) {
-    showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
-    return;
-  }
-  // Un seul choix rapide : on se place directement au nœud (scrub = fin de ligne),
-  // la lecture de la ligne reste possible en reculant.
-  advInfluence = { node, scrub: node.sans.length, selectedUci: node.moves[0]?.uci || null };
-  const overlay = document.querySelector('#advInfluence');
-  if (overlay) {
-    overlay.hidden = false;
-  }
-  document.body.classList.add('is-adv-influence-open');
-  renderAdvInfluence();
+  game.influence = { selectedUci: null };
+  advHistoryGoto(bestIdx); // re-rend la vue : bandeau + flèches + touches
+  renderGamePanel();
 }
 
-function closeAdvInfluence() {
-  const overlay = document.querySelector('#advInfluence');
-  if (overlay) {
-    overlay.hidden = true;
-  }
-  document.body.classList.remove('is-adv-influence-open');
-  advInfluence = null;
-}
-
-// Parcourt la ligne jusqu'au nœud proposé (lecture des coups menant au choix).
-function advInfluenceScrub(dir) {
-  if (!advInfluence?.node) {
+// Sélection d'un candidat (touche du bandeau) : la flèche s'allume, la touche
+// de validation apparaît.
+function advInfluenceSelect(uci) {
+  const game = state.game;
+  if (!game?.influence) {
     return;
   }
-  const len = advInfluence.node.sans.length;
-  advInfluence.scrub = clamp((advInfluence.scrub ?? len) + dir, 0, len);
-  renderAdvInfluence();
+  game.influence.selectedUci = uci;
+  renderGameDetails();
 }
 
 // Coordonnées centre→centre d'un coup UCI dans un repère 8×8 (vue des Blancs).
@@ -9686,87 +9711,46 @@ function advInfluenceArrows(moves, selectedUci) {
   return svg;
 }
 
-function renderAdvInfluence() {
-  if (!advInfluence?.node) {
-    return;
-  }
-  const node = advInfluence.node;
-  const len = node.sans.length;
-  advInfluence.scrub = clamp(Number.isFinite(advInfluence.scrub) ? advInfluence.scrub : len, 0, len);
-  const scrub = advInfluence.scrub;
-  const atNode = scrub === len;
-
-  const moveNo = Math.ceil(len / 2) + 1;
-  advSetText('#advInfluenceTitle', advOpeningDisplayLabel(node.sans, `Coup ${moveNo} des Noirs`));
-  const navLabel = scrub === 0 ? 'Début de partie' : atNode ? '🎯 Au choix des Noirs' : `Après ${node.sans[scrub - 1]}`;
-  advSetText('#advInfluenceNav', `${navLabel} · ${scrub}/${len}`);
-
-  const board = document.querySelector('#advInfluenceBoard');
-  if (board) {
-    const frames = buildOpeningFrames(node.sans, len);
-    const frame = frames ? frames[Math.min(scrub, frames.length - 1)] : null;
-    if (frame) {
-      fillOpeningBoard(board, frame);
-      if (atNode) {
-        board.append(advInfluenceArrows(node.moves, advInfluence.selectedUci));
-      }
-    }
-  }
-
-  // Choix des coups noirs, présenté comme les « touches de coup » en partie.
-  const choices = document.querySelector('#advInfluenceMoves');
-  if (choices) {
-    choices.replaceChildren();
-    node.moves.forEach((m, i) => {
-      const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
-      const sel = m.uci === advInfluence.selectedUci;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `adv-influence-key${sel ? ' is-selected' : ''}`;
-      btn.style.setProperty('--key-color', color);
-      const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
-      const tag =
-        w > 0.01 ? `+${Math.round(w)}%` : w < -0.01 ? `${Math.round(w)}%` : `${Math.round(m.baseProb * 100)}%`;
-      btn.innerHTML =
-        `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
-        `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
-        `<span class="adv-move-key-prob">${escapeHtml(tag)}</span>`;
-      btn.addEventListener('click', () => {
-        advInfluence.selectedUci = m.uci;
-        advInfluence.scrub = len; // au choix : on se place au nœud pour voir la flèche
-        renderAdvInfluence();
-      });
-      choices.append(btn);
-    });
-  }
-
-  const validate = document.querySelector('#advInfluenceValidate');
-  if (validate) {
-    const used = Boolean(state.advRun?.overweightUsed);
-    const chosen = node.moves.find((m) => m.uci === advInfluence.selectedUci);
-    validate.disabled = used;
-    validate.textContent = used
-      ? '✓ Surpondération utilisée (1/défaite)'
-      : `Surpondérer ${chosen ? chosen.san + ' ' : ''}+5%`;
-  }
-}
-
+// Valide la surpondération du candidat sélectionné, à la position affichée.
 function advInfluenceValidate() {
-  const node = advInfluence?.node;
-  if (!node) {
+  const game = state.game;
+  const node = advInfluenceViewedNode();
+  const uci = game?.influence?.selectedUci;
+  if (!node || !uci) {
     return;
   }
-  const chosen = node.moves.find((m) => m.uci === advInfluence.selectedUci);
-  if (advOverweightMove(node, advInfluence.selectedUci)) {
+  const chosen = node.moves.find((m) => m.uci === uci);
+  if (advOverweightMove(node, uci)) {
     showAdventureToast({
       icon: '🎚️',
       title: 'Coup surpondéré',
       text: `+5% sur ${chosen?.san || 'ce coup'} pour ta revanche.`,
       kind: 'boss'
     });
-    renderAdvInfluence();
+    game.influence.selectedUci = null;
+    renderGameDetails();
+    renderGamePanel();
     renderAdvShop();
   }
+}
+
+// Flèches des candidats noirs directement sur l'échiquier de jeu (mode influence,
+// quand la position affichée est un embranchement).
+function applyAdvInfluenceArrows() {
+  const board = document.querySelector('#boardPreview');
+  if (!board) {
+    return;
+  }
+  board.querySelector('.adv-influence-arrows')?.remove();
+  const game = state.game;
+  if (!game?.influence || state.advViewMode !== 'board') {
+    return;
+  }
+  const node = advInfluenceViewedNode();
+  if (!node) {
+    return;
+  }
+  board.append(advInfluenceArrows(node.moves, game.influence.selectedUci));
 }
 
 // === Révision : quiz « trouve le coup » + refaire un mat passé =================
@@ -11754,6 +11738,47 @@ function renderAdvMovesStrip() {
     }
     return;
   }
+  // Influence (après défaite de boss) : aux positions d'embranchement des Noirs,
+  // le bandeau propose les candidats à surpondérer — mêmes touches qu'en partie.
+  if (game?.influence) {
+    const node = advInfluenceViewedNode();
+    if (node) {
+      const used = Boolean(state.advRun?.overweightUsed);
+      node.moves.forEach((m, i) => {
+        const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
+        const sel = m.uci === game.influence.selectedUci;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `adv-move-key is-influence${sel ? ' is-influence-selected' : ''}`;
+        btn.style.setProperty('--key-color', color);
+        btn.dataset.inflUci = m.uci;
+        btn.disabled = used;
+        const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
+        const tag =
+          w > 0.01 ? `+${Math.round(w)}%` : w < -0.01 ? `${Math.round(w)}%` : `${Math.round(m.baseProb * 100)}%`;
+        btn.innerHTML =
+          `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
+          `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
+          `<span class="adv-move-key-prob">${escapeHtml(tag)}</span>`;
+        host.append(btn);
+      });
+      const selMove = !used && node.moves.find((m) => m.uci === game.influence.selectedUci);
+      if (selMove) {
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'adv-move-key is-influence-validate';
+        ok.dataset.inflValidate = '1';
+        ok.innerHTML = `<span class="adv-move-key-san">✓ ${escapeHtml(selMove.san)} +5%</span>`;
+        host.append(ok);
+      }
+    } else {
+      const ph = document.createElement('span');
+      ph.className = 'adv-moves-placeholder';
+      ph.textContent = '‹ › Navigue jusqu’à un choix des Noirs pour influencer';
+      host.append(ph);
+    }
+    return;
+  }
   const reviewing = Boolean(game && game.historyView != null);
   const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
   // « choix du coup » : aide désactivée aux niveaux Normal/Difficile → le joueur
@@ -12517,12 +12542,7 @@ function bindAdventureEvents() {
   bind('#advBtnArena', () => setAdvMapView('arena'));
   bind('#advBtnTournament', advOpenOrStartTournament); // Mode Tournoi
   bind('#advTournamentClose', closeAdvTournament);
-  // Panneau « Influencer l'ouverture » (refonte boutique, fin de défaite)
-  bind('#advInfluenceClose', closeAdvInfluence);
-  bind('#advInfluencePrev', () => advInfluenceScrub(-1));
-  bind('#advInfluenceNext', () => advInfluenceScrub(1));
-  bind('#advInfluenceValidate', advInfluenceValidate);
-  bind('#advInfluenceToggle', advToggleInfluenceFeature); // réglage activer/désactiver
+  bind('#advInfluenceToggle', advToggleInfluenceFeature); // réglage activer/désactiver l'influence
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Revue d'une partie historique : navigation + fermeture.
   bind('#advReviewClose', closeGameReview);
@@ -12631,6 +12651,15 @@ function bindAdventureEvents() {
       // Révision : la touche répond au QCM au lieu de jouer un coup.
       if (btn.dataset.revUci) {
         advRevisionAnswer(btn.dataset.revUci);
+        return;
+      }
+      // Influence : sélection d'un candidat noir, puis validation +5 %.
+      if (btn.dataset.inflValidate) {
+        advInfluenceValidate();
+        return;
+      }
+      if (btn.dataset.inflUci) {
+        advInfluenceSelect(btn.dataset.inflUci);
         return;
       }
       // Les touches « fantômes » (réponses de Stockfish) n'ont pas d'UCI : non jouables.

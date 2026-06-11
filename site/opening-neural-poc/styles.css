@@ -3574,73 +3574,8 @@ body.is-adv-map-open {
   white-space: nowrap;
 }
 
-/* ===== Influencer l'ouverture (refonte boutique, fin de défaite) ===== */
-.adv-influence {
-  position: fixed;
-  inset: 0;
-  z-index: 64;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  background: rgba(6, 10, 20, 0.86);
-  backdrop-filter: blur(6px);
-}
-
-.adv-influence[hidden] {
-  display: none;
-}
-
-.adv-influence-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: min(440px, 100%);
-  max-height: 100%;
-  overflow-y: auto;
-  padding: 14px 16px 22px;
-  background: var(--panel, #12182a);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.adv-influence-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.adv-influence-head .kicker {
-  display: block;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted, #8aa);
-}
-
-.adv-influence-head strong {
-  font-size: 15px;
-}
-
-.adv-influence-navrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-}
-
-.adv-influence-navlabel {
-  font-weight: 800;
-  font-size: 13px;
-  min-width: 96px;
-  text-align: center;
-}
-
-.adv-influence-board {
-  position: relative;
-  width: min(78vw, 320px);
-  margin: 0 auto;
-}
-
+/* ===== Influencer l'ouverture : dans la vue de jeu (revue ‹ › + bandeau) ===== */
+/* Flèches des candidats noirs, en surcouche de l'échiquier de jeu. */
 .adv-influence-arrows {
   position: absolute;
   inset: 0;
@@ -3650,39 +3585,35 @@ body.is-adv-map-open {
   z-index: 2;
 }
 
-.adv-influence-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted, #8aa);
-  text-align: center;
+body.is-influence-review #boardPreview {
+  position: relative;
 }
 
-/* Choix des coups : mêmes « touches » qu'en partie (pièce + SAN), en rangée. */
-.adv-influence-moves {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-}
-
-.adv-influence-key {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* Touches candidates (couleur assortie à la flèche) + touche de validation. */
+.adv-move-key.is-influence {
   border-top: 3px solid var(--key-color, #5ad1ff);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text, #eef);
-  font-weight: 800;
-  cursor: pointer;
 }
 
-.adv-influence-key.is-selected {
+.adv-move-key.is-influence-selected {
   border-color: rgba(120, 200, 255, 0.75);
   background: rgba(90, 170, 255, 0.16);
   box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.4);
+}
+
+.adv-move-key.is-influence:disabled {
+  cursor: default;
+  opacity: 0.85; /* pondérations lisibles même une fois le choix consommé */
+}
+
+.adv-move-key.is-influence-validate {
+  border-color: rgba(127, 231, 164, 0.6);
+  background: rgba(127, 231, 164, 0.16);
+  color: #d7ffe6;
+}
+
+/* Le bandeau de coups reste visible après la défaite quand on influence. */
+body.is-game-over.is-influence-review.screen-adventure.is-adv-board-view #advMovesStrip {
+  display: flex;
 }
 
 /* Révision : feedback bon / mauvais coup sur les touches du bandeau de coups */
@@ -3700,20 +3631,6 @@ body.is-adv-map-open {
 .adv-move-key.is-correct:disabled,
 .adv-move-key.is-wrong:disabled {
   opacity: 1; /* le feedback reste lisible même touche désactivée */
-}
-
-.adv-influence-key .adv-move-key-piece {
-  width: 22px;
-  height: 22px;
-}
-
-.adv-influence-key .adv-move-key-san {
-  font-size: 15px;
-}
-
-.adv-influence-key .adv-move-key-prob {
-  font-size: 11px;
-  color: var(--muted, #9ab);
 }
 
 .adv-big-btn-ico {
