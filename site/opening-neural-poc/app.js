@@ -6733,6 +6733,7 @@ function renderGameDetails() {
   applyAdvBoardHints();
   updateAdvBoardFeedback();
   renderAdvLives(); // indicateur de vies unifié (ouverture / mat) + mat en X
+  advScoreArmTimer(); // score apprentissage : chrono armé au retour du trait blanc
   applyAdvInfluenceArrows(); // candidats noirs (mode influence, à un embranchement)
   document.body.classList.toggle('is-influence-review', Boolean(game.influence));
   // Effet « cinématique » pendant la conversion automatique vers le mat.
@@ -7498,7 +7499,8 @@ function createAdventureState() {
     // révision ou le lendemain.
     globalLives: 0,
     livesUnlocked: false, // a déjà atteint 50 % une fois
-    livesDate: null // YYYY-MM-DD du dernier remplissage (reset quotidien)
+    livesDate: null, // YYYY-MM-DD du dernier remplissage (reset quotidien)
+    bestScores: {} // records du score d'apprentissage par mode (lesson/trap/quiz/mate)
   };
 }
 
@@ -7543,6 +7545,7 @@ function loadAdventure() {
     base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
     base.livesUnlocked = Boolean(data.livesUnlocked);
     base.livesDate = typeof data.livesDate === 'string' ? data.livesDate : null;
+    base.bestScores = data.bestScores && typeof data.bestScores === 'object' ? data.bestScores : {};
   } catch {
     return createAdventureState();
   }
@@ -7583,7 +7586,8 @@ function saveAdventure() {
         influenceMode: state.adventure.influenceMode === 'game' ? 'game' : 'random',
         globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
         livesUnlocked: Boolean(state.adventure.livesUnlocked),
-        livesDate: state.adventure.livesDate || null
+        livesDate: state.adventure.livesDate || null,
+        bestScores: state.adventure.bestScores || {}
       })
     );
   } catch {
@@ -8757,6 +8761,80 @@ function adventureLightEdge(edge) {
   }
 }
 
+// === Score d'apprentissage =====================================================
+// Par coup : points de temps (100 pts à ≤1 s → 1 pt à ≥30 s, linéaire) moins
+// 50 pts par erreur sur ce coup. Le nombre de coups scorés est CONSTANT par mode
+// (défini au lancement) pour que les scores restent comparables entre sessions.
+const ADV_SCORE_MOVE_COUNT = 10; // leçon libre / piège
+const ADV_SCORE_ERROR_PENALTY = 50;
+
+function advScoreTimePoints(elapsedMs) {
+  const sec = (Number(elapsedMs) || 30000) / 1000;
+  if (sec <= 1) {
+    return 100;
+  }
+  if (sec >= 30) {
+    return 1;
+  }
+  return Math.round(100 - ((sec - 1) * 99) / 29);
+}
+
+function advScoreInit(run, target) {
+  run.scoreTarget = target;
+  run.scoreTotal = 0;
+  run.scorePlayed = 0;
+  run.scoreMoveStart = null;
+  run.scoreMoveErrors = 0;
+}
+
+// Enregistre le score du coup courant (temps − erreurs×50) puis réarme.
+function advScoreRegisterMove(run, elapsedMs) {
+  if (!run || run.scoreTarget == null || (run.scorePlayed || 0) >= run.scoreTarget) {
+    return;
+  }
+  const pts = advScoreTimePoints(elapsedMs) - (run.scoreMoveErrors || 0) * ADV_SCORE_ERROR_PENALTY;
+  run.scoreTotal = (run.scoreTotal || 0) + pts;
+  run.scorePlayed = (run.scorePlayed || 0) + 1;
+  run.scoreMoveStart = null;
+  run.scoreMoveErrors = 0;
+}
+
+// Le chrono du coup démarre quand le trait revient aux Blancs (leçons/pièges).
+function advScoreArmTimer() {
+  const run = state.advRun;
+  const game = state.game;
+  if (!run || run.scoreTarget == null || run.revisionMode || !game) {
+    return;
+  }
+  if (game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
+    return;
+  }
+  if (run.scoreMoveStart == null) {
+    run.scoreMoveStart = Date.now();
+  }
+}
+
+function advScoreKey(run) {
+  return run.revisionMode || (run.trapsMode ? 'trap' : 'lesson');
+}
+
+// Ligne d'affichage du score (résultat de fin) — lecture seule, le record est
+// mis à jour une seule fois dans adventureOnGameFinished.
+function advScoreResultLine(run) {
+  if (!run || run.scoreTarget == null || !(run.scorePlayed > 0)) {
+    return '';
+  }
+  const total = Math.round(run.scoreTotal || 0);
+  const max = run.scoreTarget * 100;
+  const best = Number(state.adventure?.bestScores?.[advScoreKey(run)]);
+  const rec = run.scoreIsRecord
+    ? ' · 🏆 record !'
+    : Number.isFinite(best)
+      ? ` · record ${best}`
+      : '';
+  return ` ⚡ Score : ${total}/${max} (${run.scorePlayed}/${run.scoreTarget} coups)${rec}`;
+}
+
 function adventureOnCorrectWhiteBook() {
   const run = state.advRun;
   if (!run) {
@@ -8764,6 +8842,10 @@ function adventureOnCorrectWhiteBook() {
   }
   run.streak = (run.streak || 0) + 1;
   run.bookMoves = (run.bookMoves || 0) + 1;
+  // Score d'apprentissage : temps de réflexion du coup − erreurs×50.
+  if (run.scoreTarget != null && !run.revisionMode) {
+    advScoreRegisterMove(run, run.scoreMoveStart ? Date.now() - run.scoreMoveStart : null);
+  }
   const combo = Math.min(run.streak, 6);
   advAddXp(ADV_XP_BOOK_MOVE + (run.streak >= 3 ? combo : 0));
   flashAdvBoard('good');
@@ -8777,6 +8859,9 @@ function adventureOnWrongBook() {
   }
   run.streak = 0;
   run.wrongMoves = (run.wrongMoves || 0) + 1;
+  if (run.scoreTarget != null && !run.revisionMode) {
+    run.scoreMoveErrors = (run.scoreMoveErrors || 0) + 1; // −50 sur le coup en cours
+  }
   flashAdvBoard('bad');
 }
 
@@ -10023,6 +10108,7 @@ function launchRevision(mode) {
     bookMoves: 0,
     completed: false
   };
+  advScoreInit(state.advRun, steps.length); // score comparable : nb de questions fixe
   state.playMode = 'challenge';
   closeAdventureMap();
   setViewMode('brain');
@@ -10080,6 +10166,8 @@ function advRevisionPlayStep() {
       game.message = game.revision.keysRevealed
         ? 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.'
         : 'Joue le bon coup des Blancs directement sur l’échiquier.';
+      run.scoreMoveStart = Date.now(); // score : le chrono démarre à la question
+      run.scoreMoveErrors = 0;
       setGameLocked(false); // question : l'échiquier devient jouable
       renderGameDetails();
       renderGamePanel();
@@ -10111,12 +10199,16 @@ function advRevisionAnswer(uci) {
   }
   const step = rev.step;
   const correct = uci === step.correctUci;
-  // Seul le PREMIER essai compte pour le score.
+  // Seul le PREMIER essai compte pour le score (et fige le temps de réflexion).
   if (!rev.attempted) {
     rev.attempted = true;
+    run.scoreElapsedMs = run.scoreMoveStart ? Date.now() - run.scoreMoveStart : null;
     if (correct) {
       run.correctCount += 1;
     }
+  }
+  if (!correct) {
+    run.scoreMoveErrors = (run.scoreMoveErrors || 0) + 1; // −50 par mauvaise réponse
   }
   // Normal : une erreur révèle les propositions et laisse réessayer.
   if (!correct && !rev.keysRevealed && advRevisionKeysRevealableOnError()) {
@@ -10131,6 +10223,7 @@ function advRevisionAnswer(uci) {
   }
   rev.phase = 'feedback';
   rev.answerUci = uci;
+  advScoreRegisterMove(run, run.scoreElapsedMs); // score de la question résolue
   game.selectedSquare = null;
   setGameLocked(true); // plus d'entrée pendant le feedback
   // Le bon coup s'exécute sur l'échiquier (on le voit, même après une erreur).
@@ -11031,6 +11124,18 @@ function adventureOnGameFinished(result) {
       showAdventureToast({ icon: '🪙', title: `+${reward} pièces`, text: 'À dépenser à la boutique.', kind: null });
     }
   }
+  // Score d'apprentissage : enregistre le record du mode (une seule fois).
+  if (run.scoreTarget != null && (run.scorePlayed || 0) > 0 && !run.scoreRecorded) {
+    run.scoreRecorded = true;
+    const key = advScoreKey(run);
+    state.adventure.bestScores = state.adventure.bestScores || {};
+    const prev = Number(state.adventure.bestScores[key]);
+    const total = Math.round(run.scoreTotal || 0);
+    run.scoreIsRecord = !Number.isFinite(prev) || total > prev;
+    if (run.scoreIsRecord) {
+      state.adventure.bestScores[key] = total;
+    }
+  }
   // Apprentissage terminé (leçon/piège réussi) → recharge les vies globales.
   if (result === 'won' && run.kind === 'lesson') {
     advRefillGlobalLivesFromLearning();
@@ -11211,6 +11316,7 @@ function focusAdvInput() {
 
 function launchLesson() {
   state.advRun = { kind: 'lesson', streak: 0, wrongMoves: 0, bookMoves: 0, completed: false };
+  advScoreInit(state.advRun, ADV_SCORE_MOVE_COUNT); // score comparable : 10 coups
   state.playMode = 'challenge';
   closeAdventureMap();
   setViewMode('brain');
@@ -11242,6 +11348,7 @@ function launchTrapsLesson() {
     bookMoves: 0,
     completed: false
   };
+  advScoreInit(state.advRun, ADV_SCORE_MOVE_COUNT); // score comparable : 10 coups
   state.playMode = 'challenge';
   closeAdventureMap();
   setViewMode('brain');
@@ -12353,6 +12460,12 @@ function renderAdventureResult(el, game, run) {
     actions.append(advResultButton('🔁 Recommencer', () => launchLesson(), true));
   }
 
+  // Score d'apprentissage (leçon / piège / révision) : total, coups scorés, record.
+  const scoreLine = advScoreResultLine(run);
+  if (scoreLine) {
+    note.textContent += scoreLine;
+  }
+
   // « Dernière chance » pour annuler la défaite : via l'aide retour arrière (une
   // fois) OU une « vie » de la phase finale du mat (S, toutes difficultés).
   const finalLives = game.finalMateLives || 0;
@@ -12469,12 +12582,17 @@ function renderAdventureHud() {
         run.revisionMode === 'mate'
           ? `Révision · Refaire un mat${run.revisionLabel ? ' · ' + run.revisionLabel : ''}`
           : 'Révision · Quiz';
-    if (title) title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total}`;
+    if (title)
+      title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total} · ⚡ ${Math.round(run.scoreTotal || 0)}`;
     if (objective)
       objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
   } else if (run.kind === 'lesson') {
     if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
-    if (title) title.textContent = 'Apprends la ligne';
+    if (title)
+      title.textContent =
+        run.scoreTarget != null
+          ? `Apprends la ligne · ⚡ ${Math.round(run.scoreTotal || 0)} (${run.scorePlayed || 0}/${run.scoreTarget})`
+          : 'Apprends la ligne';
     if (objective)
       objective.textContent = `Reste dans le livre jusqu’au bout. Cortex actuel : ${coveragePct} %.`;
   } else {
