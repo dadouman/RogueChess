@@ -4289,7 +4289,11 @@ function createInitialGameState(level = state.campaignLevel) {
     premove: null,           // T : { from, to } armé pendant la réflexion adverse
     premoveSelect: null,     // T : case source sélectionnée pour armer le prémouvement
     revision: null,          // Révision : { phase: replay|question|feedback|done, step, answerUci }
-    influence: null          // Influence : { selectedUci } — revue ‹ › + choix du coup noir
+    influence: null,         // Influence : { selectedUci, lineSans?, lineIndex? } — revue ‹ › + choix
+    influencePending: false, // Influence : ouverture auto programmée (anti-flash du carton)
+    influenceDone: false,    // Influence : phase close → CTA finaux de défaite
+    defeatCinematicPending: false, // Punition : suite en cours de construction/lecture
+    skipDefeatCinematic: false     // ⏩ demandé avant que la suite soit prête
   };
 }
 
@@ -6129,6 +6133,9 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     game.message = `${game.message} Les flèches indiquent les coups d'ouverture attendus.`;
   }
   const startsCinematic = result === 'lost' && failureFen && failureEvaluation?.pvUci?.length;
+  // La suite de défaite se construit en asynchrone : on le signale tout de suite
+  // pour que l'écran de résultat reste en phase « punition » (pas d'influence).
+  game.defeatCinematicPending = Boolean(startsCinematic);
   if (game.freeReviewMoves.length) {
     game.freeReview.index = game.freeReviewMoves.length - 1;
     game.freeReview.active = !startsCinematic;
@@ -6206,6 +6213,7 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
   }
   if (!line.length) {
     // Pas de suite jouable : on rend simplement la main à la revue.
+    game.defeatCinematicPending = false;
     if (game.freeReviewMoves.length) {
       game.freeReview.active = true;
       game.freeReview.index = game.freeReviewMoves.length - 1;
@@ -6222,6 +6230,11 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
     index: 0,
     lastMove: null
   };
+  // ⏩ demandé pendant la construction de la suite : on saute directement à la fin.
+  if (game.skipDefeatCinematic) {
+    advSkipDefeatCinematic();
+    return;
+  }
   game.message = defeatComment
     ? `${defeatComment} La punition de Stockfish se déroule…`
     : `Déficit à ${formatEval(evaluation.cpWhite)}. La punition de Stockfish se déroule…`;
@@ -6231,6 +6244,9 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
     const cinematic = state.game?.cinematic;
     if (!cinematic || cinematic.index >= cinematic.moves.length) {
       clearGameCinematic();
+      if (state.game) {
+        state.game.defeatCinematicPending = false; // punition terminée → phase suivante
+      }
       if (state.game?.freeReviewMoves.length) {
         state.game.freeReview.active = true;
         state.game.freeReview.index = state.game.freeReviewMoves.length - 1;
@@ -7942,6 +7958,13 @@ function advUndoDefeat() {
   const chess = game.chess;
   if (chess.history().length === 0) {
     return;
+  }
+  // La partie reprend : le flux d'influence repartira de zéro à la prochaine défaite.
+  game.influence = null;
+  game.influencePending = false;
+  game.influenceDone = false;
+  if (state.advRun) {
+    state.advRun.influenceAutoShown = false;
   }
   // Annule jusqu'au trait des Blancs (au moins un demi-coup) : on retire le coup
   // perdant (et la réponse adverse si c'est elle qui a scellé la défaite).
@@ -11869,6 +11892,13 @@ function renderAdvMovesStrip() {
       ph.textContent = '‹ › Navigue jusqu’à un choix des Noirs pour influencer';
       host.append(ph);
     }
+    // « Terminer » clôt la phase d'influence → CTA finaux (rejouer / suivant / analyser).
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'adv-move-key is-influence-done';
+    done.dataset.inflDone = '1';
+    done.innerHTML = '<span class="adv-move-key-san">Terminer ›</span>';
+    host.append(done);
     return;
   }
   const reviewing = Boolean(game && game.historyView != null);
@@ -12114,7 +12144,130 @@ function advDefeatEvalLine(game) {
   return `Position ${qual} : Stockfish évalue à ${formatEval(cp)} pour toi — tu n’avais plus aucune chance de la sauver.`;
 }
 
+// ⏩ Avance rapide : déroule d'un coup la fin de la cinématique de punition.
+// Si la suite est encore en construction (moteur), on mémorise la demande et le
+// saut s'applique dès qu'elle est prête.
+function advSkipDefeatCinematic() {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const cin = game.cinematic;
+  if (!cin) {
+    game.skipDefeatCinematic = true;
+    return;
+  }
+  while (cin.index < cin.moves.length) {
+    cin.lastMove = playUciOnChess(cin.chess, cin.moves[cin.index]) || cin.lastMove;
+    cin.index += 1;
+  }
+  clearGameCinematic();
+  game.defeatCinematicPending = false;
+  if (game.freeReviewMoves.length) {
+    game.freeReview.active = true;
+    game.freeReview.index = game.freeReviewMoves.length - 1;
+  }
+  renderGameDetails();
+  renderGamePanel();
+}
+
+// ✓ Terminer : clôt la phase d'influence → CTA finaux (rejouer / suivant / analyser).
+function advInfluenceFinish() {
+  const game = state.game;
+  if (!game?.influence) {
+    return;
+  }
+  game.influence = null;
+  game.influenceDone = true;
+  advHistoryGoto(null); // revient à la position finale + re-rend les détails
+  renderGamePanel();
+}
+
+// Défaite de boss (hors tournoi) : flux en 3 phases pour éviter la confusion
+// entre la punition qui se déroule et le choix d'influence.
+// A. Cinématique : un seul CTA — avance rapide (+ retour arrière si l'aide existe).
+// B. Influence : aucun carton — la vue (revue ‹ › + bandeau de coups) suffit.
+// C. Influence terminée : CTA finaux (rejouer / boss suivant / analyser), c'est tout.
+function renderBossDefeatResult(el, game, run) {
+  el.classList.remove('is-win');
+  el.classList.add('is-loss');
+  el.replaceChildren();
+  const heading = document.createElement('strong');
+  const actions = document.createElement('div');
+  actions.className = 'adv-result-actions';
+  const level = run.bossLevel;
+
+  // --- Phase A : la punition se déroule (ou se prépare encore côté moteur).
+  if (game.cinematic || game.defeatCinematicPending) {
+    el.hidden = false;
+    heading.textContent = 'Défaite — la chute se rejoue…';
+    const finalLives = game.finalMateLives || 0;
+    const canComeback =
+      game.chess.history().length > 0 &&
+      ((advAids().takeback && !game.takebackLocked) || finalLives > 0);
+    if (canComeback) {
+      const label =
+        finalLives > 0
+          ? `↶ Dernière chance (${finalLives} vie${finalLives > 1 ? 's' : ''})`
+          : '↶ Revenir en arrière';
+      actions.append(advResultButton(label, () => advUndoDefeat(), true));
+    }
+    actions.append(advResultButton('⏩ Avance rapide', () => advSkipDefeatCinematic(), !canComeback));
+    el.append(heading, actions);
+    return;
+  }
+
+  // --- Phase B : choix d'influence (carton masqué, la touche « Terminer » clôt).
+  const influenceLoss = advInfluenceEnabled() && !game.influenceDone;
+  if (influenceLoss && !game.influence && !run.influenceAutoShown) {
+    run.influenceAutoShown = true;
+    game.influencePending = true;
+    setTimeout(() => {
+      if (state.game !== game) {
+        return;
+      }
+      game.influencePending = false;
+      if (state.advRun === run && game.status === 'lost') {
+        openAdvInfluence();
+        if (!game.influence) {
+          game.influenceDone = true; // rien à influencer → CTA finaux
+        }
+      }
+      renderGameDetails();
+      renderGamePanel();
+    }, 350);
+    el.hidden = true;
+    return;
+  }
+  if (influenceLoss && (game.influence || game.influencePending)) {
+    el.hidden = true;
+    return;
+  }
+
+  // --- Phase C : CTA finaux uniquement.
+  el.hidden = false;
+  heading.textContent = game.chess?.isCheckmate?.() ? 'Échec et mat subi' : 'Position effondrée';
+  actions.append(advResultButton(`🔁 Rejouer le boss N${level}`, () => launchBoss(level), true));
+  if (level < 10 && advBossUnlocked(level + 1)) {
+    actions.append(advResultButton(`Boss N${level + 1} ▸`, () => launchBoss(level + 1)));
+  }
+  if (game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
+    actions.append(
+      advResultButton('🔍 Analyser la partie', () => {
+        advRefreshRecordedMoves(game); // s'assure que la suite de défaite est incluse
+        openGameReview(game.recordRef);
+      })
+    );
+  }
+  el.append(heading, actions);
+}
+
 function renderAdventureResult(el, game, run) {
+  // Défaite de boss (hors tournoi) : flux dédié en 3 phases (voir ci-dessus).
+  if (run.kind === 'boss' && !run.tournament && game.status === 'lost') {
+    renderBossDefeatResult(el, game, run);
+    return;
+  }
   el.hidden = false;
   const win = game.status === 'won';
   el.classList.toggle('is-win', win);
@@ -12152,28 +12305,17 @@ function renderAdventureResult(el, game, run) {
       advResultButton('🏆 Continuer le tournoi', () => advTournamentResolveMatch(game.status), true)
     );
   } else if (run.kind === 'boss') {
+    // Victoire de boss (la défaite passe par renderBossDefeatResult).
     const level = run.bossLevel;
     const streak = advBossStreakCount(level);
-    const record = advBossRecord(level);
     const conquered = advBossConquered(level);
     stars.innerHTML = advBossStarsMarkup(level);
-    if (win) {
-      if (conquered) {
-        heading.textContent = `Boss N${level} maîtrisé !`;
-        note.textContent = "Trois victoires d'affilée — le cortex gagne en puissance.";
-      } else {
-        heading.textContent = `Victoire ${streak}/${ADV_BOSS_STARS} contre N${level}`;
-        note.textContent = `Enchaîne ${ADV_BOSS_STARS - streak} victoire(s) d'affilée pour le maîtriser.`;
-      }
+    if (conquered) {
+      heading.textContent = `Boss N${level} maîtrisé !`;
+      note.textContent = "Trois victoires d'affilée — le cortex gagne en puissance.";
     } else {
-      const mated = Boolean(game.chess?.isCheckmate?.());
-      heading.textContent = mated ? 'Échec et mat subi' : 'Position effondrée';
-      note.textContent =
-        record > 0
-          ? `Série remise à zéro (tes ${record} étoile(s) restent). Rejoue la chute ci-dessous, puis relance.`
-          : mated
-          ? 'Le boss t’a maté. Rejoue la chute ci-dessous, puis relance l’attaque.'
-          : `La position est passée sous ${formatEval(advDeficitThresholdCp(level))}. Rejoue la chute ci-dessous, puis relance l’attaque.`;
+      heading.textContent = `Victoire ${streak}/${ADV_BOSS_STARS} contre N${level}`;
+      note.textContent = `Enchaîne ${ADV_BOSS_STARS - streak} victoire(s) d'affilée pour le maîtriser.`;
     }
     // Call to action : rejouer le même boss, + jouer le suivant si une étoile est débloquée.
     actions.append(advResultButton(`🔁 Rejouer le boss N${level}`, () => launchBoss(level), true));
@@ -12239,20 +12381,6 @@ function renderAdventureResult(el, game, run) {
     evalEl.hidden = true;
   }
 
-  // Refonte boutique : après une défaite de boss, surpondère un coup des Noirs pour
-  // la revanche (choix du nœud + du coup, +5%, gratuit, une fois par défaite).
-  // Le choix s'ouvre automatiquement (voir plus bas) ; le bouton permet d'y revenir.
-  const influenceLoss = !win && run.kind === 'boss' && !run.tournament && advInfluenceEnabled();
-  if (influenceLoss) {
-    const used = Boolean(run.overweightUsed);
-    actions.append(
-      advResultButton(
-        used ? '🎚️ Pondération réglée' : "🎚️ Influencer l'ouverture",
-        () => openAdvInfluence()
-      )
-    );
-  }
-
   // « Analyser la partie » : ouvre la revue (sous-variantes : meilleure suite Stockfish
   // + exploration perso) pour comprendre l'effondrement coup par coup.
   if (!win && game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
@@ -12286,27 +12414,6 @@ function renderAdventureResult(el, game, run) {
   el.append(heading, stars, evalEl, note, actions);
   if (statsRow) {
     el.append(statsRow);
-  }
-
-  // Ouverture AUTOMATIQUE du choix de surpondération en cas de défaite de boss
-  // (une seule fois, et seulement quand la cinématique de punition est terminée).
-  if (
-    influenceLoss &&
-    !run.overweightUsed &&
-    !run.influenceAutoShown &&
-    !game.cinematic?.active
-  ) {
-    run.influenceAutoShown = true;
-    setTimeout(() => {
-      if (
-        state.advRun === run &&
-        state.game?.status === 'lost' &&
-        !run.overweightUsed &&
-        advInfluenceEnabled()
-      ) {
-        openAdvInfluence();
-      }
-    }, 450);
   }
 }
 
@@ -12769,9 +12876,13 @@ function bindAdventureEvents() {
         advRevisionAnswer(btn.dataset.revUci);
         return;
       }
-      // Influence : sélection d'un candidat noir, puis validation +5 %.
+      // Influence : sélection d'un candidat noir, validation +5 %, ou clôture.
       if (btn.dataset.inflValidate) {
         advInfluenceValidate();
+        return;
+      }
+      if (btn.dataset.inflDone) {
+        advInfluenceFinish();
         return;
       }
       if (btn.dataset.inflUci) {
