@@ -6563,6 +6563,28 @@ function syncGameGraphSelection(view) {
 
 function makeGameBoardNode() {
   const game = state.game;
+
+  // Mode influence (après défaite) : l'échiquier suit le défilement ‹ › du choix
+  // d'influence. PRIORITAIRE sur la revue libre et la cinématique, sinon on
+  // resterait bloqué sur la position perdante et on ne verrait pas le coup à
+  // changer.
+  if (game?.influence) {
+    if (game.influence.lineSans) {
+      return makeInfluenceLineBoardNode(game); // nœud aléatoire : ligne du livre tirée
+    }
+    if (game.historyView != null) {
+      return makeHistoryBoardNode(game); // partie jouée : position revue
+    }
+    return {
+      id: 'game',
+      san: game.lastMove?.san ?? 'Départ',
+      fen: game.chess.fen(),
+      from: game.lastMove?.from ?? '',
+      to: game.lastMove?.to ?? '',
+      sideToMove: game.chess.turn()
+    };
+  }
+
   const reviewEntry = getActiveFreeReviewEntry();
   if (reviewEntry) {
     return {
@@ -6585,11 +6607,6 @@ function makeGameBoardNode() {
       to: cinematic.lastMove?.to ?? '',
       sideToMove: cinematic.chess.turn()
     };
-  }
-
-  // Influence « nœud aléatoire » : l'échiquier affiche la ligne du livre tirée.
-  if (game?.influence?.lineSans) {
-    return makeInfluenceLineBoardNode(game);
   }
 
   // Revue de l'historique : on prévisualise une position passée (lecture seule).
@@ -7036,6 +7053,12 @@ function renderFreeReviewPanel() {
     return;
   }
   host.replaceChildren();
+  // Pendant la phase d'influence (revue ‹ › du choix d'ouverture), on masque
+  // l'analyse rapide pour ne pas afficher une position différente de l'échiquier.
+  if (game?.influence) {
+    host.hidden = true;
+    return;
+  }
   // En aventure, on n'ouvre l'analyse rapide qu'après une vraie partie
   // (au-delà de la simple position de départ).
   const reviewReady =
