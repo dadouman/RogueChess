@@ -1,0 +1,35 @@
+name: CI
+
+# Étape 0 : lint + vérification du format + build statique à chaque push / PR.
+# Le déploiement Cloudflare reste manuel (npm run deploy) pour l'instant.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      # Non bloquant pour l'instant : le code n'est pas encore passé à Prettier
+      # (mass-reformat reporté pour éviter les conflits avec le travail en cours).
+      - name: Format check (Prettier)
+        run: npm run format:check
+        continue-on-error: true
+
+      - name: Build (copie statique)
+        run: npm run build

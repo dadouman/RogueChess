@@ -1,0 +1,6 @@
+dist/
+node_modules/
+site/opening-neural-poc/vendor/
+site/pieces/
+*.wasm
+*.min.js
