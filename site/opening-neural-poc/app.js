@@ -1359,8 +1359,9 @@ class BrowserStockfishEvaluator {
     }
 
     this.readyPromise = new Promise((resolve, reject) => {
-      const workerUrl = new URL('./vendor/stockfish-18-lite-single.js', import.meta.url);
-      this.worker = new Worker(workerUrl);
+      // Moteur servi tel quel depuis public/engine/ (le .js localise son .wasm
+      // voisin via currentScript) ; non bundlé par Vite.
+      this.worker = new Worker('/engine/stockfish-18-lite-single.js');
       this.worker.addEventListener('message', (event) => this.handleLine(String(event.data)));
       this.worker.addEventListener('error', (event) => {
         reject(new Error(`Stockfish worker: ${event.message}`));
@@ -6378,16 +6379,32 @@ async function runVictoryConversion() {
       }
       await pause(VICTORY_CINEMATIC_STEP_MS);
     } else {
-      // Trait aux Noirs : défense de Stockfish au niveau du boss.
+      // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
+      // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
+      // instantanément pendant la phase de mat (la position reste affichée
+      // pendant que Stockfish « réfléchit », puis le coup apparaît).
+      const bBeforeFen = game.chess.fen();
+      const bBeforeEvalCp = game.currentEvalCp;
+      game.message = `Stockfish ${formatStockfishLevel(profile)} cherche la défense…`;
+      setEngineThinking(true);
+      renderGamePanel();
+      renderGameDetails();
+      const thinkStart = performance.now();
+      const thinkTarget = randomThinkMs(900, 2600);
       const search = await evaluator.pickMove(game.chess.fen(), profile);
       if (state.game !== game || game.status !== 'playing') {
+        setEngineThinking(false);
         return;
       }
       if (!search.bestMove) {
+        setEngineThinking(false);
         break;
       }
-      const bBeforeFen = game.chess.fen();
-      const bBeforeEvalCp = game.currentEvalCp;
+      await pause(thinkTarget - (performance.now() - thinkStart));
+      setEngineThinking(false);
+      if (state.game !== game || game.status !== 'playing') {
+        return;
+      }
       const bmove = playUciOnChess(game.chess, search.bestMove);
       if (!bmove) {
         break;
@@ -6412,7 +6429,7 @@ async function runVictoryConversion() {
         finishGameByStalemate(game.chess);
         return;
       }
-      await pause(VICTORY_CINEMATIC_STEP_MS);
+      // Plus de pause « flat » : la réflexion ci-dessus a déjà donné le tempo.
     }
   }
 
