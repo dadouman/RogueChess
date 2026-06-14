@@ -10024,14 +10024,27 @@ function advBuildQuizSteps() {
     visited.add(nodeId);
     const outs = getRawOutgoingEdges(nodeId);
     if (!outs.length) break;
-    const best = outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
-    if (!best) break;
-    lineSans.push(best.san);
-    lineUcis.push(best.uci);
-    nodeId = best.to;
+    // Blancs : on suit la ligne principale (le coup du répertoire à réviser).
+    // Noirs : tirage pondéré par les probabilités → la ligne varie à chaque
+    // lancement (le quiz n'est plus toujours le même).
+    const blackToMove = outs[0].color === 'b';
+    const edge = blackToMove
+      ? advPickBookEdge(outs)
+      : outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
+    if (!edge) break;
+    lineSans.push(edge.san);
+    lineUcis.push(edge.uci);
+    nodeId = edge.to;
   }
+  // Coups blancs interrogeables = indices pairs ≥ 2 (on saute le 1er coup trivial).
+  const whiteIdx = [];
+  for (let idx = 2; idx < lineSans.length; idx += 2) {
+    whiteIdx.push(idx);
+  }
+  // Tire jusqu'à 3 points de quiz au hasard, puis remet l'ordre chronologique.
+  const chosen = advShuffle(whiteIdx).slice(0, 3).sort((a, b) => a - b);
   const steps = [];
-  for (let idx = 4; idx < lineSans.length && steps.length < 3; idx += 2) {
+  for (const idx of chosen) {
     const options = advQuizOptions(lineSans.slice(0, idx), lineUcis[idx]);
     if (options.length >= 2) {
       steps.push({
