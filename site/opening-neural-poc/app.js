@@ -166,15 +166,6 @@ function formatSurvivalTarget(game) {
   return isMateObjective(game) ? "jusqu'au mat" : `${game.objective.target}`;
 }
 
-function hashString(value) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
 function formatEval(cpWhite) {
   if (!Number.isFinite(cpWhite)) {
     return '-';
@@ -1851,26 +1842,6 @@ function bindBrainScrubEvents() {
 // Actif quand le graphe est la vue principale « cerveau » de l'Aventure.
 function isBrainScrubContext() {
   return state.screen === 'adventure' && state.advViewMode === 'brain';
-}
-
-// Noeud du graphe le plus proche du point écran (converti en coordonnées du viewBox SVG).
-function graphNearestNode(clientX, clientY) {
-  const svg = elements.graphSvg;
-  const ctm = svg?.getScreenCTM?.();
-  if (!ctm || !state.layout?.size) {
-    return null;
-  }
-  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-  let bestId = null;
-  let bestDist = Infinity;
-  for (const [id, p] of state.layout) {
-    const d = Math.hypot(p.x - pt.x, p.y - pt.y);
-    if (d < bestDist) {
-      bestDist = d;
-      bestId = id;
-    }
-  }
-  return bestId;
 }
 
 function onBrainPointerDown(event) {
@@ -5945,7 +5916,7 @@ async function runVictoryConversion() {
   }
   renderGamePanel();
   renderGameDetails();
-  } catch (err) {
+  } catch {
     // Sécurité : une erreur du moteur (timeout…) ne doit jamais bloquer le joueur.
     if (state.game === game) {
       game.victoryCinematic = false;
@@ -7721,137 +7692,6 @@ function renderAdvShop() {
 
 let advCarouselIndex = 0;
 
-// Carrousel : une proposition à la fois (un coup noir d'embranchement), avec
-// boutons −5 % / +5 % (10 🪙) et « passer ». Chaque action consomme le choix et
-// passe au suivant, jusqu'à épuisement. Le cadenas conserve un choix (cumulable).
-function renderAdvOpeningCarousel(host) {
-  host.replaceChildren();
-  const deck = advEnsureOpeningDeck();
-  if (!deck.length) {
-    const empty = document.createElement('p');
-    empty.className = 'adv-shop-empty';
-    empty.textContent = advInfluenceableChoices().length
-      ? 'Toutes les propositions ont été passées. Reviens après une partie de boss.'
-      : "Aucune ouverture à influencer : le livre ne laisse pas de choix aux Noirs.";
-    host.append(empty);
-    // Récap des pondérations actives même quand la file est vide.
-    renderAdvWeightSummary(host);
-    return;
-  }
-  if (advCarouselIndex >= deck.length) {
-    advCarouselIndex = 0;
-  }
-  const key = deck[advCarouselIndex];
-  const choice = advChoiceByKey(key);
-  if (!choice) {
-    advCarouselIndex = 0;
-    return;
-  }
-
-  const card = document.createElement('div');
-  card.className = 'adv-weight-card';
-
-  const top = document.createElement('div');
-  top.className = 'adv-weight-top';
-  top.innerHTML =
-    `<span class="adv-weight-count">${advCarouselIndex + 1} / ${deck.length}</span>` +
-    `<span class="adv-weight-coins">${advCoins()} 🪙</span>`;
-  card.append(top);
-
-  const body = document.createElement('div');
-  body.className = 'adv-weight-body';
-  const nameLabel = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
-  const thumb = makeOpeningThumb(choice.sans, nameLabel, choice.sans.join(' '), choice.key);
-  if (thumb) {
-    body.append(thumb);
-  }
-  const info = document.createElement('div');
-  info.className = 'adv-weight-info';
-  const ply = choice.sans.length;
-  const moveNo = Math.ceil(ply / 2);
-  const weight = advOpeningWeightOf(key);
-  const weightTxt = weight > 0 ? `+${weight}%` : weight < 0 ? `${weight}%` : '0%';
-  const weightCls = weight > 0 ? 'is-up' : weight < 0 ? 'is-down' : '';
-  info.innerHTML =
-    `<b>${escapeHtml(nameLabel)}</b>` +
-    `<span class="adv-weight-move">Stockfish (Noirs) : ${moveNo}…${escapeHtml(choice.san)}</span>` +
-    `<span class="adv-weight-stats">Base ${Math.round(choice.baseProb * 100)}% · ` +
-    `<i class="adv-weight-delta ${weightCls}">pondération ${weightTxt}</i></span>`;
-  body.append(info);
-  card.append(body);
-
-  // Actions : −5 % / +5 % (paye, puis la proposition est consommée et on passe à la suivante)
-  const buys = document.createElement('div');
-  buys.className = 'adv-weight-buys';
-  const makeBuy = (dir, label) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `adv-weight-buy ${dir > 0 ? 'is-up' : 'is-down'}`;
-    btn.textContent = `${label} (${OPENING_WEIGHT_COST}🪙)`;
-    btn.disabled = advCoins() < OPENING_WEIGHT_COST;
-    btn.addEventListener('click', () => {
-      if (advAdjustOpeningWeight(key, dir)) {
-        advConsumeOpeningChoice(key); // choix consommé → suivant (cadenas = conservé)
-      }
-      renderAdvShop();
-    });
-    return btn;
-  };
-  buys.append(makeBuy(-1, '− 5%'), makeBuy(1, '+ 5%'));
-  card.append(buys);
-
-  // Cadenas (gratuit) + passer
-  const nav = document.createElement('div');
-  nav.className = 'adv-weight-nav';
-  const lockBtn = document.createElement('button');
-  lockBtn.type = 'button';
-  lockBtn.className = 'adv-ghost adv-weight-lock';
-  const locked = advOpeningLockIs(key);
-  lockBtn.classList.toggle('is-active', locked);
-  lockBtn.textContent = locked ? '🔒 Gardée' : '🔓 Garder';
-  lockBtn.addEventListener('click', () => {
-    advToggleOpeningLock(key);
-    renderAdvShop();
-  });
-  const skipBtn = document.createElement('button');
-  skipBtn.type = 'button';
-  skipBtn.className = 'adv-ghost adv-weight-skip';
-  skipBtn.textContent = 'Passer ›';
-  skipBtn.addEventListener('click', () => {
-    advConsumeOpeningChoice(key); // « passer » consomme aussi le choix
-    renderAdvShop();
-  });
-  nav.append(lockBtn, skipBtn);
-  card.append(nav);
-
-  host.append(card);
-
-  renderAdvWeightSummary(host);
-}
-
-// Récapitulatif des pondérations actives (lisible d'un coup d'œil), pour le prochain boss.
-function renderAdvWeightSummary(host) {
-  const active = Object.entries(state.adventure?.openingWeights || {}).filter(([, v]) => v);
-  if (!active.length) {
-    return;
-  }
-  const summary = document.createElement('div');
-  summary.className = 'adv-weight-summary';
-  summary.innerHTML = '<span class="adv-tally-label">Pondérations actives (prochain boss)</span>';
-  const chips = document.createElement('div');
-  chips.className = 'adv-weight-chips';
-  for (const [k, v] of active) {
-    const c = advChoiceByKey(k);
-    const chip = document.createElement('span');
-    chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
-    const nm = c ? advOpeningDisplayLabel(c.sans, c.name || c.san) : k;
-    chip.textContent = `${nm} ${v > 0 ? '+' : ''}${v}%`;
-    chips.append(chip);
-  }
-  summary.append(chips);
-  host.append(summary);
-}
-
 function advToggleThreats() {
   if (!state.adventure || !advThreatsUnlocked()) {
     return;
@@ -8313,32 +8153,6 @@ const OPENING_VIEWER_SPEEDS = [
   { label: '🐇 Rapide', ms: 380 }
 ];
 
-// FEN → 64 pièces (index 0 = a8 … 63 = h1) : lettre de pièce ou null.
-// Images successives d'une ouverture : départ + après chaque coup (FEN, from, to, san).
-// Remplit un conteneur avec un échiquier (pièces SVG nettes) pour une position donnée.
-// Vignette cliquable : la position FINALE de l'ouverture (statique, pièces nettes).
-// `shopKey` (facultatif) : si fourni, la visionneuse ouverte propose les actions
-// boutique (±5 % / cadenas / passer) pour choisir sans revenir au carrousel.
-function makeOpeningThumb(sans, name, label, shopKey = null) {
-  const frames = buildOpeningFrames(sans);
-  if (!frames) {
-    return null;
-  }
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'opening-thumb';
-  btn.setAttribute('aria-label', `Voir l'animation de l'ouverture : ${name || label || ''}`);
-  const board = document.createElement('div');
-  board.className = 'opening-board';
-  fillOpeningBoard(board, frames[frames.length - 1]);
-  const hint = document.createElement('span');
-  hint.className = 'opening-thumb-hint';
-  hint.textContent = '▶';
-  btn.append(board, hint);
-  btn.addEventListener('click', () => openOpeningViewer(sans, name, label, shopKey));
-  return btn;
-}
-
 // --- Visionneuse animée plein écran (lecture/pause + vitesse réglable) ---
 let openingViewer = null;
 
@@ -8785,7 +8599,6 @@ function advGameStats(gameFilter = null) {
 }
 
 // === Boutique : monnaie « pièces », surpondération de ligne (O), menaces (R) ===
-const SHOP_LINE_BOOST_COST = 30;     // O : coût pour surpondérer une ligne d'ouverture
 const SHOP_THREATS_BOSS_UNLOCK = 3;  // R : « voir les menaces » débloqué après 3 boss
 
 // Récompense en pièces pour une victoire (boss = davantage selon le niveau).
@@ -8822,7 +8635,6 @@ function advThreatsActive() {
 const OPENING_WEIGHT_STEP = 5; // points de % par achat
 const OPENING_WEIGHT_COST = 10; // pièces par ±5 %
 const OPENING_WEIGHT_MAX = 60; // bornes de la pondération cumulée
-const OPENING_DECK_SIZE = 6; // nombre de propositions tirées dans le carrousel
 const OPENING_BRANCH_MAX_PLY = 20;
 
 let advChoicesCache = null;
@@ -9762,14 +9574,6 @@ function advFormatGameOpponent(g) {
   }
   const profile = getStockfishLevelProfile(g.opponentLevel);
   return profile?.label || `Leçon N${g.opponentLevel}`;
-}
-
-function advFormatOpponentGroup(p) {
-  if (p.kind === 'boss') {
-    return `Boss N${p.level}`;
-  }
-  const profile = getStockfishLevelProfile(p.level);
-  return profile?.label || `Leçon N${p.level}`;
 }
 
 // Date relative compacte pour l'historique.
@@ -11537,7 +11341,7 @@ function advResultButton(label, handler, primary = false) {
 // Phrase d'évaluation de la position effondrée : rend la défaite explicite
 // (« tu n'avais plus aucune chance ») en chiffrant l'écart pour le joueur (Blancs).
 function advDefeatEvalLine(game) {
-  if (Boolean(game?.chess?.isCheckmate?.())) {
+  if (game?.chess?.isCheckmate?.()) {
     return 'Échec et mat sur l’échiquier — plus aucune ressource.';
   }
   const cp = game?.failureEvaluation?.cpWhite;
@@ -12072,17 +11876,6 @@ function renderAdvLessonChoice() {
     trapSub.textContent = unlocked
       ? 'Fais tomber Stockfish dans un piège'
       : 'Verrouillé · illumine 100 % du cortex';
-  }
-}
-
-// Bouton « Illuminer le cerveau » : leçon d'ouverture, ou pièges une fois tout le
-// cortex illuminé (progression naturelle).
-function launchBrainLesson() {
-  const allDone = ADV_LESSONS.every((l) => state.adventure?.lessons?.[l.id]);
-  if (allDone && advTrapsUnlocked()) {
-    launchTrapsLesson();
-  } else {
-    launchLesson();
   }
 }
 
