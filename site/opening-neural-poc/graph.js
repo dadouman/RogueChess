@@ -1,5 +1,6 @@
 // Modèle du graphe d'ouverture (le « livre ») : accesseurs sur les nœuds/arêtes
 // et sélection pondérée des coups. S'appuie sur l'état partagé et un util RNG.
+import { Chess } from './vendor/chess.js';
 import { state } from './state.js';
 import { randomUnit } from './utils.js';
 
@@ -64,4 +65,40 @@ export function pickWeightedCandidate(candidates) {
   }
 
   return selected;
+}
+
+// --- Nommage d'ouverture (depuis le livre) ---------------------------------
+export function advOpeningInfoFromSans(sans) {
+  if (!Array.isArray(sans) || !sans.length || !(state.nodesByFen instanceof Map)) {
+    return null;
+  }
+  let chess;
+  try {
+    chess = new Chess();
+  } catch {
+    return null;
+  }
+  let best = null;
+  for (const san of sans) {
+    let mv = null;
+    try {
+      mv = chess.move(san);
+    } catch {
+      mv = null;
+    }
+    if (!mv) break;
+    const node = state.nodesByFen.get(chess.fen());
+    if (node && (node.opening || node.eco)) {
+      best = { name: node.opening || null, eco: node.eco || null };
+    }
+  }
+  return best;
+}
+
+export function advOpeningDisplayLabel(sans, fallbackLabel) {
+  const info = advOpeningInfoFromSans(sans);
+  if (info?.name) {
+    return info.eco ? `${info.name} (${info.eco})` : info.name;
+  }
+  return fallbackLabel || 'Hors livre';
 }

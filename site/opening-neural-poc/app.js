@@ -23,7 +23,8 @@ import {
   getEdge,
   getRawOutgoingEdges,
   normalizeWeightedCandidates,
-  pickWeightedCandidate
+  pickWeightedCandidate,
+  advOpeningDisplayLabel
 } from './graph.js';
 import {
   ADV_DIFFICULTIES,
@@ -8110,42 +8111,7 @@ function advOpeningSignature(game) {
 
 // Nom d'ouverture (PGN/ECO) le plus précis atteint en rejouant une suite de coups :
 // on suit la ligne dans le graphe et on garde le nom du nœud le plus profond.
-function advOpeningInfoFromSans(sans) {
-  if (!Array.isArray(sans) || !sans.length || !(state.nodesByFen instanceof Map)) {
-    return null;
-  }
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return null;
-  }
-  let best = null;
-  for (const san of sans) {
-    let mv = null;
-    try {
-      mv = chess.move(san);
-    } catch {
-      mv = null;
-    }
-    if (!mv) break;
-    const node = state.nodesByFen.get(chess.fen());
-    if (node && (node.opening || node.eco)) {
-      best = { name: node.opening || null, eco: node.eco || null };
-    }
-  }
-  return best;
-}
-
 // Libellé d'ouverture lisible : « Nom (ECO) » si connu, sinon la séquence de coups.
-function advOpeningDisplayLabel(sans, fallbackLabel) {
-  const info = advOpeningInfoFromSans(sans);
-  if (info?.name) {
-    return info.eco ? `${info.name} (${info.eco})` : info.name;
-  }
-  return fallbackLabel || 'Hors livre';
-}
-
 // === Visuel d'ouverture : vignette (position finale) + visionneuse animée ===
 const OPENING_VIEWER_SPEEDS = [
   { label: '🐢 Lent', ms: 1500 },
