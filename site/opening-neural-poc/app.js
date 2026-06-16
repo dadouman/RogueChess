@@ -38,6 +38,7 @@ import {
 } from './adventure-config.js';
 import { createAdventureState, loadAdventure, saveAdventure } from './adventure-state.js';
 import { showAdventureToast } from './toast.js';
+import { OPENING_MAX_PLIES, buildOpeningFrames, fillOpeningBoard } from './board-render.js';
 import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
@@ -8306,7 +8307,6 @@ function advOpeningDisplayLabel(sans, fallbackLabel) {
 }
 
 // === Visuel d'ouverture : vignette (position finale) + visionneuse animée ===
-const OPENING_MAX_PLIES = 16;
 const OPENING_VIEWER_SPEEDS = [
   { label: '🐢 Lent', ms: 1500 },
   { label: 'Normal', ms: 850 },
@@ -8314,69 +8314,8 @@ const OPENING_VIEWER_SPEEDS = [
 ];
 
 // FEN → 64 pièces (index 0 = a8 … 63 = h1) : lettre de pièce ou null.
-function fenToPieceArray(fen) {
-  const board = String(fen || '').split(' ')[0];
-  const cells = [];
-  for (const rankStr of board.split('/')) {
-    for (const ch of rankStr) {
-      if (/\d/.test(ch)) {
-        for (let i = 0; i < Number(ch); i += 1) cells.push(null);
-      } else {
-        cells.push(ch);
-      }
-    }
-  }
-  return cells;
-}
-
 // Images successives d'une ouverture : départ + après chaque coup (FEN, from, to, san).
-function buildOpeningFrames(sans, maxPlies = OPENING_MAX_PLIES) {
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return null;
-  }
-  const frames = [{ fen: chess.fen(), from: null, to: null, san: null }];
-  for (const san of (sans || []).slice(0, maxPlies)) {
-    let mv = null;
-    try {
-      mv = chess.move(san);
-    } catch {
-      mv = null;
-    }
-    if (!mv) break;
-    frames.push({ fen: chess.fen(), from: mv.from, to: mv.to, san: mv.san });
-  }
-  return frames.length >= 2 ? frames : null;
-}
-
 // Remplit un conteneur avec un échiquier (pièces SVG nettes) pour une position donnée.
-function fillOpeningBoard(container, frame) {
-  container.replaceChildren();
-  const pieces = fenToPieceArray(frame.fen);
-  const files = 'abcdefgh';
-  for (let row = 0; row < 8; row += 1) {
-    for (let col = 0; col < 8; col += 1) {
-      const sq = `${files[col]}${8 - row}`;
-      const cell = document.createElement('div');
-      cell.className = `opening-sq ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
-      if (sq === frame.from || sq === frame.to) {
-        cell.classList.add('is-move');
-      }
-      const pc = pieces[row * 8 + col];
-      if (pc) {
-        const img = document.createElement('img');
-        img.src = `/pieces/merida/${pc === pc.toUpperCase() ? 'w' : 'b'}${pc.toUpperCase()}.svg`;
-        img.alt = '';
-        img.setAttribute('aria-hidden', 'true');
-        cell.append(img);
-      }
-      container.append(cell);
-    }
-  }
-}
-
 // Vignette cliquable : la position FINALE de l'ouverture (statique, pièces nettes).
 // `shopKey` (facultatif) : si fourni, la visionneuse ouverte propose les actions
 // boutique (±5 % / cadenas / passer) pour choisir sans revenir au carrousel.
