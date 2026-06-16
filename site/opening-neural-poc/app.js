@@ -7,6 +7,17 @@ import {
   SURVIVAL_LIMIT_CP,
   DISPLAY_DEFAULT_FLOOR_MASS
 } from './constants.js';
+import {
+  clamp,
+  formatPercent,
+  sideLabel,
+  sanPieceLetter,
+  moveColorAt,
+  escapeHtml,
+  pause,
+  randomThinkMs,
+  randomUnit
+} from './utils.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MATE_SCORE_CP = 100000;
@@ -160,10 +171,6 @@ function createSvgElement(tag, attributes = {}) {
   return node;
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
 function getLevelObjective(level) {
   const target = FREE_SURVIVAL_TARGETS[level - 1];
   if (Number.isFinite(target)) {
@@ -205,24 +212,6 @@ function formatEval(cpWhite) {
     return cpWhite > 0 ? `Mat blanc en ${x}` : `Mat noir en ${x}`;
   }
   return `${cpWhite >= 0 ? '+' : ''}${(cpWhite / 100).toFixed(2)}`;
-}
-
-function formatPercent(value) {
-  const percent = Math.round(value * 100);
-  if (value > 0 && percent === 0) {
-    return '<1%';
-  }
-  return `${percent}%`;
-}
-
-function sideLabel(side) {
-  if (side === 'w') {
-    return 'Blancs';
-  }
-  if (side === 'b') {
-    return 'Noirs';
-  }
-  return '-';
 }
 
 function getStockfishLevelProfile(level = state.stockfishLevel) {
@@ -1837,21 +1826,7 @@ function cubicBezierAt(cp, t) {
 }
 
 // Lettre de pièce (Merida) à partir d'un SAN : O-O→roi, sinon N/B/R/Q/K, défaut pion.
-function sanPieceLetter(san) {
-  const s = String(san ?? '');
-  if (/^O-O/.test(s)) {
-    return 'K';
-  }
-  const m = s.match(/^([NBRQK])/);
-  return m ? m[1] : 'P';
-}
-
 // Couleur qui joue le i-ème coup d'une séquence compressée (alternance depuis edge.color).
-function moveColorAt(edge, index) {
-  const first = edge.color === 'b' ? 'b' : 'w';
-  return index % 2 === 0 ? first : first === 'w' ? 'b' : 'w';
-}
-
 function renderGraph() {
   if (!state.data) {
     return;
@@ -2368,15 +2343,6 @@ function clearScrubNodeHighlight() {
   }
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function selectEdge(edge) {
   state.highlightedEdges = new Set([edge.id]);
   state.highlightedNodes = new Set([edge.from, edge.to]);
@@ -2755,15 +2721,7 @@ function prefersReducedMotion() {
 }
 
 // Pause (Promise) de `ms` millisecondes.
-function pause(ms) {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
-}
-
 // Durée de « réflexion » simulée de l'adversaire, tirée aléatoirement dans une fourchette (ms).
-function randomThinkMs(minMs, maxMs) {
-  return Math.round(minMs + Math.random() * (maxMs - minMs));
-}
-
 // Active/désactive l'état visuel « Stockfish réfléchit » (badge sur l'échiquier, halo,
 // pulsation du cerveau). Piloté par la classe body pour cibler tout le tableau en CSS.
 function setEngineThinking(isThinking) {
@@ -4705,15 +4663,6 @@ function normalizeWeightedCandidates(candidates) {
     ...candidate,
     probability: Math.max(0, candidate.probability ?? 0) / total
   }));
-}
-
-function randomUnit() {
-  if (globalThis.crypto?.getRandomValues) {
-    const values = new Uint32Array(1);
-    globalThis.crypto.getRandomValues(values);
-    return values[0] / 4294967296;
-  }
-  return Math.random();
 }
 
 function pickWeightedCandidate(candidates) {
