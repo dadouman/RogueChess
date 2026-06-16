@@ -5,7 +5,8 @@ import {
   FIRST_LEVEL_NUMBER,
   DEFAULT_STOCKFISH_LEVEL,
   SURVIVAL_LIMIT_CP,
-  DISPLAY_DEFAULT_FLOOR_MASS
+  DISPLAY_DEFAULT_FLOOR_MASS,
+  MATE_SCORE_CP
 } from './constants.js';
 import {
   clamp,
@@ -18,9 +19,15 @@ import {
   randomThinkMs,
   randomUnit
 } from './utils.js';
+import {
+  parseWhiteCentipawn,
+  parsePv,
+  playUciOnChess,
+  formatPvFromFen,
+  terminalEvaluation
+} from './chess-utils.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const MATE_SCORE_CP = 100000;
 const MATE_BRANCH_MIN_PROBABILITY = 0.01;
 const PROBABILITY_TEMPERATURE_CP = 95;
 const PROBABILITY_FLOOR_MASS = 0.01;
@@ -1131,89 +1138,6 @@ function yieldToBrowser() {
 
 function cloneGraphData(data) {
   return JSON.parse(JSON.stringify(data));
-}
-
-function parseWhiteCentipawn(line, fen) {
-  const match = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
-  if (!match) {
-    return null;
-  }
-
-  const [, scoreType, rawScore] = match;
-  const scoreValue = Number(rawScore);
-  const sideToMove = fen.split(/\s+/)[1] ?? 'w';
-
-  if (scoreType === 'mate') {
-    const distancePenalty = Math.min(900, Math.abs(scoreValue) * 12);
-    const winningColor = scoreValue >= 0 ? sideToMove : sideToMove === 'w' ? 'b' : 'w';
-    return (winningColor === 'w' ? 1 : -1) * (MATE_SCORE_CP - distancePenalty);
-  }
-
-  return sideToMove === 'w' ? scoreValue : -scoreValue;
-}
-
-function parsePv(line) {
-  return line.match(/\bpv\s+(.+)$/)?.[1]?.trim().split(/\s+/).filter(Boolean) ?? [];
-}
-
-function playUciOnChess(chess, uci) {
-  if (!uci || uci.length < 4) {
-    return null;
-  }
-  try {
-    return chess.move({
-      from: uci.slice(0, 2),
-      to: uci.slice(2, 4),
-      promotion: uci[4] || undefined
-    });
-  } catch {
-    return null;
-  }
-}
-
-function formatPvFromFen(fen, pvMoves, limit = 7) {
-  const chess = new Chess(fen);
-  const sanMoves = [];
-  const uciMoves = [];
-  for (const uci of pvMoves.slice(0, limit)) {
-    const move = playUciOnChess(chess, uci);
-    if (!move) {
-      break;
-    }
-    sanMoves.push(move.san);
-    uciMoves.push(uci);
-  }
-  return {
-    san: sanMoves.join(' '),
-    uci: uciMoves
-  };
-}
-
-function terminalEvaluation(fen) {
-  const chess = new Chess(fen);
-  if (chess.isCheckmate()) {
-    return {
-      cpWhite: chess.turn() === 'w' ? -MATE_SCORE_CP : MATE_SCORE_CP,
-      bestMove: null,
-      pv: '',
-      pvUci: [],
-      depth: 0,
-      source: 'terminal'
-    };
-  }
-
-  if (chess.isDraw()) {
-    return {
-      cpWhite: 0,
-      bestMove: null,
-      pv: '',
-      pvUci: [],
-      depth: 0,
-      source: 'terminal'
-    };
-  }
-
-  return null;
 }
 
 class BrowserStockfishEvaluator {
