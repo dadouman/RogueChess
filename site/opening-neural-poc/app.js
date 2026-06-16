@@ -19,6 +19,13 @@ import {
 } from './utils.js';
 import { playUciOnChess, terminalEvaluation } from './chess-utils.js';
 import {
+  getNode,
+  getEdge,
+  getRawOutgoingEdges,
+  normalizeWeightedCandidates,
+  pickWeightedCandidate
+} from './graph.js';
+import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
   formatStockfishLevel,
@@ -616,14 +623,6 @@ function buildDefeatComment(fen, evaluation) {
 
 function scoreForSide(cpWhite, sideToMove) {
   return sideToMove === 'w' ? cpWhite : -cpWhite;
-}
-
-function getNode(id) {
-  return state.nodesById.get(id);
-}
-
-function getEdge(id) {
-  return state.edgesById.get(id);
 }
 
 const RESULT_TOKENS = new Set(['1-0', '0-1', '1/2-1/2', '*']);
@@ -3986,16 +3985,6 @@ function getGameNodeByFen() {
   );
 }
 
-function getRawOutgoingEdges(nodeId, color = null) {
-  const node = getNode(nodeId);
-  if (!node) {
-    return [];
-  }
-  return node.outgoing
-    .map(getEdge)
-    .filter((edge) => edge && (!color || edge.color === color));
-}
-
 function buildRawPathToNode(nodeId) {
   if (!nodeId || (nodeId !== 'root' && !getNode(nodeId))) {
     return { nodeIds: ['root'], edgeIds: [] };
@@ -4375,51 +4364,6 @@ function buildOpeningMismatchMessage(move) {
   }
 
   return `Ce coup sort du livre attendu.${expectedText} Retour utilisé, rejoue un coup d'ouverture.`;
-}
-
-function normalizeWeightedCandidates(candidates) {
-  if (!candidates.length) {
-    return [];
-  }
-
-  const total = candidates.reduce(
-    (sum, candidate) => sum + Math.max(0, candidate.probability ?? 0),
-    0
-  );
-  if (total <= 0) {
-    const equal = 1 / candidates.length;
-    return candidates.map((candidate) => ({ ...candidate, probability: equal }));
-  }
-
-  return candidates.map((candidate) => ({
-    ...candidate,
-    probability: Math.max(0, candidate.probability ?? 0) / total
-  }));
-}
-
-function pickWeightedCandidate(candidates) {
-  const normalized = normalizeWeightedCandidates(candidates);
-  if (!normalized.length) {
-    return null;
-  }
-
-  const weighted = normalized.map((candidate) => ({
-    ...candidate,
-    lotteryWeight: candidate.probability
-  }));
-
-  const total = weighted.reduce((sum, candidate) => sum + candidate.lotteryWeight, 0);
-  let roll = randomUnit() * total;
-  let selected = weighted[weighted.length - 1];
-  for (const candidate of weighted) {
-    roll -= candidate.lotteryWeight;
-    if (roll <= 0) {
-      selected = candidate;
-      break;
-    }
-  }
-
-  return selected;
 }
 
 function canOpponentLeaveBookAtPly(ply) {
