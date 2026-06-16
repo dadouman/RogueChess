@@ -1,21 +1,24 @@
 import { Chess } from './vendor/chess.js';
 import { elements } from './elements.js';
+import { state } from './state.js';
+import {
+  FIRST_LEVEL_NUMBER,
+  DEFAULT_STOCKFISH_LEVEL,
+  SURVIVAL_LIMIT_CP,
+  DISPLAY_DEFAULT_FLOOR_MASS
+} from './constants.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const MATE_SCORE_CP = 100000;
-const DISPLAY_DEFAULT_FLOOR_MASS = 0.01;
 const MATE_BRANCH_MIN_PROBABILITY = 0.01;
 const PROBABILITY_TEMPERATURE_CP = 95;
 const PROBABILITY_FLOOR_MASS = 0.01;
-const FIRST_LEVEL_NUMBER = 1;
 const FREE_SURVIVAL_TARGETS = [5, 7, 10, 13, 15];
 const IMPORT_STOCKFISH_DEPTH = 5;
 const STARTING_LIVES = 3;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
-const SURVIVAL_LIMIT_CP = -100;
 const STOCKFISH_DEPTH = 8;
-const DEFAULT_STOCKFISH_LEVEL = 5;
 const STOCKFISH_LEVELS = {
   1: { level: 1, label: 'Débutant', elo: 1320, skill: 1, depth: 2, movetime: 80 },
   2: { level: 2, label: 'Facile', elo: 1450, skill: 3, depth: 3, movetime: 120 },
@@ -148,49 +151,6 @@ const PIECE_LABELS = {
   q: ['dame', 'dames']
 };
 
-const state = {
-  data: null,
-  view: null,
-  nodesById: new Map(),
-  edgesById: new Map(),
-  nodesByFen: new Map(),
-  nodesByPositionKey: new Map(),
-  layout: new Map(),
-  selectedNodeId: 'root',
-  highlightedEdges: new Set(),
-  highlightedNodes: new Set(['root']),
-  selectedSegment: null,
-  segmentStepIndex: 0,
-  segmentExpanded: false,
-  boardZoomed: false,
-  currentPreviewNode: null,
-  viewMode: 'human',
-  playMode: 'challenge',
-  campaignLevel: FIRST_LEVEL_NUMBER,
-  stockfishLevel: DEFAULT_STOCKFISH_LEVEL,
-  survivalLimitCp: SURVIVAL_LIMIT_CP,
-  lineFilter: 'all',
-  temperatureCp: 95,
-  floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
-  stockfish: null,
-  defaultData: null,
-  isImportingPgn: false,
-  activeResize: null,
-  collapsedPanels: {
-    left: false,
-    right: false
-  },
-  panelWidthMemory: {
-    left: 328,
-    right: 340
-  },
-  screen: 'home',
-  activeBook: 'default',
-  adventure: null,
-  advRun: null,
-  advViewMode: 'board',
-  game: null
-};
 
 function createSvgElement(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
