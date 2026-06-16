@@ -26,6 +26,18 @@ import {
   pickWeightedCandidate
 } from './graph.js';
 import {
+  ADV_DIFFICULTIES,
+  DEFAULT_ADV_DIFFICULTY,
+  TIME_CONTROLS,
+  DEFAULT_TIME_CONTROL,
+  ADV_STORAGE_KEY,
+  ADV_MAX_GAMES,
+  ADV_GLOBAL_LIVES_MAX,
+  MATE_HANDOVER_OPTIONS,
+  DEFAULT_MATE_HANDOVER,
+  ADV_MAX_REVIEW_MOVES
+} from './adventure-config.js';
+import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
   formatStockfishLevel,
@@ -57,52 +69,11 @@ const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 // Cases légales (« points verts ») : visibles aux niveaux faciles, masquées en
 // Normal mais révélées après 5 s de réflexion ou après une erreur (Q), et jamais
 // affichées en Difficile. Les niveaux se distinguent aussi par les autres aides.
-const ADV_DIFFICULTIES = [
-  {
-    id: 'tres-facile',
-    label: 'Très facile',
-    icon: '🍼',
-    desc: 'Coups suggérés, évaluation et retour arrière (cases légales toujours visibles).',
-    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: true }
-  },
-  {
-    id: 'facile',
-    label: 'Facile',
-    icon: '🙂',
-    desc: 'Coups suggérés et évaluation (cases légales toujours visibles).',
-    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: false }
-  },
-  {
-    id: 'normal',
-    label: 'Normal',
-    icon: '⚔️',
-    desc: 'Évaluation seule. Cases légales masquées, révélées après 5 s ou une erreur.',
-    aids: { moveChoices: false, legalDots: false, evaluation: true, takeback: false },
-    legalDotsRevealable: true
-  },
-  {
-    id: 'difficile',
-    label: 'Difficile',
-    icon: '🔥',
-    desc: 'Aucune aide (cases légales jamais affichées).',
-    aids: { moveChoices: false, legalDots: false, evaluation: false, takeback: false }
-  }
-];
-const DEFAULT_ADV_DIFFICULTY = 'facile';
 const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
 
 // U — Cadences : pendule des deux côtés. baseMs = temps total par camp ;
 // meanMs = temps moyen consommé par Stockfish à chaque coup. Le temps réel
 // consommé par Stockfish suit une loi normale d'écart-type σ = meanMs × 2.
-const TIME_CONTROLS = [
-  { id: 'off', label: 'Sans horloge', icon: '∞', baseMs: 0, meanMs: 0 },
-  { id: 'bullet', label: 'Bullet 2′', icon: '🚅', baseMs: 120000, meanMs: 1000 },
-  { id: 'blitz', label: 'Blitz 5′', icon: '⚡', baseMs: 300000, meanMs: 3000 },
-  { id: 'normal', label: 'Rapide 10′', icon: '⏱️', baseMs: 600000, meanMs: 6000 },
-  { id: 'custom', label: 'Perso', icon: '🎛️', baseMs: 0, meanMs: 0 }
-];
-const DEFAULT_TIME_CONTROL = 'off';
-
 function getTimeControlConfig(id) {
   // Cadence personnalisée : durée librement réglée par le joueur (en minutes).
   if (id === 'custom') {
@@ -7002,8 +6973,6 @@ function populateControls() {
 /* =====================================================================
    Mode Aventure : cerveau RPG (apprentissage + domination Stockfish)
    ===================================================================== */
-const ADV_STORAGE_KEY = 'roguechess-adventure-v1';
-const ADV_MAX_GAMES = 60; // historique des parties conservées (M)
 const ADV_ACT2_UNLOCK = 0.5;
 const ADV_LESSONS = [
   { id: 'l1', target: 0.25, title: 'Premiers neurones', icon: '🌱' },
@@ -7157,7 +7126,6 @@ function advCoveragePct() {
 }
 
 // === Vies globales (méta) : nombre de défaites possibles contre les bots ========
-const ADV_GLOBAL_LIVES_MAX = 3;
 const ADV_LIVES_UNLOCK_COVERAGE = 0.5; // 50 % d'apprentissage débloque les vies
 
 function advTodayKey() {
@@ -7725,15 +7693,6 @@ function advToggleInfluenceFeature() {
 // === Vies + « mat en X » ========================================================
 // Indicateur de vies unifié (cœurs) + réglage du moment où la cinématique de
 // victoire rend la main au joueur pour conclure le mat.
-const MATE_HANDOVER_OPTIONS = [
-  { id: 1, label: 'Mat en 1' },
-  { id: 2, label: 'Mat en 2' },
-  { id: 3, label: 'Mat en 3' },
-  { id: 5, label: 'Mat en 5' },
-  { id: 99, label: 'Au plus tôt' }
-];
-const DEFAULT_MATE_HANDOVER = 3;
-
 function advMateHandover() {
   const v = Number(state.adventure?.mateHandover);
   return Number.isFinite(v) && v > 0 ? v : DEFAULT_MATE_HANDOVER;
@@ -8923,7 +8882,6 @@ function openingViewerShopAdvance() {
 // M — Enregistre une partie terminée dans l'historique persistant.
 // Coups joués (avec évals) d'une partie, version compacte persistable, pour la
 // revue + analyse a posteriori. Construite depuis freeReviewMoves à la fin.
-const ADV_MAX_REVIEW_MOVES = 160;
 function buildGameReviewMoves(game) {
   const entries = (game?.freeReviewMoves || []).filter((e) => e.phase && e.phase !== 'start');
   return entries.slice(0, ADV_MAX_REVIEW_MOVES).map((entry) => {
