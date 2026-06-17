@@ -63,8 +63,16 @@ import {
 import { createAdventureState, loadAdventure, saveAdventure } from './adventure-state.js';
 import { showAdventureToast } from './toast.js';
 import { OPENING_MAX_PLIES, buildOpeningFrames, fillOpeningBoard } from './board-render.js';
-import { getTimeControlConfig, sampleStockfishMoveTime, formatClock } from './time-control.js';
+import { getTimeControlConfig } from './time-control.js';
 import { clampPanelWidths, bindPanelResizeHandles } from './panels.js';
+import { advSetText, advSetWidth } from './dom.js';
+import {
+  initClocks,
+  makeInitialClock,
+  startClockTicker,
+  deductStockfishClock,
+  renderClocks
+} from './clocks.js';
 import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
@@ -2759,103 +2767,6 @@ function createInitialGameState(level = state.campaignLevel) {
     defeatCinematicPending: false, // Punition : suite en cours de construction/lecture
     skipDefeatCinematic: false     // ⏩ demandé avant que la suite soit prête
   };
-}
-
-// U — Construit l'état d'horloge initial pour une partie d'aventure (null si la
-// cadence est « sans horloge » ou hors aventure).
-function makeInitialClock() {
-  const tc = getTimeControlConfig(state.adventure?.timeControl);
-  if (state.screen !== 'adventure' || tc.id === 'off') {
-    return null;
-  }
-  return { control: tc.id, w: tc.baseMs, b: tc.baseMs, lastTickTs: null };
-}
-
-let clockTimer = null;
-
-function startClockTicker() {
-  if (clockTimer) {
-    return;
-  }
-  clockTimer = setInterval(tickClock, 200);
-}
-
-// Décompte temps réel de l'horloge du joueur quand c'est à lui de jouer.
-// L'horloge de Stockfish, elle, est décrémentée d'un échantillon (loi normale)
-// à chaque coup adverse (cf. deductStockfishClock).
-function tickClock() {
-  const game = state.game;
-  if (!game?.clock) {
-    return;
-  }
-  if (game.status !== 'playing') {
-    game.clock.lastTickTs = null;
-    return;
-  }
-  const playerToMove =
-    game.chess.turn() === 'w' && !game.locked && !game.cinematic && game.historyView == null;
-  if (playerToMove) {
-    const now = performance.now();
-    if (game.clock.lastTickTs != null) {
-      game.clock.w = Math.max(0, game.clock.w - (now - game.clock.lastTickTs));
-    }
-    game.clock.lastTickTs = now;
-    if (game.clock.w <= 0) {
-      game.clock.w = 0;
-      renderClocks();
-      finishGame('lost', '⏰ Temps écoulé : tu perds au temps.');
-      return;
-    }
-  } else {
-    game.clock.lastTickTs = null; // horloge du joueur en pause hors de son tour
-  }
-  renderClocks();
-}
-
-// Décrémente l'horloge de Stockfish du temps « réfléchi » (loi normale). Renvoie
-// true s'il tombe au temps (la partie est alors gagnée par le joueur).
-function deductStockfishClock(game) {
-  if (!game?.clock) {
-    return false;
-  }
-  const tc = getTimeControlConfig(game.clock.control);
-  game.clock.b = Math.max(0, game.clock.b - sampleStockfishMoveTime(tc));
-  if (game.clock.b <= 0) {
-    game.clock.b = 0;
-    renderClocks();
-    finishGame('won', '⏰ Stockfish tombe au temps — tu gagnes !');
-    return true;
-  }
-  renderClocks();
-  return false;
-}
-
-function renderClocks() {
-  const wrap = document.querySelector('#advClocks');
-  if (!wrap) {
-    return;
-  }
-  const game = state.game;
-  const clock = game?.clock;
-  const show =
-    Boolean(clock) &&
-    state.screen === 'adventure' &&
-    document.body.classList.contains('is-adv-board-view');
-  wrap.hidden = !show;
-  if (!show) {
-    return;
-  }
-  const playing = game.status === 'playing';
-  const whiteActive = playing && game.chess.turn() === 'w' && !game.locked && !game.cinematic;
-  const blackActive = playing && game.chess.turn() === 'b';
-  const whiteEl = document.querySelector('#advClockWhite');
-  const blackEl = document.querySelector('#advClockBlack');
-  advSetText('#advClockWhiteTime', formatClock(clock.w));
-  advSetText('#advClockBlackTime', formatClock(clock.b));
-  whiteEl?.classList.toggle('is-active', whiteActive);
-  blackEl?.classList.toggle('is-active', blackActive);
-  whiteEl?.classList.toggle('is-low', clock.w < 20000);
-  blackEl?.classList.toggle('is-low', clock.b < 20000);
 }
 
 function getGameNode() {
@@ -10197,20 +10108,6 @@ function renderAdvHistory() {
   if (next) next.disabled = !reviewing; // déjà à la position en cours
 }
 
-function advSetText(selector, text) {
-  const el = document.querySelector(selector);
-  if (el) {
-    el.textContent = text;
-  }
-}
-
-function advSetWidth(selector, pct) {
-  const el = document.querySelector(selector);
-  if (el) {
-    el.style.width = `${clamp(pct, 0, 100)}%`;
-  }
-}
-
 function advStarString(count) {
   const filled = clamp(Math.round(count), 0, 3);
   return '★'.repeat(filled) + '☆'.repeat(3 - filled);
@@ -11142,6 +11039,7 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
+  initClocks({ finishGame }); // injection : fin de partie au temps
   startClockTicker(); // U : démarre le décompte de la pendule
 }
 
