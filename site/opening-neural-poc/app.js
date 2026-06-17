@@ -74,6 +74,12 @@ import {
   renderClocks
 } from './clocks.js';
 import {
+  showNodeTooltip,
+  showEdgeTooltip,
+  showRungTooltip,
+  hideTooltip
+} from './graph-tooltips.js';
+import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
   formatStockfishLevel,
@@ -928,56 +934,6 @@ function renderGraph() {
   document.body.classList.toggle('is-brain-focused', Boolean(focusBox));
 
   renderDetails();
-}
-
-function showNodeTooltip(node, event) {
-  const comment = node.comments[0] ?? 'Aucune explication associée.';
-  elements.graphTooltip.innerHTML = `
-    <strong>${node.id === 'root' ? 'Départ' : node.san}</strong>
-    <span>Eval ${formatEval(node.evaluation?.cpWhite)} · Futur ${formatEval(node.futureMeanCp)} · ${sideLabel(node.sideToMove)} au trait</span>
-    <span>${escapeHtml(comment)}</span>
-  `;
-  positionTooltip(event);
-}
-
-function showEdgeTooltip(edge, event) {
-  const compressedText = edge.isCompressed
-    ? `<span>Séquence compressée: ${escapeHtml(edge.sequenceLabel)}</span>`
-    : '';
-  const mateText = edge.endsInMate
-    ? '<span>Branche de mat: probabilité minimale 1%.</span>'
-    : '';
-  elements.graphTooltip.innerHTML = `
-    <strong>${edge.san} · ${formatPercent(edge.probability)}</strong>
-    <span>Delta ${edge.deltaCp >= 0 ? '+' : ''}${edge.deltaCp} cp vs moyenne des suites</span>
-    <span>Moyenne du chemin: ${formatEval(edge.pathMeanCp)}</span>
-    ${compressedText}
-    ${mateText}
-  `;
-  positionTooltip(event);
-}
-
-function showRungTooltip(edge, index, event) {
-  const san = edge.sequence?.[index] ?? '';
-  const total = edge.sequence?.length ?? 0;
-  const color = moveColorAt(edge, index);
-  const img = `/pieces/merida/${color}${sanPieceLetter(san)}.svg`;
-  elements.graphTooltip.innerHTML = `
-    <strong><img class="tooltip-piece" src="${img}" alt="" aria-hidden="true"> Coup ${index + 1}/${total} : ${escapeHtml(san)}</strong>
-    <span>${sideLabel(color)} au trait · séquence ${escapeHtml(edge.sequenceLabel)}</span>
-  `;
-  positionTooltip(event);
-}
-
-function positionTooltip(event) {
-  const stageRect = elements.graphSvg.getBoundingClientRect();
-  elements.graphTooltip.hidden = false;
-  elements.graphTooltip.style.left = `${clamp(event.clientX - stageRect.left + 14, 12, stageRect.width - 298)}px`;
-  elements.graphTooltip.style.top = `${clamp(event.clientY - stageRect.top + 14, 82, stageRect.height - 126)}px`;
-}
-
-function hideTooltip() {
-  elements.graphTooltip.hidden = true;
 }
 
 // --- Vue cerveau au doigt : glisser sur le graphe pour révéler les positions ---
