@@ -5705,8 +5705,10 @@ body.screen-adventure.is-adv-board-view .live-eval-bar-tick {
   background: rgba(255, 255, 255, 0.55);
 }
 
+/* En vue joueur aventure, le zoom « Agrandir » ne sert à rien (l'échiquier est
+   déjà le héros) — on le masque. Il reste dispo en mode créatif. */
 body.screen-adventure.is-adv-board-view .board-zoom-button {
-  display: block;
+  display: none;
 }
 
 body.screen-adventure.is-adv-board-view .graph-stage {
@@ -5831,14 +5833,11 @@ body.screen-adventure.is-adv-board-view.is-engine-thinking .graph-stage {
    historique ‹ › — et le cerveau de droite est ravivé (style créatif).
    ===================================================================== */
 @media (min-width: 641px) {
-  /* Bandeau de contexte au-dessus de l'échiquier (« Ouverture · encore N coups »). */
+  /* Bandeau de contexte au-dessus de l'échiquier (« Ouverture · encore N coups »).
+     En flux dans .board-shell (au-dessus des horloges) → plus de superposition. */
   body.screen-adventure.is-adv-board-view .adv-board-top {
     display: block;
-    grid-column: 1;
-    grid-row: 1;
-    align-self: start;
-    justify-self: center;
-    margin: 0;
+    margin: 0 auto 8px;
     padding: 5px 14px;
     border: 1px solid var(--line);
     border-radius: 999px;
