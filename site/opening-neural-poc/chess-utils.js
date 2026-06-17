@@ -5,6 +5,19 @@
 import { Chess } from './vendor/chess.js';
 import { MATE_SCORE_CP } from './constants.js';
 
+// FEN de la position initiale standard, calculée une fois via chess.js.
+export const STANDARD_START_FEN = new Chess().fen();
+
+// Score vu du camp au trait (les scores moteur sont stockés côté blanc).
+export function scoreForSide(cpWhite, sideToMove) {
+  return sideToMove === 'w' ? cpWhite : -cpWhite;
+}
+
+// Coup chess.js → notation UCI (ex. { from:'e2', to:'e4' } → 'e2e4').
+export function moveToUci(move) {
+  return `${move.from}${move.to}${move.promotion ?? ''}`;
+}
+
 export function parseWhiteCentipawn(line, fen) {
   const match = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
   if (!match) {

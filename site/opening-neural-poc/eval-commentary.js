@@ -430,7 +430,3 @@ export function buildDefeatComment(fen, evaluation) {
   const pv = evaluation?.pv ? ` Ligne critique: ${evaluation.pv}.` : '';
   return `Défaite en phase libre. ${humanEval.sentence} Score Stockfish: ${evalText}. ${humanEval.advice} ${material}${pv}`;
 }
-
-export function scoreForSide(cpWhite, sideToMove) {
-  return sideToMove === 'w' ? cpWhite : -cpWhite;
-}
