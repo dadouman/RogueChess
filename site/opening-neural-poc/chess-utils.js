@@ -1,6 +1,7 @@
 // Helpers d'échecs purs (au-dessus de chess.js) : application de coups UCI,
-// parsing de la sortie moteur, évaluation terminale. Partagés par app.js et
-// engine.js. Dépendent seulement de chess.js et d'une constante.
+// parsing de la sortie moteur, encodage/décodage du score de mat, évaluation
+// terminale. Partagés par app.js et engine.js. Dépendent seulement de chess.js
+// et d'une constante.
 import { Chess } from './vendor/chess.js';
 import { MATE_SCORE_CP } from './constants.js';
 
@@ -21,6 +22,16 @@ export function parseWhiteCentipawn(line, fen) {
   }
 
   return sideToMove === 'w' ? scoreValue : -scoreValue;
+}
+
+export function isMateScore(cpWhite) {
+  return Number.isFinite(cpWhite) && Math.abs(cpWhite) >= MATE_SCORE_CP - 1000;
+}
+
+// Reconstruit le « mat en X » à partir du score encodé (cf. parseWhiteCentipawn).
+export function mateMovesFromCp(cpWhite) {
+  const penalty = MATE_SCORE_CP - Math.abs(cpWhite);
+  return Math.max(1, Math.round(penalty / 12));
 }
 
 export function parsePv(line) {
