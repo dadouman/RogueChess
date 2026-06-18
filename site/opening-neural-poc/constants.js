@@ -12,3 +12,5 @@ export const MATE_SCORE_CP = 100000;
 // l'import PGN et l'assignation des probabilités dans app.js.
 export const PROBABILITY_TEMPERATURE_CP = 95;
 export const PROBABILITY_FLOOR_MASS = 0.01;
+// Probabilité minimale réservée à une branche menant à un mat (vue du graphe).
+export const MATE_BRANCH_MIN_PROBABILITY = 0.01;
