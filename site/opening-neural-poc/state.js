@@ -36,6 +36,7 @@ export const state = {
   defaultData: null,
   isImportingPgn: false,
   activeResize: null,
+  suppressNextGraphClick: false,
   collapsedPanels: {
     left: false,
     right: false
