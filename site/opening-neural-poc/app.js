@@ -158,6 +158,14 @@ import {
   advScoreResultLine
 } from './adventure-scoring.js';
 import {
+  SHOP_THREATS_BOSS_UNLOCK,
+  advWinCoinReward,
+  advCoins,
+  advAwardCoins,
+  advThreatsUnlocked,
+  advThreatsActive
+} from './adventure-shop.js';
+import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
   formatStockfishLevel,
@@ -6416,39 +6424,6 @@ function advGameStats(gameFilter = null) {
     byOpening: [...byOpening.values()].sort(sortByGames),
     byOpponent: [...byOpponent.values()].sort((a, b) => (a.level || 0) - (b.level || 0))
   };
-}
-
-// === Boutique : monnaie « pièces », surpondération de ligne (O), menaces (R) ===
-const SHOP_THREATS_BOSS_UNLOCK = 3;  // R : « voir les menaces » débloqué après 3 boss
-
-// Récompense en pièces pour une victoire (boss = davantage selon le niveau).
-function advWinCoinReward(run) {
-  if (!run) {
-    return 0;
-  }
-  if (run.kind === 'boss') {
-    return 20 + (run.bossLevel || 1) * 5;
-  }
-  return run.trapsMode ? 8 : 5; // leçon / piège
-}
-
-function advCoins() {
-  return state.adventure?.coins || 0;
-}
-
-function advAwardCoins(amount) {
-  if (!state.adventure || amount <= 0) {
-    return;
-  }
-  state.adventure.coins = (state.adventure.coins || 0) + amount;
-}
-
-function advThreatsUnlocked() {
-  return (state.adventure?.highestBoss || 0) >= SHOP_THREATS_BOSS_UNLOCK;
-}
-
-function advThreatsActive() {
-  return Boolean(state.adventure?.threatsEnabled) && advThreatsUnlocked();
 }
 
 // === O — Pondération des choix d'ouverture de Stockfish (boutique) ===
