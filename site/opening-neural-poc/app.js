@@ -134,6 +134,14 @@ import {
   advAddXp
 } from './adventure-status.js';
 import {
+  advScoreTimePoints,
+  advShuffle,
+  advQuizOptions,
+  advFormatRelativeTime,
+  advStarString,
+  advPickBookEdge
+} from './adventure-utils.js';
+import {
   STOCKFISH_DEPTH,
   getStockfishLevelProfile,
   formatStockfishLevel,
@@ -5963,17 +5971,6 @@ function adventureLightEdge(edge) {
 const ADV_SCORE_MOVE_COUNT = 10; // leçon libre / piège
 const ADV_SCORE_ERROR_PENALTY = 50;
 
-function advScoreTimePoints(elapsedMs) {
-  const sec = (Number(elapsedMs) || 30000) / 1000;
-  if (sec <= 1) {
-    return 100;
-  }
-  if (sec >= 30) {
-    return 1;
-  }
-  return Math.round(100 - ((sec - 1) * 99) / 29);
-}
-
 function advScoreInit(run, target) {
   run.scoreTarget = target;
   run.scoreTotal = 0;
@@ -7025,39 +7022,6 @@ function applyAdvInfluenceArrows() {
 // === Révision : quiz « trouve le coup » + refaire un mat passé =================
 // Rejeu accéléré d'une ligne (livre) ou d'une partie gagnée, puis on interroge le
 // joueur sur les coups blancs. Réussir une révision recharge les vies globales.
-function advShuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(randomUnit() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// Options d'un quiz : coup correct + 2 leurres légaux, à une position (leadSans).
-function advQuizOptions(leadSans, correctUci) {
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return [];
-  }
-  for (const s of leadSans) {
-    try {
-      if (!chess.move(s)) return [];
-    } catch {
-      return [];
-    }
-  }
-  const all = chess
-    .moves({ verbose: true })
-    .map((m) => ({ uci: m.from + m.to + (m.promotion || ''), san: m.san }));
-  const correct = all.find((o) => o.uci === correctUci);
-  if (!correct) {
-    return [];
-  }
-  const decoys = advShuffle(all.filter((o) => o.uci !== correctUci)).slice(0, 2);
-  return advShuffle([correct, ...decoys]);
-}
 
 // Quiz « trouve le coup » : ligne principale du livre, interrogation des coups blancs.
 function advBuildQuizSteps() {
@@ -7545,24 +7509,6 @@ function advFormatGameOpponent(g) {
   }
   const profile = getStockfishLevelProfile(g.opponentLevel);
   return profile?.label || `Leçon N${g.opponentLevel}`;
-}
-
-// Date relative compacte pour l'historique.
-function advFormatRelativeTime(ts) {
-  const diff = Date.now() - (Number(ts) || 0);
-  if (diff < 60_000) {
-    return "à l'instant";
-  }
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) {
-    return `il y a ${mins} min`;
-  }
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) {
-    return `il y a ${hours} h`;
-  }
-  const days = Math.floor(hours / 24);
-  return `il y a ${days} j`;
 }
 
 function makeAdvTallyChip(title, won, lost) {
@@ -8567,22 +8513,6 @@ function closeAdvTournament() {
   document.body.classList.remove('is-adv-tournament-open');
 }
 
-// Tirage pondéré d'une arête de livre (par probabilité) pour l'ouverture simulée.
-function advPickBookEdge(edges) {
-  const total = edges.reduce((s, e) => s + (Number(e.probability) || 0), 0);
-  if (total <= 0) {
-    return edges[Math.floor(randomUnit() * edges.length)];
-  }
-  let roll = randomUnit() * total;
-  for (const e of edges) {
-    roll -= Number(e.probability) || 0;
-    if (roll <= 0) {
-      return e;
-    }
-  }
-  return edges[edges.length - 1];
-}
-
 // Simule un match bot-vs-bot : ouverture suivie du livre, puis playout Stockfish des
 // deux camps (à leur niveau) jusqu'au mat / résignation / plafond. Vainqueur réel.
 async function advSimulateBotMatch(whiteLevel, blackLevel) {
@@ -9268,11 +9198,6 @@ function renderAdvHistory() {
   }
   if (prev) prev.disabled = current <= 0;
   if (next) next.disabled = !reviewing; // déjà à la position en cours
-}
-
-function advStarString(count) {
-  const filled = clamp(Math.round(count), 0, 3);
-  return '★'.repeat(filled) + '☆'.repeat(3 - filled);
 }
 
 function updateHomeProgress() {
