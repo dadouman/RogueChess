@@ -52,6 +52,9 @@ export const ADV_MAX_GAMES = 60; // historique des parties conservées (M)
 
 export const ADV_GLOBAL_LIVES_MAX = 3;
 
+// Couverture du cortex requise pour débloquer l'Acte 2 (boss).
+export const ADV_ACT2_UNLOCK = 0.5;
+
 export const MATE_HANDOVER_OPTIONS = [
   { id: 1, label: 'Mat en 1' },
   { id: 2, label: 'Mat en 2' },
