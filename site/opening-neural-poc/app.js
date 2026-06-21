@@ -176,18 +176,18 @@ import {
   buildStoredMoveComment
 } from './move-verdict.js';
 import {
-  OPENING_WEIGHT_STEP,
   OPENING_WEIGHT_COST,
-  OPENING_WEIGHT_MAX,
-  advInfluenceableChoices,
   advChoiceByKey,
   advInfluenceableNodes,
   advOverweightMove,
   advInfluenceEnabled,
   advBlackChoiceWeight,
   advOpeningWeightOf,
-  advOpeningLocks,
-  advOpeningLockIs
+  advOpeningLockIs,
+  advEnsureOpeningDeck,
+  advResetOpeningInfluence,
+  advAdjustOpeningWeight,
+  advToggleOpeningLock
 } from './opening-weight.js';
 import {
   STOCKFISH_DEPTH,
@@ -6833,29 +6833,6 @@ function renderAdvWeightRecap(host) {
   host.append(summary);
 }
 
-// File des propositions du carrousel. null → on (re)remplit avec TOUS les choix
-// (cadenas en tête) ; un tableau (même vide) signifie « déjà parcourue » et n'est
-// pas re-rempli avant une partie de boss.
-function advEnsureOpeningDeck() {
-  const adv = state.adventure;
-  if (!adv) {
-    return [];
-  }
-  const all = advInfluenceableChoices();
-  const valid = new Set(all.map((choice) => choice.key));
-  adv.openingLocks = (adv.openingLocks || []).filter((key) => valid.has(key));
-  if (Array.isArray(adv.openingDeck)) {
-    adv.openingDeck = adv.openingDeck.filter((key) => valid.has(key));
-    return adv.openingDeck;
-  }
-  // (Re)remplissage : tous les choix, cadenas d'abord puis le reste dans l'ordre du livre.
-  const locked = advOpeningLocks();
-  const rest = all.map((c) => c.key).filter((key) => !locked.includes(key));
-  adv.openingDeck = [...locked, ...rest];
-  saveAdventure();
-  return adv.openingDeck;
-}
-
 // Consomme la proposition courante (passer/+5/−5) : elle disparaît du carrousel et
 // on passe à la suivante. Une proposition cadenassée n'est PAS consommée (cumulable).
 function advConsumeOpeningChoice(key) {
@@ -6875,61 +6852,6 @@ function advConsumeOpeningChoice(key) {
   }
   if (advCarouselIndex >= adv.openingDeck.length) {
     advCarouselIndex = 0;
-  }
-  saveAdventure();
-}
-
-// Remise à zéro après une partie de boss : pondérations + propositions (cadenas gardés).
-function advResetOpeningInfluence() {
-  if (!state.adventure) {
-    return;
-  }
-  state.adventure.openingWeights = {};
-  state.adventure.openingDeck = null;
-}
-
-// Achat : ajuste la pondération d'un coup de ±5 % (10 🪙). Renvoie true si appliqué.
-function advAdjustOpeningWeight(key, direction) {
-  const adv = state.adventure;
-  if (!adv || !advChoiceByKey(key)) {
-    return false;
-  }
-  if (advCoins() < OPENING_WEIGHT_COST) {
-    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
-    return false;
-  }
-  const next = clamp(
-    advOpeningWeightOf(key) + direction * OPENING_WEIGHT_STEP,
-    -OPENING_WEIGHT_MAX,
-    OPENING_WEIGHT_MAX
-  );
-  if (next === advOpeningWeightOf(key)) {
-    return false; // borne atteinte
-  }
-  adv.openingWeights = adv.openingWeights || {};
-  if (next === 0) {
-    delete adv.openingWeights[key];
-  } else {
-    adv.openingWeights[key] = next;
-  }
-  adv.coins = Math.max(0, advCoins() - OPENING_WEIGHT_COST);
-  saveAdventure();
-  return true;
-}
-
-function advToggleOpeningLock(key) {
-  const adv = state.adventure;
-  if (!adv) {
-    return;
-  }
-  adv.openingLocks = adv.openingLocks || [];
-  if (adv.openingLocks.includes(key)) {
-    adv.openingLocks = adv.openingLocks.filter((k) => k !== key);
-  } else {
-    adv.openingLocks.push(key);
-    if (!(adv.openingDeck || []).includes(key)) {
-      adv.openingDeck = [...(adv.openingDeck || []), key];
-    }
   }
   saveAdventure();
 }
