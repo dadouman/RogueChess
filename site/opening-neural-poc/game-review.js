@@ -12,6 +12,7 @@ import { formatEval } from './eval-commentary.js';
 import { Chess } from './vendor/chess.js';
 import { advOpeningDisplayLabel } from './graph.js';
 import { advFormatRelativeTime } from './adventure-utils.js';
+import { advFormatGameOpponent } from './adventure-history.js';
 import {
   advStoredVerdict,
   advGameAccuracy,
@@ -19,16 +20,14 @@ import {
   buildStoredMoveComment
 } from './move-verdict.js';
 
-// Injectés par app.js (cf. initGameReview) : rendu de l'échiquier partagé, moteur
-// Stockfish (renvoie l'évaluateur), libellé court de l'adversaire d'une partie.
+// Injectés par app.js (cf. initGameReview) : rendu de l'échiquier partagé et moteur
+// Stockfish (renvoie l'évaluateur).
 let renderBoard = () => {};
 let ensureStockfishReady = async () => null;
-let advFormatGameOpponent = () => '';
 
 export function initGameReview(deps) {
   renderBoard = deps.renderBoard ?? renderBoard;
   ensureStockfishReady = deps.ensureStockfishReady ?? ensureStockfishReady;
-  advFormatGameOpponent = deps.advFormatGameOpponent ?? advFormatGameOpponent;
 }
 
 function openGameReview(game) {

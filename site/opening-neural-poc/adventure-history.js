@@ -11,6 +11,19 @@ import {
   DEFAULT_ADV_DIFFICULTY
 } from './adventure-config.js';
 import { advRunDifficultyLevel } from './adventure-status.js';
+import { getStockfishLevelProfile } from './engine.js';
+
+// M — Libellé court de l'adversaire d'une partie enregistrée.
+export function advFormatGameOpponent(g) {
+  if (g.kind === 'boss') {
+    return `Boss N${g.bossLevel}`;
+  }
+  if (g.trapsMode) {
+    return `Piège · N${g.opponentLevel}`;
+  }
+  const profile = getStockfishLevelProfile(g.opponentLevel);
+  return profile?.label || `Leçon N${g.opponentLevel}`;
+}
 
 // Résolution du parent d'un coup dans l'arbre de revue, injectée par app.js.
 let getReviewParent = () => null;
