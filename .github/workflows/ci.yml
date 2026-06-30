@@ -25,11 +25,8 @@ jobs:
       - name: Lint (ESLint)
         run: npm run lint
 
-      # Non bloquant pour l'instant : le code n'est pas encore passé à Prettier
-      # (mass-reformat reporté pour éviter les conflits avec le travail en cours).
       - name: Format check (Prettier)
         run: npm run format:check
-        continue-on-error: true
 
       - name: Build (copie statique)
         run: npm run build

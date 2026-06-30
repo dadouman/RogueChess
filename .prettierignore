@@ -1,6 +1,7 @@
 dist/
 node_modules/
 site/opening-neural-poc/vendor/
+site/opening-neural-poc/public/
 site/pieces/
 *.wasm
 *.min.js

@@ -1,40 +1,205 @@
 import { Chess } from './vendor/chess.js';
+import { elements } from './elements.js';
+import { state } from './state.js';
+import {
+  FIRST_LEVEL_NUMBER,
+  DISPLAY_DEFAULT_FLOOR_MASS,
+  MATE_SCORE_CP,
+  PROBABILITY_TEMPERATURE_CP,
+  PROBABILITY_FLOOR_MASS
+} from './constants.js';
+import {
+  clamp,
+  formatPercent,
+  sideLabel,
+  sanPieceLetter,
+  moveColorAt,
+  escapeHtml,
+  pause,
+  randomThinkMs,
+  randomUnit
+} from './utils.js';
+import {
+  playUciOnChess,
+  terminalEvaluation,
+  isMateScore,
+  mateMovesFromCp,
+  STANDARD_START_FEN,
+  scoreForSide,
+  moveToUci
+} from './chess-utils.js';
+import {
+  formatEval,
+  joinHumanList,
+  buildHumanEval,
+  buildDefeatComment
+} from './eval-commentary.js';
+import {
+  splitPgnGames,
+  parsePgnGame,
+  makeLineEventsUnique,
+  buildGraphFromPgnLines,
+  summarizeImportedGraph
+} from './pgn-import.js';
+import {
+  getNode,
+  getEdge,
+  getRawOutgoingEdges,
+  normalizeWeightedCandidates,
+  pickWeightedCandidate
+} from './graph.js';
+import {
+  ADV_DIFFICULTIES,
+  TIME_CONTROLS,
+  DEFAULT_TIME_CONTROL,
+  ADV_GLOBAL_LIVES_MAX,
+  MATE_HANDOVER_OPTIONS,
+  DEFAULT_MATE_HANDOVER,
+  ADV_ACT2_UNLOCK
+} from './adventure-config.js';
+import { createAdventureState, loadAdventure, saveAdventure } from './adventure-state.js';
+import { showAdventureToast } from './toast.js';
+import { getTimeControlConfig } from './time-control.js';
+import { clampPanelWidths, bindPanelResizeHandles } from './panels.js';
+import { advSetText, advSetWidth } from './dom.js';
+import {
+  initClocks,
+  makeInitialClock,
+  startClockTicker,
+  deductStockfishClock,
+  renderClocks
+} from './clocks.js';
+import {
+  showNodeTooltip,
+  showEdgeTooltip,
+  showRungTooltip,
+  hideTooltip
+} from './graph-tooltips.js';
+import {
+  computeLayout,
+  computeBrainFocusViewBox,
+  computeEdgeSequencePositions,
+  brainOutlinePath,
+  edgeControlPoints,
+  edgePath,
+  cubicBezierAt
+} from './graph-geometry.js';
+import {
+  nodeMatchesFilter,
+  edgeMatchesFilter,
+  getBranchValue,
+  isMateNode,
+  branchEventuallyEndsInMate,
+  applyMinimumProbabilities,
+  normalizeScoredProbabilities,
+  recomputeViewProbabilities,
+  createCompressedView
+} from './graph-view-model.js';
+import {
+  initBrainScrub,
+  bindBrainScrubEvents,
+  isBrainScrubContext,
+  showBrainScrub
+} from './brain-scrub.js';
+import {
+  advBrainProgress,
+  advAwardPlayerXp,
+  advPlayerLevel,
+  advPlayerProgress,
+  advCurrentDifficulty
+} from './adventure-progress.js';
+import {
+  ADV_BOSS_STARS,
+  advCoverage,
+  advCoveragePct,
+  advBossXp,
+  advAct2Unlocked,
+  advBossRecord,
+  advBossStreakCount,
+  advBossConquered,
+  advBossUnlocked,
+  advCurrentBossTarget,
+  advBossStarsMarkup,
+  isAdventureRun,
+  advRunDeficitThresholdCp,
+  isAdventureMastered,
+  isAdventureLesson,
+  isAdventureEdgeMastered,
+  advAddXp
+} from './adventure-status.js';
+import { advShuffle, advQuizOptions, advStarString, advPickBookEdge } from './adventure-utils.js';
+import {
+  advGlobalLives,
+  advLivesUnlocked,
+  advCanFightBots,
+  advSyncGlobalLives,
+  advConsumeGlobalLife,
+  advRefillGlobalLivesFromLearning,
+  advNotifyNoLives
+} from './adventure-lives.js';
+import {
+  ADV_SCORE_MOVE_COUNT,
+  advScoreInit,
+  advScoreRegisterMove,
+  advScoreArmTimer,
+  advScoreKey,
+  advScoreResultLine
+} from './adventure-scoring.js';
+import {
+  SHOP_THREATS_BOSS_UNLOCK,
+  advWinCoinReward,
+  advCoins,
+  advAwardCoins,
+  advThreatsUnlocked,
+  advThreatsActive
+} from './adventure-shop.js';
+import {
+  initAdventureHistory,
+  buildGameReviewMoves,
+  advRecordGame,
+  advRefreshRecordedMoves,
+  advFormatGameOpponent
+} from './adventure-history.js';
+import { renderAdvGameHistory } from './adventure-history-ui.js';
+import { advMoveVerdict, buildMoveStatsRow } from './move-verdict.js';
+import {
+  advChoiceByKey,
+  advInfluenceableNodes,
+  advOverweightMove,
+  advInfluenceEnabled,
+  advBlackChoiceWeight,
+  advOpeningWeightOf,
+  advResetOpeningInfluence
+} from './opening-weight.js';
+import { openOpeningViewer, closeOpeningViewer, initOpeningViewer } from './opening-viewer.js';
+import {
+  openGameReview,
+  closeGameReview,
+  gameReviewStep,
+  gameReviewClickSquare,
+  initGameReview
+} from './game-review.js';
+import {
+  STOCKFISH_DEPTH,
+  getStockfishLevelProfile,
+  formatStockfishLevel,
+  BrowserStockfishEvaluator
+} from './engine.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const MATE_SCORE_CP = 100000;
-const DISPLAY_DEFAULT_FLOOR_MASS = 0.01;
-const MATE_BRANCH_MIN_PROBABILITY = 0.01;
-const PROBABILITY_TEMPERATURE_CP = 95;
-const PROBABILITY_FLOOR_MASS = 0.01;
-const FIRST_LEVEL_NUMBER = 1;
 const FREE_SURVIVAL_TARGETS = [5, 7, 10, 13, 15];
 const IMPORT_STOCKFISH_DEPTH = 5;
 const STARTING_LIVES = 3;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
-const SURVIVAL_LIMIT_CP = -100;
-const STOCKFISH_DEPTH = 8;
-const DEFAULT_STOCKFISH_LEVEL = 5;
-const STOCKFISH_LEVELS = {
-  1: { level: 1, label: 'Débutant', elo: 1320, skill: 1, depth: 2, movetime: 80 },
-  2: { level: 2, label: 'Facile', elo: 1450, skill: 3, depth: 3, movetime: 120 },
-  3: { level: 3, label: 'Club faible', elo: 1600, skill: 5, depth: 4, movetime: 180 },
-  4: { level: 4, label: 'Club', elo: 1750, skill: 7, depth: 5, movetime: 250 },
-  5: { level: 5, label: 'Solide', elo: 1900, skill: 9, depth: 6, movetime: 350 },
-  6: { level: 6, label: 'Fort', elo: 2100, skill: 12, depth: 7, movetime: 500 },
-  7: { level: 7, label: 'Expert', elo: 2300, skill: 15, depth: 8, movetime: 700 },
-  8: { level: 8, label: 'Maître', elo: 2500, skill: 17, depth: 10, movetime: 1000 },
-  9: { level: 9, label: 'Trop fort', elo: 2800, skill: 19, depth: 12, movetime: 1400 },
-  10: { level: 10, label: 'Stockfish pur', elo: null, skill: 20, depth: 14, movetime: null }
-};
 // Conversion automatique « cinématique » de la phase libre : dès que les Blancs
 // dépassent +2, on avance la partie seul (meilleurs coups blancs vs défense Stockfish)
 // jusqu'à voir un mat forcé, puis on rend la main au joueur pour conclure.
-const VICTORY_CINEMATIC_TRIGGER_CP = 200;  // +2.00 : seuil de déclenchement
-const VICTORY_CINEMATIC_KEEP_CP = 150;     // si l'avantage retombe sous +1.50, on rend la main
-const VICTORY_CINEMATIC_DEPTH = 10;        // profondeur d'analyse pendant la conversion
-const VICTORY_CINEMATIC_MAX_PLIES = 36;    // garde-fou : ~18 coups complets max
-const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
+const VICTORY_CINEMATIC_TRIGGER_CP = 200; // +2.00 : seuil de déclenchement
+const VICTORY_CINEMATIC_KEEP_CP = 150; // si l'avantage retombe sous +1.50, on rend la main
+const VICTORY_CINEMATIC_DEPTH = 10; // profondeur d'analyse pendant la conversion
+const VICTORY_CINEMATIC_MAX_PLIES = 36; // garde-fou : ~18 coups complets max
+const VICTORY_CINEMATIC_STEP_MS = 650; // tempo entre deux coups
 // Niveaux de difficulté Aventure : chaque niveau active un sous-ensemble d'aides.
 //  - moveChoices : coups suggérés (touches + indices dorés du bon coup)
 //  - legalDots   : points (cases légales) quand on sélectionne une pièce
@@ -43,231 +208,7 @@ const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
 // Cases légales (« points verts ») : visibles aux niveaux faciles, masquées en
 // Normal mais révélées après 5 s de réflexion ou après une erreur (Q), et jamais
 // affichées en Difficile. Les niveaux se distinguent aussi par les autres aides.
-const ADV_DIFFICULTIES = [
-  {
-    id: 'tres-facile',
-    label: 'Très facile',
-    icon: '🍼',
-    desc: 'Coups suggérés, évaluation et retour arrière (cases légales toujours visibles).',
-    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: true }
-  },
-  {
-    id: 'facile',
-    label: 'Facile',
-    icon: '🙂',
-    desc: 'Coups suggérés et évaluation (cases légales toujours visibles).',
-    aids: { moveChoices: true, legalDots: true, evaluation: true, takeback: false }
-  },
-  {
-    id: 'normal',
-    label: 'Normal',
-    icon: '⚔️',
-    desc: 'Évaluation seule. Cases légales masquées, révélées après 5 s ou une erreur.',
-    aids: { moveChoices: false, legalDots: false, evaluation: true, takeback: false },
-    legalDotsRevealable: true
-  },
-  {
-    id: 'difficile',
-    label: 'Difficile',
-    icon: '🔥',
-    desc: 'Aucune aide (cases légales jamais affichées).',
-    aids: { moveChoices: false, legalDots: false, evaluation: false, takeback: false }
-  }
-];
-const DEFAULT_ADV_DIFFICULTY = 'facile';
 const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
-
-// U — Cadences : pendule des deux côtés. baseMs = temps total par camp ;
-// meanMs = temps moyen consommé par Stockfish à chaque coup. Le temps réel
-// consommé par Stockfish suit une loi normale d'écart-type σ = meanMs × 2.
-const TIME_CONTROLS = [
-  { id: 'off', label: 'Sans horloge', icon: '∞', baseMs: 0, meanMs: 0 },
-  { id: 'bullet', label: 'Bullet 2′', icon: '🚅', baseMs: 120000, meanMs: 1000 },
-  { id: 'blitz', label: 'Blitz 5′', icon: '⚡', baseMs: 300000, meanMs: 3000 },
-  { id: 'normal', label: 'Rapide 10′', icon: '⏱️', baseMs: 600000, meanMs: 6000 },
-  { id: 'custom', label: 'Perso', icon: '🎛️', baseMs: 0, meanMs: 0 }
-];
-const DEFAULT_TIME_CONTROL = 'off';
-
-function getTimeControlConfig(id) {
-  // Cadence personnalisée : durée librement réglée par le joueur (en minutes).
-  if (id === 'custom') {
-    const minutes = clamp(Number(state.adventure?.customClockMinutes) || 10, 0.5, 180);
-    const baseMs = Math.round(minutes * 60000);
-    // Temps moyen de réflexion de Stockfish dérivé de la cadence (~0,6 s/minute,
-    // cohérent avec bullet/blitz/rapide). σ = moyenne×2 comme partout.
-    const meanMs = Math.max(300, Math.round(minutes * 600));
-    return { id: 'custom', label: 'Perso', icon: '🎛️', baseMs, meanMs };
-  }
-  return TIME_CONTROLS.find((tc) => tc.id === id) || TIME_CONTROLS[0];
-}
-
-// Tirage gaussien (Box-Muller).
-function gaussianRandom(mean, sd) {
-  let u = 0;
-  let v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-
-// Temps consommé par Stockfish pour un coup : loi normale (moyenne meanMs,
-// σ = meanMs × 2), bornée à un minimum positif.
-function sampleStockfishMoveTime(tc) {
-  if (!tc || tc.meanMs <= 0) {
-    return 0;
-  }
-  return Math.max(150, gaussianRandom(tc.meanMs, tc.meanMs * 2));
-}
-
-// Format horloge : mm:ss au-dessus de 20 s, s.d en dessous (pression du temps).
-function formatClock(ms) {
-  const clamped = Math.max(0, ms || 0);
-  if (clamped >= 20000) {
-    const totalSec = Math.ceil(clamped / 1000);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  }
-  return `${(clamped / 1000).toFixed(1)}`;
-}
-const STANDARD_START_FEN = new Chess().fen();
-const MATERIAL_VALUES_CP = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900
-};
-const PIECE_LABELS = {
-  p: ['pion', 'pions'],
-  n: ['cavalier', 'cavaliers'],
-  b: ['fou', 'fous'],
-  r: ['tour', 'tours'],
-  q: ['dame', 'dames']
-};
-
-const elements = {
-  shell: document.querySelector('.poc-shell'),
-  summaryText: document.querySelector('#summaryText'),
-  lineFilter: document.querySelector('#lineFilter'),
-  pgnFileInput: document.querySelector('#pgnFileInput'),
-  pgnTextInput: document.querySelector('#pgnTextInput'),
-  buildPgnButton: document.querySelector('#buildPgnButton'),
-  defaultPgnButton: document.querySelector('#defaultPgnButton'),
-  pgnImportStatus: document.querySelector('#pgnImportStatus'),
-  temperatureRange: document.querySelector('#temperatureRange'),
-  temperatureValue: document.querySelector('#temperatureValue'),
-  floorRange: document.querySelector('#floorRange'),
-  floorValue: document.querySelector('#floorValue'),
-  viewModeButton: document.querySelector('#viewModeButton'),
-  newGameButton: document.querySelector('#newGameButton'),
-  challengeModeButton: document.querySelector('#challengeModeButton'),
-  explorationModeButton: document.querySelector('#explorationModeButton'),
-  stockfishLevelRange: document.querySelector('#stockfishLevelRange'),
-  stockfishLevelValue: document.querySelector('#stockfishLevelValue'),
-  survivalLimitRange: document.querySelector('#survivalLimitRange'),
-  survivalLimitValue: document.querySelector('#survivalLimitValue'),
-  gameLevelLabel: document.querySelector('#gameLevelLabel'),
-  lifeRow: document.querySelector('#lifeRow'),
-  gameTitle: document.querySelector('#gameTitle'),
-  gamePhase: document.querySelector('#gamePhase'),
-  gameFreeRemaining: document.querySelector('#gameFreeRemaining'),
-  gameEval: document.querySelector('#gameEval'),
-  gameTurn: document.querySelector('#gameTurn'),
-  moveForm: document.querySelector('#moveForm'),
-  moveInputLabel: document.querySelector('#moveInputLabel'),
-  moveInput: document.querySelector('#moveInput'),
-  playMoveButton: document.querySelector('#playMoveButton'),
-  gameMessage: document.querySelector('#gameMessage'),
-  expectedMoveList: document.querySelector('#expectedMoveList'),
-  opponentGraphMini: document.querySelector('#opponentGraphMini'),
-  moveLogList: document.querySelector('#moveLogList'),
-  freeReviewPanel: document.querySelector('#freeReviewPanel'),
-  bestPathButton: document.querySelector('#bestPathButton'),
-  randomPathButton: document.querySelector('#randomPathButton'),
-  resetButton: document.querySelector('#resetButton'),
-  nodesCount: document.querySelector('#nodesCount'),
-  edgesCount: document.querySelector('#edgesCount'),
-  branchingCount: document.querySelector('#branchingCount'),
-  engineDepth: document.querySelector('#engineDepth'),
-  selectedPathLabel: document.querySelector('#selectedPathLabel'),
-  graphSvg: document.querySelector('#graphSvg'),
-  graphTooltip: document.querySelector('#graphTooltip'),
-  nodeTitle: document.querySelector('#nodeTitle'),
-  nodeSubtitle: document.querySelector('#nodeSubtitle'),
-  boardZoomButton: document.querySelector('#boardZoomButton'),
-  boardZoomLayer: document.querySelector('#boardZoomLayer'),
-  boardZoomPreview: document.querySelector('#boardZoomPreview'),
-  boardZoomCloseButton: document.querySelector('#boardZoomCloseButton'),
-  boardZoomTitle: document.querySelector('#boardZoomTitle'),
-  boardPreview: document.querySelector('#boardPreview'),
-  detailInfoContent: document.querySelector('#detailInfoContent'),
-  graphInfoDrawer: document.querySelector('#graphInfoDrawer'),
-  graphInfoContent: document.querySelector('#graphInfoContent'),
-  resizeHandles: document.querySelectorAll('[data-resize-side]'),
-  panelCollapseButtons: document.querySelectorAll('[data-collapse-side]'),
-  segmentExplorer: document.querySelector('#segmentExplorer'),
-  segmentProgress: document.querySelector('#segmentProgress'),
-  segmentToggleButton: document.querySelector('#segmentToggleButton'),
-  segmentPrevButton: document.querySelector('#segmentPrevButton'),
-  segmentNextButton: document.querySelector('#segmentNextButton'),
-  segmentStepList: document.querySelector('#segmentStepList'),
-  nodeEval: document.querySelector('#nodeEval'),
-  nodeFuture: document.querySelector('#nodeFuture'),
-  nodeTurn: document.querySelector('#nodeTurn'),
-  nodeComment: document.querySelector('#nodeComment'),
-  choiceList: document.querySelector('#choiceList'),
-  nodeSources: document.querySelector('#nodeSources'),
-  liveEvalBar: document.querySelector('#liveEvalBar'),
-  liveEvalBarFill: document.querySelector('#liveEvalBarFill'),
-  liveMoveLog: document.querySelector('#liveMoveLog'),
-  advBrainThinking: document.querySelector('#advBrainThinking')
-};
-
-const state = {
-  data: null,
-  view: null,
-  nodesById: new Map(),
-  edgesById: new Map(),
-  nodesByFen: new Map(),
-  nodesByPositionKey: new Map(),
-  layout: new Map(),
-  selectedNodeId: 'root',
-  highlightedEdges: new Set(),
-  highlightedNodes: new Set(['root']),
-  selectedSegment: null,
-  segmentStepIndex: 0,
-  segmentExpanded: false,
-  boardZoomed: false,
-  currentPreviewNode: null,
-  viewMode: 'human',
-  playMode: 'challenge',
-  campaignLevel: FIRST_LEVEL_NUMBER,
-  stockfishLevel: DEFAULT_STOCKFISH_LEVEL,
-  survivalLimitCp: SURVIVAL_LIMIT_CP,
-  lineFilter: 'all',
-  temperatureCp: 95,
-  floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
-  stockfish: null,
-  defaultData: null,
-  isImportingPgn: false,
-  activeResize: null,
-  collapsedPanels: {
-    left: false,
-    right: false
-  },
-  panelWidthMemory: {
-    left: 328,
-    right: 340
-  },
-  screen: 'home',
-  activeBook: 'default',
-  adventure: null,
-  advRun: null,
-  advViewMode: 'board',
-  game: null
-};
 
 function createSvgElement(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
@@ -275,10 +216,6 @@ function createSvgElement(tag, attributes = {}) {
     node.setAttribute(key, value);
   }
   return node;
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function getLevelObjective(level) {
@@ -304,54 +241,6 @@ function formatSurvivalTarget(game) {
   return isMateObjective(game) ? "jusqu'au mat" : `${game.objective.target}`;
 }
 
-function hashString(value) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(index);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function formatEval(cpWhite) {
-  if (!Number.isFinite(cpWhite)) {
-    return '-';
-  }
-  if (Math.abs(cpWhite) >= MATE_SCORE_CP - 1000) {
-    const x = mateMovesFromCp(cpWhite);
-    return cpWhite > 0 ? `Mat blanc en ${x}` : `Mat noir en ${x}`;
-  }
-  return `${cpWhite >= 0 ? '+' : ''}${(cpWhite / 100).toFixed(2)}`;
-}
-
-function formatPercent(value) {
-  const percent = Math.round(value * 100);
-  if (value > 0 && percent === 0) {
-    return '<1%';
-  }
-  return `${percent}%`;
-}
-
-function sideLabel(side) {
-  if (side === 'w') {
-    return 'Blancs';
-  }
-  if (side === 'b') {
-    return 'Noirs';
-  }
-  return '-';
-}
-
-function getStockfishLevelProfile(level = state.stockfishLevel) {
-  const safeLevel = clamp(Math.round(Number(level) || DEFAULT_STOCKFISH_LEVEL), 1, 10);
-  return STOCKFISH_LEVELS[safeLevel] ?? STOCKFISH_LEVELS[DEFAULT_STOCKFISH_LEVEL];
-}
-
-function formatStockfishLevel(profile = getStockfishLevelProfile()) {
-  const strength = profile.elo ? `${profile.elo} Elo` : 'force max';
-  return `N${profile.level} ${profile.label} · ${strength}`;
-}
-
 function updateStockfishLevelUi() {
   const profile = getStockfishLevelProfile();
   elements.stockfishLevelRange.value = String(profile.level);
@@ -361,780 +250,6 @@ function updateStockfishLevelUi() {
 function updateSurvivalLimitUi() {
   elements.survivalLimitRange.value = String(state.survivalLimitCp);
   elements.survivalLimitValue.textContent = formatEval(state.survivalLimitCp);
-}
-
-function formatPieceCount(piece, count) {
-  const [singular, plural] = PIECE_LABELS[piece] ?? ['pièce', 'pièces'];
-  if (count === 1) {
-    const article = piece === 'b' || piece === 'n' || piece === 'p' ? 'un' : 'une';
-    return `${article} ${singular}`;
-  }
-  if (count === 2) {
-    return `deux ${plural}`;
-  }
-  return `${count} ${plural}`;
-}
-
-function joinHumanList(items) {
-  if (!items.length) {
-    return '';
-  }
-  if (items.length === 1) {
-    return items[0];
-  }
-  return `${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
-}
-
-function summarizeMaterial(fen) {
-  const counts = {
-    w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
-    b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
-  };
-  const board = fen.split(/\s+/)[0] ?? '';
-
-  for (const char of board) {
-    const piece = char.toLowerCase();
-    if (!Object.prototype.hasOwnProperty.call(MATERIAL_VALUES_CP, piece)) {
-      continue;
-    }
-    const color = char === char.toUpperCase() ? 'w' : 'b';
-    counts[color][piece] += 1;
-  }
-
-  let cpWhite = 0;
-  const deficits = [];
-  const surpluses = [];
-  for (const piece of Object.keys(MATERIAL_VALUES_CP)) {
-    const delta = counts.w[piece] - counts.b[piece];
-    cpWhite += delta * MATERIAL_VALUES_CP[piece];
-    if (delta < 0) {
-      deficits.push({ piece, count: Math.abs(delta) });
-    } else if (delta > 0) {
-      surpluses.push({ piece, count: delta });
-    }
-  }
-
-  return { cpWhite, deficits, surpluses };
-}
-
-function materialEquivalent(absCp) {
-  if (absCp < 80) {
-    return 'moins d’un pion';
-  }
-  if (absCp < 180) {
-    return 'environ un pion';
-  }
-  if (absCp < 290) {
-    return 'environ deux pions';
-  }
-  if (absCp < 430) {
-    return 'environ une pièce légère';
-  }
-  if (absCp < 680) {
-    return 'environ une tour';
-  }
-  if (absCp < 950) {
-    return 'environ une tour et une pièce légère';
-  }
-  return 'environ une dame ou plus';
-}
-
-function materialComment(fen) {
-  const material = summarizeMaterial(fen);
-  if (material.cpWhite < -70) {
-    const missing = material.deficits.map(({ piece, count }) => formatPieceCount(piece, count));
-    const detail = missing.length ? ` Il manque notamment ${joinHumanList(missing)} côté blanc.` : '';
-    return `Matériellement, les Blancs accusent ${materialEquivalent(Math.abs(material.cpWhite))}.${detail}`;
-  }
-  if (material.cpWhite > 70) {
-    const surplus = material.surpluses.map(({ piece, count }) => formatPieceCount(piece, count));
-    const detail = surplus.length ? ` Les Blancs ont même ${joinHumanList(surplus)} de plus.` : '';
-    return `Le matériel n'explique pas la défaite.${detail} Le problème vient surtout de la sécurité du roi, de l'activité ou d'une menace tactique.`;
-  }
-  return "Le matériel est presque égal: la défaite vient plutôt d'une faiblesse tactique, du roi exposé ou d'une suite forcée.";
-}
-
-function getAdvantageLevel(absCp) {
-  if (absCp < 40) {
-    return { level: 'équilibrée', danger: 0 };
-  }
-  if (absCp < 120) {
-    return { level: 'léger avantage', danger: 1 };
-  }
-  if (absCp < 250) {
-    return { level: 'avantage net', danger: 2 };
-  }
-  if (absCp < 500) {
-    return { level: 'gros avantage', danger: 3 };
-  }
-  return { level: 'position probablement gagnante', danger: 3 };
-}
-
-function formatAdvantagePhrase(level) {
-  return level === 'position probablement gagnante'
-    ? 'une position probablement gagnante'
-    : `un ${level}`;
-}
-
-function formatMaterialAdvantageAmount(absCp) {
-  const equivalent = materialEquivalent(absCp);
-  return equivalent.startsWith('environ') ? `d'${equivalent}` : `de ${equivalent}`;
-}
-
-function sideSubject(color) {
-  return color === 'w' ? 'Les Blancs' : 'Les Noirs';
-}
-
-function sideAdjective(color) {
-  return color === 'w' ? 'blanc' : 'noir';
-}
-
-function oppositeColor(color) {
-  return color === 'w' ? 'b' : 'w';
-}
-
-function safeChess(fen) {
-  try {
-    return new Chess(fen);
-  } catch {
-    return null;
-  }
-}
-
-function findKingSquare(fen, color) {
-  const chess = safeChess(fen);
-  if (!chess) {
-    return null;
-  }
-
-  for (const row of chess.board()) {
-    for (const piece of row) {
-      if (piece?.type === 'k' && piece.color === color) {
-        return piece.square;
-      }
-    }
-  }
-  return null;
-}
-
-function adjacentSquares(square) {
-  if (!square) {
-    return [];
-  }
-  const fileIndex = square.charCodeAt(0) - 97;
-  const rank = Number(square[1]);
-  const squares = [];
-  for (let fileDelta = -1; fileDelta <= 1; fileDelta += 1) {
-    for (let rankDelta = -1; rankDelta <= 1; rankDelta += 1) {
-      if (fileDelta === 0 && rankDelta === 0) {
-        continue;
-      }
-      const nextFile = fileIndex + fileDelta;
-      const nextRank = rank + rankDelta;
-      if (nextFile >= 0 && nextFile < 8 && nextRank >= 1 && nextRank <= 8) {
-        squares.push(`${'abcdefgh'[nextFile]}${nextRank}`);
-      }
-    }
-  }
-  return squares;
-}
-
-function hasKingDanger(fen, favoredColor, evaluation = {}) {
-  const chess = safeChess(fen);
-  const targetColor = oppositeColor(favoredColor);
-  const kingSquare = findKingSquare(fen, targetColor);
-  if (!chess || !kingSquare) {
-    return false;
-  }
-
-  const pv = String(evaluation.pv ?? '');
-  if (/[+#]/.test(pv.split(/\s+/).slice(0, 3).join(' '))) {
-    return true;
-  }
-
-  if (chess.isAttacked(kingSquare, favoredColor)) {
-    return true;
-  }
-
-  const attackedShelter = adjacentSquares(kingSquare).filter(
-    (square) => chess.attackers(square, favoredColor).length > 0
-  );
-  return attackedShelter.length >= 3;
-}
-
-function hasTacticalThreat(evaluation = {}) {
-  const candidateMoves = String(evaluation.pv ?? '').split(/\s+/).slice(0, 3).join(' ');
-  return /[x+#]/.test(candidateMoves);
-}
-
-function hasPassedPawn(fen, color) {
-  const chess = safeChess(fen);
-  if (!chess) {
-    return false;
-  }
-
-  const pawns = [];
-  const enemyPawns = [];
-  for (const row of chess.board()) {
-    for (const piece of row) {
-      if (piece?.type !== 'p') {
-        continue;
-      }
-      const target = piece.color === color ? pawns : enemyPawns;
-      target.push({
-        file: piece.square.charCodeAt(0) - 97,
-        rank: Number(piece.square[1])
-      });
-    }
-  }
-
-  return pawns.some((pawn) => {
-    const isAdvanced = color === 'w' ? pawn.rank >= 5 : pawn.rank <= 4;
-    if (!isAdvanced) {
-      return false;
-    }
-    return !enemyPawns.some((enemy) => {
-      const sameCorridor = Math.abs(enemy.file - pawn.file) <= 1;
-      const ahead = color === 'w' ? enemy.rank > pawn.rank : enemy.rank < pawn.rank;
-      return sameCorridor && ahead;
-    });
-  });
-}
-
-function mobilityForColor(fen, color) {
-  const parts = String(fen ?? '').split(/\s+/);
-  if (parts.length < 6) {
-    return 0;
-  }
-  parts[1] = color;
-  const chess = safeChess(parts.join(' '));
-  return chess ? chess.moves().length : 0;
-}
-
-function developedMinorCount(fen, color) {
-  const chess = safeChess(fen);
-  if (!chess) {
-    return 0;
-  }
-  const homeSquares = color === 'w' ? ['b1', 'c1', 'f1', 'g1'] : ['b8', 'c8', 'f8', 'g8'];
-  return homeSquares.filter((square) => {
-    const piece = chess.get(square);
-    return !piece || piece.color !== color || !['b', 'n'].includes(piece.type);
-  }).length;
-}
-
-function buildHumanEvalReasons(fen, evaluation, favoredColor) {
-  const material = summarizeMaterial(fen);
-  const materialCp = favoredColor === 'w' ? material.cpWhite : -material.cpWhite;
-  const reasons = [];
-
-  if (hasKingDanger(fen, favoredColor, evaluation)) {
-    reasons.push({
-      type: 'kingDanger',
-      text: `le roi ${sideAdjective(oppositeColor(favoredColor))} est sous pression`
-    });
-  }
-
-  if (materialCp > 70) {
-    reasons.push({
-      type: 'material',
-      text: `ils ont un avantage matériel ${formatMaterialAdvantageAmount(materialCp)}`
-    });
-  }
-
-  if (hasTacticalThreat(evaluation)) {
-    reasons.push({
-      type: 'tacticalThreat',
-      text: 'la ligne Stockfish commence par une menace tactique'
-    });
-  }
-
-  if (hasPassedPawn(fen, favoredColor)) {
-    reasons.push({
-      type: 'passedPawn',
-      text: 'un pion passé peut devenir dangereux'
-    });
-  }
-
-  const favoredMobility = mobilityForColor(fen, favoredColor);
-  const opponentMobility = mobilityForColor(fen, oppositeColor(favoredColor));
-  if (favoredMobility >= opponentMobility + 8) {
-    reasons.push({
-      type: 'activity',
-      text: 'leurs pièces ont nettement plus d’activité'
-    });
-  }
-
-  if (
-    developedMinorCount(fen, favoredColor) >=
-    developedMinorCount(fen, oppositeColor(favoredColor)) + 2
-  ) {
-    reasons.push({
-      type: 'development',
-      text: 'ils sont plus rapides dans le développement'
-    });
-  }
-
-  return reasons;
-}
-
-function buildHumanEvalAdvice(favoredColor, reasons) {
-  if (favoredColor === 'w') {
-    return "Plan: conserve l'initiative, simplifie quand c'est favorable et évite de rendre le contre-jeu.";
-  }
-
-  if (reasons.some((reason) => reason.type === 'kingDanger')) {
-    return 'Priorité: sécuriser le roi blanc et neutraliser les menaces directes.';
-  }
-  if (reasons.some((reason) => reason.type === 'material')) {
-    return 'Priorité: récupérer du matériel ou forcer une activité suffisante en compensation.';
-  }
-  if (reasons.some((reason) => reason.type === 'tacticalThreat')) {
-    return 'Priorité: répondre à la menace immédiate avant de chercher du contre-jeu.';
-  }
-  if (reasons.some((reason) => reason.type === 'activity')) {
-    return 'Priorité: activer une pièce passive et contester les cases clés.';
-  }
-  return 'Priorité: défendre sobrement, échanger une pièce active adverse et éviter une deuxième faiblesse.';
-}
-
-function buildHumanEval(fen, evaluation = {}) {
-  const cpWhite = evaluation.cpWhite;
-  if (!Number.isFinite(cpWhite)) {
-    return {
-      side: 'Inconnu',
-      level: 'incertain',
-      danger: 2,
-      sentence: 'Stockfish ne donne pas un score stable, mais la ligne indique un problème concret.',
-      advice: 'Priorité: suivre la ligne critique et trouver la première menace adverse.'
-    };
-  }
-
-  if (Math.abs(cpWhite) >= MATE_SCORE_CP - 1000) {
-    const favoredColor = cpWhite > 0 ? 'w' : 'b';
-    const targetColor = oppositeColor(favoredColor);
-    return {
-      side: sideLabel(favoredColor),
-      level: 'mat forcé',
-      danger: 3,
-      sentence: `${sideSubject(favoredColor)} ont une attaque décisive: le roi ${sideAdjective(targetColor)} ne peut plus éviter le mat dans la ligne.`,
-      advice:
-        favoredColor === 'b'
-          ? 'Priorité: chercher le premier coup qui empêche le mat, même au prix de matériel.'
-          : 'Plan: garder les pièces actives autour du roi noir et ne pas offrir de fuite.'
-    };
-  }
-
-  const absCp = Math.abs(cpWhite);
-  if (absCp < 40) {
-    return {
-      side: 'Égalité',
-      level: 'équilibrée',
-      danger: 0,
-      sentence: 'La position est équilibrée: aucun camp n’a d’avantage clair.',
-      advice: 'Plan: améliorer les pièces et éviter les faiblesses inutiles.'
-    };
-  }
-
-  const favoredColor = cpWhite > 0 ? 'w' : 'b';
-  const { level, danger } = getAdvantageLevel(absCp);
-  const reasons = buildHumanEvalReasons(fen, evaluation, favoredColor);
-  const reasonText = reasons.length
-    ? `: ${joinHumanList(reasons.slice(0, 2).map((reason) => reason.text))}`
-    : '';
-  return {
-    side: sideLabel(favoredColor),
-    level,
-    danger,
-    reasons,
-    sentence: `${sideSubject(favoredColor)} ont ${formatAdvantagePhrase(level)}${reasonText}.`,
-    advice: buildHumanEvalAdvice(favoredColor, reasons)
-  };
-}
-
-function buildDefeatComment(fen, evaluation) {
-  const evalText = formatEval(evaluation?.cpWhite);
-  const humanEval = buildHumanEval(fen, evaluation);
-  const material = materialComment(fen);
-  const pv = evaluation?.pv ? ` Ligne critique: ${evaluation.pv}.` : '';
-  return `Défaite en phase libre. ${humanEval.sentence} Score Stockfish: ${evalText}. ${humanEval.advice} ${material}${pv}`;
-}
-
-function scoreForSide(cpWhite, sideToMove) {
-  return sideToMove === 'w' ? cpWhite : -cpWhite;
-}
-
-function getNode(id) {
-  return state.nodesById.get(id);
-}
-
-function getEdge(id) {
-  return state.edgesById.get(id);
-}
-
-const RESULT_TOKENS = new Set(['1-0', '0-1', '1/2-1/2', '*']);
-
-function normalizePgnText(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
-
-function splitPgnGames(pgn) {
-  const normalized = String(pgn ?? '').replace(/\r\n/g, '\n').trim();
-  if (!normalized) {
-    return [];
-  }
-  const games = normalized
-    .split(/\n\s*\n(?=\[Event\s)/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-  return games.length ? games : [normalized];
-}
-
-function parsePgnHeaders(block) {
-  const headers = {};
-  for (const match of block.matchAll(/^\[(\w+)\s+"((?:\\"|[^"])*)"\]$/gm)) {
-    headers[match[1]] = match[2].replace(/\\"/g, '"');
-  }
-  return headers;
-}
-
-function stripPgnHeaders(block) {
-  return block
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('['))
-    .join(' ')
-    .trim();
-}
-
-function stripSanAnnotation(san) {
-  return san
-    .replace(/[!?]+$/g, '')
-    .replace(/^[.]+/g, '')
-    .trim();
-}
-
-function isMoveNumberToken(token) {
-  return /^\d+\.(?:\.\.)?$/.test(token) || /^\d+\.\.\.$/.test(token);
-}
-
-function stripInlineMoveNumber(token) {
-  return token.replace(/^\d+\.(?:\.\.)?/, '').trim();
-}
-
-function tokenizePgnMovetext(movetext) {
-  const tokens = [];
-  const tokenPattern = /\{[^}]*\}|\(|\)|[^\s{}()]+/g;
-
-  for (const match of movetext.matchAll(tokenPattern)) {
-    tokens.push(match[0]);
-  }
-
-  return tokens;
-}
-
-function cloneParsedMoves(moves) {
-  return moves.map((move) => ({ ...move }));
-}
-
-function shouldSkipPgnToken(rawToken, token) {
-  return (
-    !token ||
-    isMoveNumberToken(rawToken) ||
-    RESULT_TOKENS.has(token) ||
-    /^\$\d+$/.test(token) ||
-    /^;/.test(token)
-  );
-}
-
-function parsePgnMoveVariants(tokens) {
-  const variationLines = [];
-
-  function parseSequence(startIndex, baseMoves = []) {
-    let index = startIndex;
-    const moves = cloneParsedMoves(baseMoves);
-    let pendingComment = '';
-
-    while (index < tokens.length) {
-      const rawToken = tokens[index];
-
-      if (rawToken === ')') {
-        return { index: index + 1, moves };
-      }
-
-      if (rawToken === '(') {
-        const branchBase = cloneParsedMoves(moves.slice(0, Math.max(0, moves.length - 1)));
-        const branch = parseSequence(index + 1, branchBase);
-        if (branch.moves.length > branchBase.length) {
-          variationLines.push(branch.moves);
-        }
-        index = branch.index;
-        continue;
-      }
-
-      if (rawToken.startsWith('{')) {
-        const comment = normalizePgnText(rawToken.slice(1, -1));
-        if (moves.length > baseMoves.length) {
-          const last = moves[moves.length - 1];
-          last.comment = normalizePgnText([last.comment, comment].filter(Boolean).join(' '));
-        } else {
-          pendingComment = normalizePgnText([pendingComment, comment].filter(Boolean).join(' '));
-        }
-        index += 1;
-        continue;
-      }
-
-      const token = stripInlineMoveNumber(rawToken);
-      if (shouldSkipPgnToken(rawToken, token)) {
-        index += 1;
-        continue;
-      }
-
-      const san = stripSanAnnotation(token);
-      if (!san) {
-        index += 1;
-        continue;
-      }
-
-      moves.push({
-        rawSan: token,
-        san,
-        annotation: token.match(/[!?]+$/)?.[0] ?? '',
-        comment: pendingComment
-      });
-      pendingComment = '';
-      index += 1;
-    }
-
-    return { index, moves };
-  }
-
-  const mainLine = parseSequence(0, []).moves;
-  const seen = new Set();
-  return [mainLine, ...variationLines].filter((moves) => {
-    if (!moves.length) {
-      return false;
-    }
-    const key = moves.map((move) => move.rawSan).join(' ');
-    if (seen.has(key)) {
-      return false;
-    }
-    seen.add(key);
-    return true;
-  });
-}
-
-function parsePgnGame(block, index) {
-  const headers = parsePgnHeaders(block);
-  const movetext = stripPgnHeaders(block);
-  const tokens = tokenizePgnMovetext(movetext);
-  const variants = parsePgnMoveVariants(tokens);
-  const baseEvent = headers.Event ?? `Ligne ${index + 1}`;
-  const baseId = `line_${String(index + 1).padStart(2, '0')}`;
-
-  return variants.map((moves, variantIndex) => ({
-    id: variants.length > 1
-      ? `${baseId}_${String(variantIndex + 1).padStart(2, '0')}`
-      : baseId,
-    event: variants.length > 1
-      ? `${baseEvent} · ${variantIndex === 0 ? 'ligne principale' : `variante ${variantIndex}`}`
-      : baseEvent,
-    opening: headers.Opening ?? '',
-    eco: headers.ECO ?? '',
-    result: headers.Result ?? '*',
-    site: headers.Site ?? '',
-    fen: headers.FEN ?? '',
-    setup: headers.SetUp ?? '',
-    chapterName: headers.ChapterName ?? '',
-    moves
-  }));
-}
-
-function makeLineEventsUnique(lines) {
-  const counts = new Map();
-  for (const line of lines) {
-    const seen = counts.get(line.event) ?? 0;
-    counts.set(line.event, seen + 1);
-    if (seen > 0) {
-      line.event = `${line.event} (${seen + 1})`;
-    }
-  }
-  return lines;
-}
-
-function normalizeStartFen(fen) {
-  if (!fen) {
-    return STANDARD_START_FEN;
-  }
-  return new Chess(fen).fen();
-}
-
-function createImportedRootNode(fen = STANDARD_START_FEN) {
-  const chess = new Chess(fen);
-  return {
-    id: 'root',
-    fen: chess.fen(),
-    ply: 0,
-    moveNumber: Number(chess.fen().split(/\s+/)[5] ?? 1),
-    sideToMove: chess.turn(),
-    label: 'Départ',
-    san: '',
-    rawSan: '',
-    uci: '',
-    from: '',
-    to: '',
-    color: '',
-    comments: [],
-    sources: [],
-    incoming: [],
-    outgoing: [],
-    terminal: false,
-    legalMoves: chess.moves().length,
-    evaluation: null,
-    futureMeanCp: null
-  };
-}
-
-function createImportedMoveNode(id, chess, move, parsedMove, line) {
-  return {
-    id,
-    fen: chess.fen(),
-    ply: chess.history().length,
-    moveNumber: Math.ceil(chess.history().length / 2),
-    sideToMove: chess.turn(),
-    label: move.san,
-    san: move.san,
-    rawSan: parsedMove.rawSan,
-    annotation: parsedMove.annotation,
-    uci: moveToUci(move),
-    from: move.from,
-    to: move.to,
-    color: move.color,
-    comments: parsedMove.comment ? [parsedMove.comment] : [],
-    sources: [line.event],
-    opening: line.opening,
-    eco: line.eco,
-    incoming: [],
-    outgoing: [],
-    terminal: false,
-    legalMoves: chess.moves().length,
-    evaluation: null,
-    futureMeanCp: null
-  };
-}
-
-function addUnique(target, values) {
-  for (const value of values) {
-    if (value && !target.includes(value)) {
-      target.push(value);
-    }
-  }
-}
-
-function buildGraphFromPgnLines(lines) {
-  const warnings = [];
-  const playableLines = [];
-  let rootFen = null;
-
-  for (const line of lines) {
-    let startFen;
-    try {
-      startFen = normalizeStartFen(line.fen);
-    } catch (error) {
-      warnings.push(`${line.event}: FEN ignoré (${error.message})`);
-      continue;
-    }
-
-    if (!rootFen) {
-      rootFen = startFen;
-    }
-
-    if (startFen !== rootFen) {
-      warnings.push(`${line.event}: position de départ différente ignorée.`);
-      continue;
-    }
-
-    playableLines.push({
-      ...line,
-      startFen
-    });
-  }
-
-  const nodes = [createImportedRootNode(rootFen ?? STANDARD_START_FEN)];
-  const nodeByFen = new Map([[nodes[0].fen, nodes[0]]]);
-  const edgeByKey = new Map();
-
-  for (const line of playableLines) {
-    if (!line.moves.length) {
-      warnings.push(`${line.event}: aucune suite de coups exploitable.`);
-      continue;
-    }
-
-    const chess = new Chess(line.startFen);
-    let parent = nodes[0];
-    addUnique(parent.sources, [line.event]);
-
-    for (const parsedMove of line.moves) {
-      let move;
-      try {
-        move = chess.move(parsedMove.san);
-      } catch (error) {
-        warnings.push(`${line.event}: coup ignoré "${parsedMove.rawSan}" (${error.message})`);
-        break;
-      }
-
-      const fen = chess.fen();
-      let child = nodeByFen.get(fen);
-      if (!child) {
-        child = createImportedMoveNode(`n${nodes.length}`, chess, move, parsedMove, line);
-        nodes.push(child);
-        nodeByFen.set(fen, child);
-      } else {
-        addUnique(child.sources, [line.event]);
-        addUnique(child.comments, parsedMove.comment ? [parsedMove.comment] : []);
-      }
-
-      const edgeKey = `${parent.id}|${child.id}|${move.san}`;
-      let edge = edgeByKey.get(edgeKey);
-      if (!edge) {
-        edge = {
-          id: `e${edgeByKey.size + 1}`,
-          from: parent.id,
-          to: child.id,
-          san: move.san,
-          rawSan: parsedMove.rawSan,
-          annotation: parsedMove.annotation,
-          uci: moveToUci(move),
-          color: move.color,
-          comments: parsedMove.comment ? [parsedMove.comment] : [],
-          sources: [line.event],
-          probability: 1,
-          deltaCp: 0,
-          pathMeanCp: null,
-          isBest: false
-        };
-        edgeByKey.set(edgeKey, edge);
-        parent.outgoing.push(edge.id);
-        child.incoming.push(edge.id);
-      } else {
-        addUnique(edge.sources, [line.event]);
-        addUnique(edge.comments, parsedMove.comment ? [parsedMove.comment] : []);
-      }
-
-      parent = child;
-    }
-  }
-
-  const edges = [...edgeByKey.values()];
-  const edgeMap = new Map(edges.map((edge) => [edge.id, edge]));
-  for (const node of nodes) {
-    const chess = new Chess(node.fen);
-    node.terminal = chess.isGameOver();
-    node.legalMoves = chess.moves().length;
-    node.outgoing = node.outgoing.filter((edgeId) => edgeMap.has(edgeId));
-    node.incoming = node.incoming.filter((edgeId) => edgeMap.has(edgeId));
-  }
-
-  return { nodes, edges, warnings };
 }
 
 function computeGraphFutureMeans(graph) {
@@ -1225,289 +340,12 @@ function assignGraphProbabilities(graph) {
   }
 }
 
-function summarizeImportedGraph(graph, lines, depth, sourceName) {
-  const evaluatedNodes = graph.nodes.filter((node) => node.evaluation).length;
-  const branchingNodes = graph.nodes.filter((node) => node.outgoing.length > 1).length;
-  const maxPly = Math.max(0, ...graph.nodes.map((node) => node.ply));
-  return {
-    title: sourceName,
-    generatedAt: new Date().toISOString(),
-    pgnPath: sourceName,
-    sourceLines: lines.length,
-    nodes: graph.nodes.length,
-    edges: graph.edges.length,
-    evaluatedNodes,
-    branchingNodes,
-    maxPly,
-    stockfish: {
-      engine: 'Stockfish 18 Lite WASM',
-      depth
-    },
-    probabilityModel: {
-      description:
-        'Graphe généré dans le navigateur depuis un PGN importé, évalué par Stockfish puis pondéré par moyenne future.',
-      temperatureCp: PROBABILITY_TEMPERATURE_CP,
-      floorMass: PROBABILITY_FLOOR_MASS,
-      perspective: 'Blanc maximise les centipawns, Noir les minimise.'
-    }
-  };
-}
-
 function yieldToBrowser() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function cloneGraphData(data) {
   return JSON.parse(JSON.stringify(data));
-}
-
-function parseWhiteCentipawn(line, fen) {
-  const match = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
-  if (!match) {
-    return null;
-  }
-
-  const [, scoreType, rawScore] = match;
-  const scoreValue = Number(rawScore);
-  const sideToMove = fen.split(/\s+/)[1] ?? 'w';
-
-  if (scoreType === 'mate') {
-    const distancePenalty = Math.min(900, Math.abs(scoreValue) * 12);
-    const winningColor = scoreValue >= 0 ? sideToMove : sideToMove === 'w' ? 'b' : 'w';
-    return (winningColor === 'w' ? 1 : -1) * (MATE_SCORE_CP - distancePenalty);
-  }
-
-  return sideToMove === 'w' ? scoreValue : -scoreValue;
-}
-
-function parsePv(line) {
-  return line.match(/\bpv\s+(.+)$/)?.[1]?.trim().split(/\s+/).filter(Boolean) ?? [];
-}
-
-function playUciOnChess(chess, uci) {
-  if (!uci || uci.length < 4) {
-    return null;
-  }
-  try {
-    return chess.move({
-      from: uci.slice(0, 2),
-      to: uci.slice(2, 4),
-      promotion: uci[4] || undefined
-    });
-  } catch {
-    return null;
-  }
-}
-
-function formatPvFromFen(fen, pvMoves, limit = 7) {
-  const chess = new Chess(fen);
-  const sanMoves = [];
-  const uciMoves = [];
-  for (const uci of pvMoves.slice(0, limit)) {
-    const move = playUciOnChess(chess, uci);
-    if (!move) {
-      break;
-    }
-    sanMoves.push(move.san);
-    uciMoves.push(uci);
-  }
-  return {
-    san: sanMoves.join(' '),
-    uci: uciMoves
-  };
-}
-
-function terminalEvaluation(fen) {
-  const chess = new Chess(fen);
-  if (chess.isCheckmate()) {
-    return {
-      cpWhite: chess.turn() === 'w' ? -MATE_SCORE_CP : MATE_SCORE_CP,
-      bestMove: null,
-      pv: '',
-      pvUci: [],
-      depth: 0,
-      source: 'terminal'
-    };
-  }
-
-  if (chess.isDraw()) {
-    return {
-      cpWhite: 0,
-      bestMove: null,
-      pv: '',
-      pvUci: [],
-      depth: 0,
-      source: 'terminal'
-    };
-  }
-
-  return null;
-}
-
-class BrowserStockfishEvaluator {
-  constructor(depth = STOCKFISH_DEPTH) {
-    this.depth = depth;
-    this.worker = null;
-    this.pending = null;
-    this.readyPromise = null;
-    this.modeKey = '';
-  }
-
-  async init() {
-    if (this.readyPromise) {
-      return this.readyPromise;
-    }
-
-    this.readyPromise = new Promise((resolve, reject) => {
-      const workerUrl = new URL('./vendor/stockfish-18-lite-single.js', import.meta.url);
-      this.worker = new Worker(workerUrl);
-      this.worker.addEventListener('message', (event) => this.handleLine(String(event.data)));
-      this.worker.addEventListener('error', (event) => {
-        reject(new Error(`Stockfish worker: ${event.message}`));
-      });
-
-      this.waitFor((line) => line === 'uciok', () => this.send('uci'), 12000)
-        .then(() => this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000))
-        .then(() => {
-          this.send('setoption name Hash value 32');
-          this.send('setoption name MultiPV value 1');
-          this.send('ucinewgame');
-          resolve();
-        })
-        .catch(reject);
-    });
-
-    return this.readyPromise;
-  }
-
-  send(command) {
-    this.worker?.postMessage(command);
-  }
-
-  waitFor(predicate, start, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending = null;
-        reject(new Error('Stockfish ne répond pas assez vite.'));
-      }, timeoutMs);
-
-      this.pending = {
-        onLine: (line) => {
-          if (predicate(line)) {
-            clearTimeout(timeout);
-            this.pending = null;
-            resolve(line);
-          }
-        }
-      };
-
-      start();
-    });
-  }
-
-  handleLine(line) {
-    if (this.pending?.onLine) {
-      this.pending.onLine(line);
-    }
-  }
-
-  async configureForAnalysis() {
-    await this.init();
-    if (this.modeKey === 'analysis') {
-      return;
-    }
-
-    this.send('setoption name UCI_LimitStrength value false');
-    this.send('setoption name Skill Level value 20');
-    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
-    this.modeKey = 'analysis';
-  }
-
-  async configureForPlay(profile) {
-    await this.init();
-    const modeKey = `play:${profile.level}:${profile.elo ?? 'full'}:${profile.skill}`;
-    if (this.modeKey === modeKey) {
-      return;
-    }
-
-    if (profile.elo) {
-      this.send('setoption name UCI_LimitStrength value true');
-      this.send(`setoption name UCI_Elo value ${profile.elo}`);
-      this.send(`setoption name Skill Level value ${profile.skill}`);
-    } else {
-      this.send('setoption name UCI_LimitStrength value false');
-      this.send('setoption name Skill Level value 20');
-    }
-
-    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
-    this.modeKey = modeKey;
-  }
-
-  async search(fen, command, timeoutMs = 18000) {
-    return new Promise((resolve, reject) => {
-      let latestCpWhite = null;
-      let latestDepth = 0;
-      let latestPvMoves = [];
-      const timeout = setTimeout(() => {
-        this.pending = null;
-        reject(new Error('Stockfish a mis trop longtemps à évaluer la position.'));
-      }, timeoutMs);
-
-      this.pending = {
-        onLine: (line) => {
-          if (line.startsWith('info ') && line.includes(' score ')) {
-            const parsed = parseWhiteCentipawn(line, fen);
-            const depthValue = Number(line.match(/\bdepth\s+(\d+)/)?.[1] ?? 0);
-            if (parsed !== null && depthValue >= latestDepth) {
-              latestCpWhite = parsed;
-              latestDepth = depthValue;
-              latestPvMoves = parsePv(line);
-            }
-          }
-
-          if (line.startsWith('bestmove')) {
-            clearTimeout(timeout);
-            this.pending = null;
-            const bestMove = line.match(/^bestmove\s+(\S+)/)?.[1] ?? null;
-            const pv = formatPvFromFen(fen, latestPvMoves);
-            resolve({
-              cpWhite: latestCpWhite ?? 0,
-              bestMove: bestMove === '(none)' ? null : bestMove,
-              pv: pv.san,
-              pvUci: pv.uci,
-              depth: latestDepth,
-              source: 'stockfish'
-            });
-          }
-        }
-      };
-
-      this.send(`position fen ${fen}`);
-      this.send(command);
-    });
-  }
-
-  async evaluate(fen, depth = this.depth) {
-    const terminal = terminalEvaluation(fen);
-    if (terminal) {
-      return terminal;
-    }
-
-    await this.configureForAnalysis();
-    return this.search(fen, `go depth ${depth}`);
-  }
-
-  async pickMove(fen, profile = getStockfishLevelProfile()) {
-    const terminal = terminalEvaluation(fen);
-    if (terminal) {
-      return terminal;
-    }
-
-    await this.configureForPlay(profile);
-    const command = profile.movetime ? `go movetime ${profile.movetime}` : `go depth ${profile.depth}`;
-    const timeoutMs = profile.movetime ? Math.max(8000, profile.movetime + 6000) : 18000;
-    return this.search(fen, command, timeoutMs);
-  }
 }
 
 async function ensureStockfishReady(showMessage = true) {
@@ -1522,452 +360,8 @@ async function ensureStockfishReady(showMessage = true) {
   return state.stockfish;
 }
 
-function nodeMatchesFilter(node) {
-  return state.lineFilter === 'all' || node.sources.includes(state.lineFilter);
-}
-
-function edgeMatchesFilter(edge) {
-  return state.lineFilter === 'all' || edge.sources.includes(state.lineFilter);
-}
-
-function getBranchValue(edge) {
-  const target = getNode(edge.to);
-  if (!target) {
-    return 0;
-  }
-  if (target.terminal || !target.outgoing.length) {
-    return target.evaluation?.cpWhite ?? target.futureMeanCp ?? 0;
-  }
-  return Number.isFinite(target.futureMeanCp)
-    ? target.futureMeanCp
-    : target.evaluation?.cpWhite ?? 0;
-}
-
-function isMateNode(node) {
-  return Boolean(node?.terminal && Math.abs(node.evaluation?.cpWhite ?? 0) >= MATE_SCORE_CP - 1000);
-}
-
-function branchEventuallyEndsInMate(edge) {
-  let current = getNode(edge?.to);
-  let guard = 0;
-  while (current && guard < 80) {
-    if (isMateNode(current)) {
-      return true;
-    }
-    if (current.outgoing.length !== 1) {
-      return false;
-    }
-    const nextEdge = getEdge(current.outgoing[0]);
-    current = nextEdge ? getNode(nextEdge.to) : null;
-    guard += 1;
-  }
-  return false;
-}
-
-function applyMinimumProbabilities(scored) {
-  const reserved = scored.map((item) => (item.edge.endsInMate ? MATE_BRANCH_MIN_PROBABILITY : 0));
-  const reservedTotal = reserved.reduce((sum, value) => sum + value, 0);
-  if (reservedTotal <= 0 || reservedTotal >= 0.95) {
-    return;
-  }
-
-  let freeTotal = 0;
-  for (const [index, item] of scored.entries()) {
-    if (!item.edge.endsInMate) {
-      freeTotal += item.edge.probability;
-    } else if (item.edge.probability > reserved[index]) {
-      freeTotal += item.edge.probability - reserved[index];
-    }
-  }
-
-  if (freeTotal <= 0) {
-    scored.forEach((item, index) => {
-      item.edge.probability = reserved[index] || (1 - reservedTotal) / scored.length;
-    });
-    return;
-  }
-
-  const scale = (1 - reservedTotal) / freeTotal;
-  scored.forEach((item, index) => {
-    const reserve = reserved[index];
-    const free = item.edge.endsInMate
-      ? Math.max(0, item.edge.probability - reserve)
-      : item.edge.probability;
-    item.edge.probability = reserve + free * scale;
-  });
-}
-
-function normalizeScoredProbabilities(scored) {
-  if (!scored.length) {
-    return;
-  }
-
-  const total = scored.reduce((sum, item) => sum + Math.max(0, item.edge.probability ?? 0), 0);
-  if (total <= 0) {
-    const equal = 1 / scored.length;
-    scored.forEach((item) => {
-      item.edge.probability = equal;
-    });
-    return;
-  }
-
-  scored.forEach((item) => {
-    item.edge.probability = Math.max(0, item.edge.probability ?? 0) / total;
-  });
-}
-
-function recomputeViewProbabilities(view) {
-  for (const node of view.nodes) {
-    const outgoing = node.outgoing.map((edgeId) => view.edgesById.get(edgeId)).filter(Boolean);
-    if (!outgoing.length) {
-      continue;
-    }
-
-    if (outgoing.length === 1) {
-      outgoing[0].probability = 1;
-      outgoing[0].deltaCp = 0;
-      outgoing[0].isBest = true;
-      continue;
-    }
-
-    const scored = outgoing.map((edge) => {
-      const pathMean = getBranchValue(edge);
-      return {
-        edge,
-        pathMean,
-        score: scoreForSide(pathMean, node.raw.sideToMove)
-      };
-    });
-    const average = scored.reduce((sum, item) => sum + item.score, 0) / scored.length;
-    const bestScore = Math.max(...scored.map((item) => item.score));
-    const raw = scored.map((item) =>
-      Math.exp(clamp(item.score - average, -800, 800) / state.temperatureCp)
-    );
-    const rawTotal = raw.reduce((sum, value) => sum + value, 0);
-
-    scored.forEach((item, index) => {
-      const softmax = raw[index] / rawTotal;
-      item.edge.probability =
-        state.floorMass / scored.length + (1 - state.floorMass) * softmax;
-      item.edge.deltaCp = Math.round(item.score - average);
-      item.edge.pathMeanCp = Math.round(item.pathMean);
-      item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
-    });
-    applyMinimumProbabilities(scored);
-    normalizeScoredProbabilities(scored);
-  }
-}
-
-function createCompressedView() {
-  const visibleNodeIds = new Set();
-  for (const node of state.data.nodes) {
-    if (
-      node.id === 'root' ||
-      node.terminal ||
-      node.outgoing.length !== 1 ||
-      node.incoming.length !== 1
-    ) {
-      visibleNodeIds.add(node.id);
-    }
-  }
-
-  const viewNodes = [...visibleNodeIds].map((nodeId) => ({
-    id: nodeId,
-    raw: getNode(nodeId),
-    outgoing: [],
-    incoming: [],
-    collapsedIncomingPlyCount: 0
-  }));
-  const viewNodesById = new Map(viewNodes.map((node) => [node.id, node]));
-  const viewEdges = [];
-
-  function collectUnique(values) {
-    return [...new Set(values.filter(Boolean))];
-  }
-
-  for (const source of viewNodes) {
-    const rawSource = source.raw;
-    for (const firstEdgeId of rawSource.outgoing) {
-      const firstEdge = getEdge(firstEdgeId);
-      if (!firstEdge) {
-        continue;
-      }
-
-      const pathEdgeIds = [firstEdge.id];
-      const pathNodeIds = [firstEdge.to];
-      const sources = [...firstEdge.sources];
-      const comments = [...firstEdge.comments];
-      let current = getNode(firstEdge.to);
-
-      while (current && !visibleNodeIds.has(current.id)) {
-        sources.push(...current.sources);
-        comments.push(...current.comments);
-        const nextEdge = getEdge(current.outgoing[0]);
-        if (!nextEdge) {
-          break;
-        }
-        pathEdgeIds.push(nextEdge.id);
-        pathNodeIds.push(nextEdge.to);
-        sources.push(...nextEdge.sources);
-        comments.push(...nextEdge.comments);
-        current = getNode(nextEdge.to);
-      }
-
-      if (!current) {
-        continue;
-      }
-
-      const target = viewNodesById.get(current.id);
-      if (!target) {
-        continue;
-      }
-
-      const sequence = pathEdgeIds.map((edgeId) => getEdge(edgeId)?.san).filter(Boolean);
-      const viewEdge = {
-        id: `v${viewEdges.length + 1}`,
-        from: rawSource.id,
-        to: current.id,
-        san: firstEdge.san,
-        rawSan: firstEdge.rawSan,
-        annotation: firstEdge.annotation,
-        uci: firstEdge.uci,
-        color: firstEdge.color,
-        comments: collectUnique(comments),
-        sources: collectUnique(sources),
-        probability: 1,
-        deltaCp: 0,
-        pathMeanCp: getBranchValue({ to: current.id }),
-        isBest: false,
-        isCompressed: pathEdgeIds.length > 1,
-        pathEdgeIds,
-        pathNodeIds,
-        sequence,
-        sequenceLabel: sequence.join(' '),
-        collapsedPlyCount: pathEdgeIds.length,
-        endsInMate: isMateNode(current),
-        terminal: current.terminal
-      };
-
-      viewEdges.push(viewEdge);
-      source.outgoing.push(viewEdge.id);
-      target.incoming.push(viewEdge.id);
-      target.collapsedIncomingPlyCount = Math.max(
-        target.collapsedIncomingPlyCount,
-        viewEdge.collapsedPlyCount
-      );
-    }
-  }
-
-  const viewEdgesById = new Map(viewEdges.map((edge) => [edge.id, edge]));
-  return { nodes: viewNodes, edges: viewEdges, nodesById: viewNodesById, edgesById: viewEdgesById };
-}
-
-function computeLayout(view) {
-  const svg = elements.graphSvg;
-  const rect = svg.getBoundingClientRect();
-  const width = Math.max(640, rect.width || 960);
-  const height = Math.max(430, rect.height || 620);
-  const maxPly = Math.max(1, state.data.summary.maxPly);
-  const padding = {
-    left: 66,
-    right: 66,
-    top: 42,
-    bottom: 48
-  };
-  const usableWidth = width - padding.left - padding.right;
-  const usableHeight = height - padding.top - padding.bottom;
-  const laneByNode = new Map();
-  let nextLane = 0;
-
-  state.layout.clear();
-
-  function lineIndex(edge) {
-    const index = state.data.lines.findIndex((line) => edge.sources.includes(line.event));
-    return index < 0 ? 999 : index;
-  }
-
-  function sortedOutgoing(node) {
-    return node.outgoing
-      .map((edgeId) => view.edgesById.get(edgeId))
-      .filter(Boolean)
-      .sort((a, b) => {
-        const lineDelta = lineIndex(a) - lineIndex(b);
-        if (lineDelta) {
-          return lineDelta;
-        }
-        const branchDelta = (b.probability ?? 0) - (a.probability ?? 0);
-        return branchDelta || a.id.localeCompare(b.id, undefined, { numeric: true });
-      });
-  }
-
-  function assignLane(node, active = new Set()) {
-    if (laneByNode.has(node.id)) {
-      return laneByNode.get(node.id);
-    }
-    if (active.has(node.id)) {
-      return nextLane;
-    }
-
-    active.add(node.id);
-    const children = sortedOutgoing(node)
-      .map((edge) => view.nodesById.get(edge.to))
-      .filter(Boolean);
-    let lane;
-    if (!children.length) {
-      lane = nextLane;
-      nextLane += 1;
-    } else {
-      const childLanes = children.map((child) => assignLane(child, active));
-      lane = childLanes.reduce((sum, value) => sum + value, 0) / childLanes.length;
-    }
-    active.delete(node.id);
-    laneByNode.set(node.id, lane);
-    return lane;
-  }
-
-  assignLane(view.nodesById.get('root'));
-
-  for (const node of view.nodes) {
-    if (!laneByNode.has(node.id)) {
-      assignLane(node);
-    }
-  }
-
-  const laneCount = Math.max(1, nextLane);
-  const laneStep = usableHeight / Math.max(1, laneCount - 1);
-  for (const node of view.nodes) {
-    const lane = laneByNode.get(node.id) ?? 0;
-    const x = padding.left + (node.raw.ply / maxPly) * usableWidth;
-    const softWave = Math.sin(node.raw.ply * 0.5 + lane * 0.4) * Math.min(10, laneStep * 0.22);
-    const y = laneCount === 1 ? height / 2 : padding.top + lane * laneStep + softWave;
-    state.layout.set(node.id, {
-      x,
-      y: clamp(y, padding.top, height - padding.bottom)
-    });
-  }
-
-  return { width, height };
-}
-
-// Zoom « dans les lignes » (téléphone) : viewBox resserré autour du nœud ciblé, en
-// laissant de la place à droite pour voir ses continuations.
-function computeBrainFocusViewBox(focusId, fullW, fullH) {
-  const p = state.layout?.get(focusId);
-  if (!p) {
-    return null;
-  }
-  const zoom = 2.4;
-  const w = fullW / zoom;
-  const h = fullH / zoom;
-  let x = p.x - w * 0.32; // nœud à ~1/3 depuis la gauche, lignes vers la droite
-  let y = p.y - h / 2;
-  x = clamp(x, 0, Math.max(0, fullW - w));
-  y = clamp(y, 0, Math.max(0, fullH - h));
-  return `${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`;
-}
-
-// Positions (FEN + coup) de chaque demi-coup d'un arc compressé, rejouées depuis la source.
-function computeEdgeSequencePositions(edge) {
-  if (!edge?.isCompressed || !edge.sequence?.length) {
-    return [];
-  }
-  const source = getNode(edge.from);
-  if (!source?.fen) {
-    return [];
-  }
-  const probe = new Chess(source.fen);
-  const out = [];
-  for (const san of edge.sequence) {
-    let move = null;
-    try {
-      move = probe.move(san);
-    } catch {
-      move = null;
-    }
-    if (!move) {
-      break;
-    }
-    out.push({ fen: probe.fen(), san: move.san, from: move.from, to: move.to });
-  }
-  return out;
-}
-
-function brainOutlinePath(width, height) {
-  const left = width * 0.09;
-  const right = width * 0.91;
-  const top = height * 0.16;
-  const bottom = height * 0.86;
-  const mid = height * 0.52;
-  return [
-    `M ${left + 60} ${mid}`,
-    `C ${left - 18} ${top + 94}, ${left + 120} ${top - 38}, ${width * 0.34} ${top + 26}`,
-    `C ${width * 0.46} ${top - 52}, ${width * 0.61} ${top - 18}, ${width * 0.68} ${top + 48}`,
-    `C ${right + 34} ${top + 44}, ${right + 30} ${mid - 34}, ${right - 26} ${mid}`,
-    `C ${right + 56} ${mid + 106}, ${right - 100} ${bottom + 34}, ${width * 0.66} ${bottom - 30}`,
-    `C ${width * 0.53} ${bottom + 42}, ${width * 0.38} ${bottom + 6}, ${width * 0.31} ${bottom - 56}`,
-    `C ${left + 82} ${bottom - 24}, ${left - 34} ${mid + 102}, ${left + 60} ${mid}`,
-    'Z'
-  ].join(' ');
-}
-
-function edgeControlPoints(edge) {
-  const source = state.layout.get(edge.from);
-  const target = state.layout.get(edge.to);
-  if (!source || !target) {
-    return null;
-  }
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  return {
-    p0: { x: source.x, y: source.y },
-    c1: { x: source.x + dx * 0.62, y: source.y + dy * 0.08 },
-    c2: { x: target.x - dx * 0.34, y: target.y - dy * 0.08 },
-    p3: { x: target.x, y: target.y }
-  };
-}
-
-function edgePath(edge) {
-  const cp = edgeControlPoints(edge);
-  if (!cp) {
-    return '';
-  }
-  return `M ${cp.p0.x.toFixed(1)} ${cp.p0.y.toFixed(1)} C ${cp.c1.x.toFixed(1)} ${cp.c1.y.toFixed(1)}, ${cp.c2.x.toFixed(1)} ${cp.c2.y.toFixed(1)}, ${cp.p3.x.toFixed(1)} ${cp.p3.y.toFixed(1)}`;
-}
-
-// Point et tangente d'une courbe de Bézier cubique au paramètre t (pour poser les barreaux).
-function cubicBezierAt(cp, t) {
-  const mt = 1 - t;
-  const a = mt * mt * mt;
-  const b = 3 * mt * mt * t;
-  const c = 3 * mt * t * t;
-  const d = t * t * t;
-  const da = 3 * mt * mt;
-  const db = 6 * mt * t;
-  const dc = 3 * t * t;
-  return {
-    x: a * cp.p0.x + b * cp.c1.x + c * cp.c2.x + d * cp.p3.x,
-    y: a * cp.p0.y + b * cp.c1.y + c * cp.c2.y + d * cp.p3.y,
-    tx: da * (cp.c1.x - cp.p0.x) + db * (cp.c2.x - cp.c1.x) + dc * (cp.p3.x - cp.c2.x),
-    ty: da * (cp.c1.y - cp.p0.y) + db * (cp.c2.y - cp.c1.y) + dc * (cp.p3.y - cp.c2.y)
-  };
-}
-
 // Lettre de pièce (Merida) à partir d'un SAN : O-O→roi, sinon N/B/R/Q/K, défaut pion.
-function sanPieceLetter(san) {
-  const s = String(san ?? '');
-  if (/^O-O/.test(s)) {
-    return 'K';
-  }
-  const m = s.match(/^([NBRQK])/);
-  return m ? m[1] : 'P';
-}
-
 // Couleur qui joue le i-ème coup d'une séquence compressée (alternance depuis edge.color).
-function moveColorAt(edge, index) {
-  const first = edge.color === 'b' ? 'b' : 'w';
-  return index % 2 === 0 ? first : first === 'w' ? 'b' : 'w';
-}
-
 function renderGraph() {
   if (!state.data) {
     return;
@@ -1989,7 +383,13 @@ function renderGraph() {
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
   const defs = createSvgElement('defs');
-  const glow = createSvgElement('filter', { id: 'nodeGlow', x: '-80%', y: '-80%', width: '260%', height: '260%' });
+  const glow = createSvgElement('filter', {
+    id: 'nodeGlow',
+    x: '-80%',
+    y: '-80%',
+    width: '260%',
+    height: '260%'
+  });
   glow.append(
     createSvgElement('feGaussianBlur', { stdDeviation: '4', result: 'blur' }),
     createSvgElement('feColorMatrix', {
@@ -1999,11 +399,16 @@ function renderGraph() {
     }),
     createSvgElement('feMerge')
   );
-  glow.lastChild.append(createSvgElement('feMergeNode'), createSvgElement('feMergeNode', { in: 'SourceGraphic' }));
+  glow.lastChild.append(
+    createSvgElement('feMergeNode'),
+    createSvgElement('feMergeNode', { in: 'SourceGraphic' })
+  );
   defs.append(glow);
   svg.append(defs);
 
-  svg.append(createSvgElement('path', { class: 'brain-outline', d: brainOutlinePath(width, height) }));
+  svg.append(
+    createSvgElement('path', { class: 'brain-outline', d: brainOutlinePath(width, height) })
+  );
 
   const edgeLayer = createSvgElement('g', { class: 'edge-layer' });
   const rungLayer = createSvgElement('g', { class: 'rung-layer' });
@@ -2016,16 +421,8 @@ function renderGraph() {
     const isHighlighted = state.highlightedEdges.has(edge.id);
     const sourceNode = view.nodesById.get(edge.from);
     const isForced = (sourceNode?.outgoing.length ?? 0) <= 1;
-    const strokeWidth = isHighlighted
-      ? 5.4
-      : isForced
-        ? 2.65
-        : 2.3 + edge.probability * 4.9;
-    const edgeOpacity = isHighlighted
-      ? 0.95
-      : isForced
-        ? 0.56
-        : 0.46 + edge.probability * 0.42;
+    const strokeWidth = isHighlighted ? 5.4 : isForced ? 2.65 : 2.3 + edge.probability * 4.9;
+    const edgeOpacity = isHighlighted ? 0.95 : isForced ? 0.56 : 0.46 + edge.probability * 0.42;
     const pathD = edgePath(edge);
     const casing = createSvgElement('path', {
       class: [
@@ -2086,14 +483,18 @@ function renderGraph() {
               'edge-rung-group',
               rungColor === 'w' ? 'is-white-move' : 'is-black-move',
               isHighlighted ? 'is-highlighted' : ''
-            ].filter(Boolean).join(' ')
+            ]
+              .filter(Boolean)
+              .join(' ')
           });
           rungGroup.append(
             createSvgElement('line', { class: 'edge-rung-hit', ...coords }),
             createSvgElement('line', { class: 'edge-rung', ...coords })
           );
           const moveIndex = i;
-          rungGroup.addEventListener('mouseenter', (event) => showRungTooltip(edge, moveIndex, event));
+          rungGroup.addEventListener('mouseenter', (event) =>
+            showRungTooltip(edge, moveIndex, event)
+          );
           rungGroup.addEventListener('mouseleave', hideTooltip);
           rungLayer.append(rungGroup);
           // Point défilable au doigt : le coup intermédiaire (position reconstruite).
@@ -2136,11 +537,16 @@ function renderGraph() {
       eval: node.evaluation?.cpWhite,
       nodeId: node.id
     });
-    const evalTone = clamp(((node.futureMeanCp ?? node.evaluation?.cpWhite ?? 0) + 250) / 500, 0, 1);
+    const evalTone = clamp(
+      ((node.futureMeanCp ?? node.evaluation?.cpWhite ?? 0) + 250) / 500,
+      0,
+      1
+    );
     const outgoing = viewNode.outgoing.length;
-    const radius = node.id === 'root'
-      ? 11
-      : clamp(6.5 + outgoing * 2 + viewNode.collapsedIncomingPlyCount * 0.75, 7.5, 18);
+    const radius =
+      node.id === 'root'
+        ? 11
+        : clamp(6.5 + outgoing * 2 + viewNode.collapsedIncomingPlyCount * 0.75, 7.5, 18);
     const matches = nodeMatchesFilter(node);
     const group = createSvgElement('g', {
       class: [
@@ -2188,8 +594,8 @@ function renderGraph() {
     group.addEventListener('mouseenter', (event) => showNodeTooltip(node, event));
     group.addEventListener('mouseleave', hideTooltip);
     group.addEventListener('click', () => {
-      if (suppressNextGraphClick) {
-        suppressNextGraphClick = false;
+      if (state.suppressNextGraphClick) {
+        state.suppressNextGraphClick = false;
         return;
       }
       // Téléphone (vue cerveau) : taper un nœud zoome dans ses lignes ; re-taper dézoome.
@@ -2202,295 +608,15 @@ function renderGraph() {
   }
 
   // Zoom « dans les lignes » : on resserre le viewBox autour du nœud ciblé (téléphone).
-  const focusBox = state.brainFocus ? computeBrainFocusViewBox(state.brainFocus, width, height) : null;
+  const focusBox = state.brainFocus
+    ? computeBrainFocusViewBox(state.brainFocus, width, height)
+    : null;
   if (focusBox) {
     svg.setAttribute('viewBox', focusBox);
   }
   document.body.classList.toggle('is-brain-focused', Boolean(focusBox));
 
   renderDetails();
-}
-
-function showNodeTooltip(node, event) {
-  const comment = node.comments[0] ?? 'Aucune explication associée.';
-  elements.graphTooltip.innerHTML = `
-    <strong>${node.id === 'root' ? 'Départ' : node.san}</strong>
-    <span>Eval ${formatEval(node.evaluation?.cpWhite)} · Futur ${formatEval(node.futureMeanCp)} · ${sideLabel(node.sideToMove)} au trait</span>
-    <span>${escapeHtml(comment)}</span>
-  `;
-  positionTooltip(event);
-}
-
-function showEdgeTooltip(edge, event) {
-  const compressedText = edge.isCompressed
-    ? `<span>Séquence compressée: ${escapeHtml(edge.sequenceLabel)}</span>`
-    : '';
-  const mateText = edge.endsInMate
-    ? '<span>Branche de mat: probabilité minimale 1%.</span>'
-    : '';
-  elements.graphTooltip.innerHTML = `
-    <strong>${edge.san} · ${formatPercent(edge.probability)}</strong>
-    <span>Delta ${edge.deltaCp >= 0 ? '+' : ''}${edge.deltaCp} cp vs moyenne des suites</span>
-    <span>Moyenne du chemin: ${formatEval(edge.pathMeanCp)}</span>
-    ${compressedText}
-    ${mateText}
-  `;
-  positionTooltip(event);
-}
-
-function showRungTooltip(edge, index, event) {
-  const san = edge.sequence?.[index] ?? '';
-  const total = edge.sequence?.length ?? 0;
-  const color = moveColorAt(edge, index);
-  const img = `/pieces/merida/${color}${sanPieceLetter(san)}.svg`;
-  elements.graphTooltip.innerHTML = `
-    <strong><img class="tooltip-piece" src="${img}" alt="" aria-hidden="true"> Coup ${index + 1}/${total} : ${escapeHtml(san)}</strong>
-    <span>${sideLabel(color)} au trait · séquence ${escapeHtml(edge.sequenceLabel)}</span>
-  `;
-  positionTooltip(event);
-}
-
-function positionTooltip(event) {
-  const stageRect = elements.graphSvg.getBoundingClientRect();
-  elements.graphTooltip.hidden = false;
-  elements.graphTooltip.style.left = `${clamp(event.clientX - stageRect.left + 14, 12, stageRect.width - 298)}px`;
-  elements.graphTooltip.style.top = `${clamp(event.clientY - stageRect.top + 14, 82, stageRect.height - 126)}px`;
-}
-
-function hideTooltip() {
-  elements.graphTooltip.hidden = true;
-}
-
-// --- Vue cerveau au doigt : glisser sur le graphe pour révéler les positions ---
-// (mini-échiquier de prévisualisation + infos + retour haptique au changement de noeud)
-
-let brainScrub = null;
-let suppressNextGraphClick = false;
-
-function bindBrainScrubEvents() {
-  elements.graphSvg?.addEventListener('pointerdown', onBrainPointerDown);
-  // Taper le fond (hors nœud/arc) dézoome la vue cerveau.
-  elements.graphSvg?.addEventListener('click', (event) => {
-    if (suppressNextGraphClick) {
-      return;
-    }
-    if (
-      state.brainFocus &&
-      !event.target.closest?.('.neural-node') &&
-      !event.target.closest?.('.neural-edge')
-    ) {
-      state.brainFocus = null;
-      renderGraph();
-    }
-  });
-}
-
-// Actif quand le graphe est la vue principale « cerveau » de l'Aventure.
-function isBrainScrubContext() {
-  return state.screen === 'adventure' && state.advViewMode === 'brain';
-}
-
-// Noeud du graphe le plus proche du point écran (converti en coordonnées du viewBox SVG).
-function graphNearestNode(clientX, clientY) {
-  const svg = elements.graphSvg;
-  const ctm = svg?.getScreenCTM?.();
-  if (!ctm || !state.layout?.size) {
-    return null;
-  }
-  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-  let bestId = null;
-  let bestDist = Infinity;
-  for (const [id, p] of state.layout) {
-    const d = Math.hypot(p.x - pt.x, p.y - pt.y);
-    if (d < bestDist) {
-      bestDist = d;
-      bestId = id;
-    }
-  }
-  return bestId;
-}
-
-function onBrainPointerDown(event) {
-  if (!isBrainScrubContext()) {
-    return;
-  }
-  brainScrub = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    started: false,
-    lastId: null,
-    branchNodeIds: null // G : branche actuellement suivie (collante)
-  };
-  window.addEventListener('pointermove', onBrainPointerMove);
-  window.addEventListener('pointerup', onBrainPointerUp);
-  window.addEventListener('pointercancel', onBrainPointerUp);
-}
-
-function onBrainPointerMove(event) {
-  if (!brainScrub || event.pointerId !== brainScrub.pointerId) {
-    return;
-  }
-  if (!brainScrub.started) {
-    if (Math.hypot(event.clientX - brainScrub.startX, event.clientY - brainScrub.startY) < 8) {
-      return; // reste un tap potentiel (sélection de noeud)
-    }
-    brainScrub.started = true;
-    showBrainScrub(true);
-  }
-  event.preventDefault();
-  const point = graphNearestScrubPoint(event.clientX, event.clientY, brainScrub.branchNodeIds);
-  const key = point?.fen;
-  if (point && key !== brainScrub.lastId) {
-    brainScrub.lastId = key;
-    // G : la branche suivie devient celle de ce point (racine → nœud courant).
-    brainScrub.branchNodeIds = brainBranchPath(point.nodeId).nodeIds;
-    updateBrainScrub(point);
-    navigator.vibrate?.(8); // retour haptique (Android) si supporté
-  }
-}
-
-// Point défilable (nœud ou coup intermédiaire) le plus proche du doigt. G : on
-// applique un bonus de distance aux points de la branche déjà suivie pour rester
-// dessus (au lieu de sauter vers une branche voisine au moindre mouvement).
-function graphNearestScrubPoint(clientX, clientY, branchNodeIds = null) {
-  const svg = elements.graphSvg;
-  const ctm = svg?.getScreenCTM?.();
-  if (!ctm || !state.scrubPoints?.length) {
-    return null;
-  }
-  const pt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-  let best = null;
-  let bestScore = Infinity;
-  for (const sp of state.scrubPoints) {
-    let score = Math.hypot(sp.x - pt.x, sp.y - pt.y);
-    if (branchNodeIds && branchNodeIds.has(sp.nodeId)) {
-      score *= 0.5; // « collant » à la branche courante (hystérésis)
-    }
-    if (score < bestScore) {
-      bestScore = score;
-      best = sp;
-    }
-  }
-  return best;
-}
-
-// Chemin (nœuds + arcs) de la racine jusqu'au nœud donné : définit la « branche »
-// suivie pour le scrub (surbrillance + hystérésis).
-function brainBranchPath(nodeId) {
-  const view = state.view;
-  const nodeIds = new Set();
-  const edgeIds = new Set();
-  if (!view || !nodeId) {
-    return { nodeIds, edgeIds };
-  }
-  let current = nodeId;
-  let guard = 0;
-  while (current && !nodeIds.has(current) && guard < 300) {
-    guard += 1;
-    nodeIds.add(current);
-    const viewNode = view.nodesById.get(current);
-    const inEdgeId = viewNode?.incoming?.[0];
-    if (!inEdgeId) {
-      break;
-    }
-    edgeIds.add(inEdgeId);
-    const edge = view.edgesById.get(inEdgeId);
-    if (!edge) {
-      break;
-    }
-    current = edge.from;
-  }
-  return { nodeIds, edgeIds };
-}
-
-function onBrainPointerUp(event) {
-  if (!brainScrub || event.pointerId !== brainScrub.pointerId) {
-    return;
-  }
-  const wasScrubbing = brainScrub.started;
-  brainScrub = null;
-  window.removeEventListener('pointermove', onBrainPointerMove);
-  window.removeEventListener('pointerup', onBrainPointerUp);
-  window.removeEventListener('pointercancel', onBrainPointerUp);
-  if (wasScrubbing) {
-    // évite la sélection de noeud par le clic synthétique qui suit le scrub
-    suppressNextGraphClick = true;
-    setTimeout(() => {
-      suppressNextGraphClick = false;
-    }, 60);
-  }
-}
-
-function showBrainScrub(show) {
-  const panel = document.querySelector('#brainScrub');
-  if (panel) {
-    panel.classList.toggle('is-active', show);
-    panel.setAttribute('aria-hidden', show ? 'false' : 'true');
-  }
-  if (!show) {
-    clearScrubNodeHighlight();
-  }
-}
-
-function updateBrainScrub(point) {
-  if (!point) {
-    return;
-  }
-  const boardEl = document.querySelector('#brainScrubBoard');
-  if (boardEl) {
-    renderBoard(
-      { id: `scrub-${point.fen}`, fen: point.fen, from: point.from, to: point.to, san: point.san },
-      boardEl
-    );
-  }
-  const title = document.querySelector('#brainScrubTitle');
-  if (title) {
-    title.textContent = point.label || point.san || '—';
-  }
-  const meta = document.querySelector('#brainScrubMeta');
-  if (meta) {
-    const colorTxt =
-      point.moveColor === 'w' ? '⬜ Coup blanc' : point.moveColor === 'b' ? '⬛ Coup noir' : 'Position de départ';
-    const evalTxt = point.eval != null ? ` · Éval ${formatEval(point.eval)}` : '';
-    meta.textContent = `${colorTxt}${evalTxt}`;
-  }
-  highlightScrubBranch(point.nodeId);
-}
-
-// G : met en surbrillance toute la branche suivie (nœuds + arcs de la racine au
-// nœud courant), avec le nœud courant accentué.
-function highlightScrubBranch(nodeId) {
-  clearScrubNodeHighlight();
-  const svg = elements.graphSvg;
-  if (!svg || !nodeId) {
-    return;
-  }
-  const { nodeIds, edgeIds } = brainBranchPath(nodeId);
-  for (const id of nodeIds) {
-    const el = svg.querySelector(`.neural-node[data-node-id="${CSS.escape(id)}"]`);
-    el?.classList.add(id === nodeId ? 'is-scrub' : 'is-scrub-branch');
-  }
-  for (const id of edgeIds) {
-    for (const el of svg.querySelectorAll(`.neural-edge[data-edge-id="${CSS.escape(id)}"]`)) {
-      el.classList.add('is-scrub-branch');
-    }
-  }
-}
-
-function clearScrubNodeHighlight() {
-  for (const el of elements.graphSvg?.querySelectorAll('.is-scrub, .is-scrub-branch') ?? []) {
-    el.classList.remove('is-scrub', 'is-scrub-branch');
-  }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function selectEdge(edge) {
@@ -2533,7 +659,10 @@ function selectNode(nodeId, options = {}) {
   if (options.clearPath !== false && !incomingSegment) {
     state.highlightedEdges.clear();
     state.highlightedNodes = new Set([nodeId]);
-    elements.selectedPathLabel.textContent = nodeId === 'root' ? 'Départ sélectionné' : `Noeud sélectionné: ${getNode(nodeId)?.san ?? nodeId}`;
+    elements.selectedPathLabel.textContent =
+      nodeId === 'root'
+        ? 'Départ sélectionné'
+        : `Noeud sélectionné: ${getNode(nodeId)?.san ?? nodeId}`;
   }
   renderGraph();
 }
@@ -2573,10 +702,10 @@ function renderDetails() {
   elements.nodeTurn.textContent = sideLabel(previewNode?.sideToMove);
   setInfoAnalysis(
     previewNode?.comments?.[0] ??
-    selectedSegment?.comments[0] ??
-    node.comments[0] ??
-    incomingEdge?.comments[0] ??
-    'Aucune note pour cette position.',
+      selectedSegment?.comments[0] ??
+      node.comments[0] ??
+      incomingEdge?.comments[0] ??
+      'Aucune note pour cette position.',
     formatSourceList(selectedSegment?.sources ?? node.sources)
   );
   state.currentPreviewNode = previewNode ?? node;
@@ -2661,7 +790,9 @@ function renderChoices(node, selectedSegment = null) {
 
   if (!outgoing.length) {
     const empty = document.createElement('p');
-    empty.textContent = node.terminal ? 'Fin de ligne: aucune suite légale.' : 'Fin du livre PGN pour cette branche.';
+    empty.textContent = node.terminal
+      ? 'Fin de ligne: aucune suite légale.'
+      : 'Fin du livre PGN pour cette branche.';
     elements.choiceList.append(empty);
     return;
   }
@@ -2670,7 +801,7 @@ function renderChoices(node, selectedSegment = null) {
     const child = getNode(edge.to);
     const detail = edge.isCompressed
       ? `${edge.collapsedPlyCount} coups: ${edge.sequenceLabel}`
-      : edge.comments[0] ?? child?.comments[0] ?? 'Suite sans commentaire';
+      : (edge.comments[0] ?? child?.comments[0] ?? 'Suite sans commentaire');
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'choice-row';
@@ -2871,15 +1002,7 @@ function prefersReducedMotion() {
 }
 
 // Pause (Promise) de `ms` millisecondes.
-function pause(ms) {
-  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
-}
-
 // Durée de « réflexion » simulée de l'adversaire, tirée aléatoirement dans une fourchette (ms).
-function randomThinkMs(minMs, maxMs) {
-  return Math.round(minMs + Math.random() * (maxMs - minMs));
-}
-
 // Active/désactive l'état visuel « Stockfish réfléchit » (badge sur l'échiquier, halo,
 // pulsation du cerveau). Piloté par la classe body pour cibler tout le tableau en CSS.
 function setEngineThinking(isThinking) {
@@ -2896,8 +1019,7 @@ function maybeAnimateGameMove(container, node) {
   if (container !== elements.boardPreview) {
     return;
   }
-  const isGameNode =
-    node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
+  const isGameNode = node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
   if (!isGameNode) {
     cancelBoardMoveAnim();
     delete container.dataset.lastMoveKey;
@@ -3180,11 +1302,11 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
 function isBoardInteractive(container) {
   return Boolean(
     container === elements.boardPreview &&
-      shouldRenderGameDetails() &&
-      state.game?.active &&
-      !state.game.locked &&
-      state.game.historyView == null &&
-      getPlayableBoardColor()
+    shouldRenderGameDetails() &&
+    state.game?.active &&
+    !state.game.locked &&
+    state.game.historyView == null &&
+    getPlayableBoardColor()
   );
 }
 
@@ -3222,8 +1344,8 @@ function getLegalTargetsFromSquare(square) {
 function isOpeningBookChoiceActive() {
   return Boolean(
     state.game?.phase === 'opening' &&
-      state.game.status === 'playing' &&
-      getExpectedWhiteBookEdges().length
+    state.game.status === 'playing' &&
+    getExpectedWhiteBookEdges().length
   );
 }
 
@@ -3254,9 +1376,7 @@ function getWonBookTargetsFromSquare(square) {
   }
   return new Set(
     getExpectedWhiteBookEdges()
-      .filter(
-        (edge) => edge.uci.slice(0, 2) === square && advNextSanLeadsToWonLine(edge.san)
-      )
+      .filter((edge) => edge.uci.slice(0, 2) === square && advNextSanLeadsToWonLine(edge.san))
       .map((edge) => edge.uci.slice(2, 4))
   );
 }
@@ -3341,12 +1461,12 @@ function isPremoveContext() {
   // simplement qu'on est bien dans une partie en cours, au tour des Noirs.
   return Boolean(
     game &&
-      game.status === 'playing' &&
-      !game.cinematic &&
-      !game.revision && // pas de prémouvement pendant une révision scriptée
-      game.historyView == null &&
-      !getActiveFreeReviewEntry() &&
-      game.chess.turn() === 'b'
+    game.status === 'playing' &&
+    !game.cinematic &&
+    !game.revision && // pas de prémouvement pendant une révision scriptée
+    game.historyView == null &&
+    !getActiveFreeReviewEntry() &&
+    game.chess.turn() === 'b'
   );
 }
 
@@ -3557,7 +1677,9 @@ function onBoardPointerUp(event) {
     suppressNextBoardClick = false;
   }, 60);
 
-  const targetEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.board-square');
+  const targetEl = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest?.('.board-square');
   const to = targetEl && elements.boardPreview.contains(targetEl) ? targetEl.dataset.square : null;
 
   if (to && to !== drag.from) {
@@ -3670,216 +1792,6 @@ function setBoardZoomed(isZoomed) {
   renderZoomBoard();
 }
 
-function getPanelWidthVar(name, fallback) {
-  const rawValue = getComputedStyle(document.documentElement).getPropertyValue(name);
-  const parsed = Number.parseFloat(rawValue);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function setPanelWidthVar(name, value) {
-  document.documentElement.style.setProperty(name, `${Math.round(value)}px`);
-}
-
-function panelWidthVariable(side) {
-  return side === 'left' ? '--left-panel' : '--right-panel';
-}
-
-function panelDefaultWidth(side) {
-  return side === 'left' ? 328 : 340;
-}
-
-function panelMinimumWidth(side) {
-  return side === 'left' ? 220 : 240;
-}
-
-function setPanelWidth(side, width) {
-  setPanelWidthVar(panelWidthVariable(side), width);
-}
-
-function clampPanelWidths() {
-  if (!elements.shell || window.innerWidth <= 1060) {
-    return;
-  }
-
-  const rect = elements.shell.getBoundingClientRect();
-  const centerMin = 360;
-  const leftMin = panelMinimumWidth('left');
-  const rightMin = panelMinimumWidth('right');
-  let left = getPanelWidthVar('--left-panel', 328);
-  let right = getPanelWidthVar('--right-panel', 340);
-
-  if (state.collapsedPanels.left) {
-    left = 0;
-  }
-  if (state.collapsedPanels.right) {
-    right = 0;
-  }
-
-  if (!state.collapsedPanels.left) {
-    left = clamp(
-      left,
-      leftMin,
-      Math.max(leftMin, rect.width - (state.collapsedPanels.right ? 0 : rightMin) - centerMin)
-    );
-  }
-  if (!state.collapsedPanels.right) {
-    right = clamp(
-      right,
-      rightMin,
-      Math.max(rightMin, rect.width - left - centerMin)
-    );
-  }
-  if (!state.collapsedPanels.left) {
-    left = clamp(left, leftMin, Math.max(leftMin, rect.width - right - centerMin));
-  }
-
-  setPanelWidthVar('--left-panel', left);
-  setPanelWidthVar('--right-panel', right);
-}
-
-function updatePanelCollapseUi() {
-  document.body.classList.toggle('is-left-panel-collapsed', state.collapsedPanels.left);
-  document.body.classList.toggle('is-right-panel-collapsed', state.collapsedPanels.right);
-
-  for (const button of elements.panelCollapseButtons) {
-    const side = button.dataset.collapseSide;
-    const collapsed = Boolean(state.collapsedPanels[side]);
-    button.textContent =
-      side === 'left'
-        ? collapsed ? '›' : '‹'
-        : collapsed ? '‹' : '›';
-    button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-    button.setAttribute(
-      'aria-label',
-      `${collapsed ? 'Afficher' : 'Masquer'} le volet ${side === 'left' ? 'gauche' : 'droit'}`
-    );
-  }
-}
-
-function setPanelCollapsed(side, collapsed) {
-  if (!['left', 'right'].includes(side)) {
-    return;
-  }
-
-  const variableName = panelWidthVariable(side);
-  if (collapsed) {
-    const currentWidth = getPanelWidthVar(variableName, panelDefaultWidth(side));
-    if (currentWidth > 0) {
-      state.panelWidthMemory[side] = currentWidth;
-    }
-    state.collapsedPanels[side] = true;
-    setPanelWidth(side, 0);
-  } else {
-    state.collapsedPanels[side] = false;
-    setPanelWidth(side, Math.max(panelMinimumWidth(side), state.panelWidthMemory[side]));
-  }
-
-  updatePanelCollapseUi();
-  clampPanelWidths();
-  window.requestAnimationFrame(() => renderGraph());
-}
-
-function setPanelWidthFromPointer(side, clientX) {
-  if (!elements.shell || window.innerWidth <= 1060) {
-    return;
-  }
-
-  if (state.collapsedPanels[side]) {
-    state.collapsedPanels[side] = false;
-    setPanelWidth(side, Math.max(panelMinimumWidth(side), state.panelWidthMemory[side]));
-    updatePanelCollapseUi();
-  }
-
-  const rect = elements.shell.getBoundingClientRect();
-  const centerMin = 360;
-  const leftMin = panelMinimumWidth('left');
-  const rightMin = panelMinimumWidth('right');
-  const leftMax = 520;
-  const rightMax = 560;
-  const currentLeft = getPanelWidthVar('--left-panel', 328);
-  const currentRight = getPanelWidthVar('--right-panel', 340);
-
-  if (side === 'left') {
-    const maxLeft = Math.min(leftMax, rect.width - currentRight - centerMin);
-    setPanelWidthVar('--left-panel', clamp(clientX - rect.left, leftMin, Math.max(leftMin, maxLeft)));
-  } else {
-    const maxRight = Math.min(rightMax, rect.width - currentLeft - centerMin);
-    setPanelWidthVar('--right-panel', clamp(rect.right - clientX, rightMin, Math.max(rightMin, maxRight)));
-  }
-
-  window.requestAnimationFrame(() => renderGraph());
-}
-
-function startPanelResize(event) {
-  const side = event.currentTarget.dataset.resizeSide;
-  if (!side || window.innerWidth <= 1060) {
-    return;
-  }
-
-  event.preventDefault();
-  state.activeResize = side;
-  document.body.classList.add('is-resizing-panels');
-  event.currentTarget.setPointerCapture?.(event.pointerId);
-  setPanelWidthFromPointer(side, event.clientX);
-}
-
-function movePanelResize(event) {
-  if (!state.activeResize) {
-    return;
-  }
-  setPanelWidthFromPointer(state.activeResize, event.clientX);
-}
-
-function stopPanelResize() {
-  if (!state.activeResize) {
-    return;
-  }
-  state.activeResize = null;
-  document.body.classList.remove('is-resizing-panels');
-  clampPanelWidths();
-  renderGraph();
-}
-
-function resizePanelWithKeyboard(event) {
-  const side = event.currentTarget.dataset.resizeSide;
-  if (!side || !['ArrowLeft', 'ArrowRight'].includes(event.key)) {
-    return;
-  }
-
-  event.preventDefault();
-  const direction = event.key === 'ArrowRight' ? 1 : -1;
-  const step = event.shiftKey ? 40 : 16;
-  if (state.collapsedPanels[side]) {
-    setPanelCollapsed(side, false);
-    return;
-  }
-  const variableName = panelWidthVariable(side);
-  const fallback = panelDefaultWidth(side);
-  const multiplier = side === 'left' ? direction : -direction;
-  setPanelWidthVar(variableName, getPanelWidthVar(variableName, fallback) + step * multiplier);
-  clampPanelWidths();
-  renderGraph();
-}
-
-function bindPanelResizeHandles() {
-  for (const handle of elements.resizeHandles) {
-    handle.addEventListener('pointerdown', startPanelResize);
-    handle.addEventListener('keydown', resizePanelWithKeyboard);
-  }
-  for (const button of elements.panelCollapseButtons) {
-    button.addEventListener('pointerdown', (event) => event.stopPropagation());
-    button.addEventListener('click', (event) => {
-      event.stopPropagation();
-      const side = event.currentTarget.dataset.collapseSide;
-      setPanelCollapsed(side, !state.collapsedPanels[side]);
-    });
-  }
-  window.addEventListener('pointermove', movePanelResize);
-  window.addEventListener('pointerup', stopPanelResize);
-  window.addEventListener('pointercancel', stopPanelResize);
-  updatePanelCollapseUi();
-}
-
 function syncDetailInfoPlacement() {
   if (!elements.detailInfoContent || !elements.graphInfoContent || !elements.graphInfoDrawer) {
     return;
@@ -3907,13 +1819,10 @@ function setViewMode(mode) {
   document.body.classList.toggle('is-human-view', state.viewMode === 'human');
   document.body.classList.toggle('is-brain-view', state.viewMode === 'brain');
   syncDetailInfoPlacement();
-  elements.viewModeButton.textContent =
-    state.viewMode === 'human' ? 'Vue cerveau' : 'Vue joueur';
+  elements.viewModeButton.textContent = state.viewMode === 'human' ? 'Vue cerveau' : 'Vue joueur';
   elements.viewModeButton.setAttribute(
     'aria-label',
-    state.viewMode === 'human'
-      ? 'Basculer vers la vue cerveau'
-      : 'Basculer vers la vue joueur'
+    state.viewMode === 'human' ? 'Basculer vers la vue cerveau' : 'Basculer vers la vue joueur'
   );
   window.requestAnimationFrame(() => renderGraph());
 }
@@ -3932,7 +1841,8 @@ function setAdvViewMode(mode) {
   const btn = document.querySelector('#advViewToggle');
   if (btn) {
     btn.textContent = state.advViewMode === 'board' ? '🧠 Vue cerveau' : '🎮 Vue joueur';
-    btn.setAttribute('aria-label',
+    btn.setAttribute(
+      'aria-label',
       state.advViewMode === 'board'
         ? 'Basculer vers la vue cerveau'
         : 'Basculer vers la vue échiquier'
@@ -4011,7 +1921,7 @@ function updateAdvBoardFeedback() {
     return;
   }
   const game = state.game;
-  const board   = document.querySelector('#boardPreview');
+  const board = document.querySelector('#boardPreview');
   const caption = document.querySelector('#advBoardCaption');
   if (!game || !board) {
     return;
@@ -4051,7 +1961,7 @@ function updateAdvBoardFeedback() {
   } else {
     // Phase libre : objectif visuel
     const isMate = isAdventureRun() && state.advRun?.kind === 'boss';
-    caption.textContent = isMate ? '⚔️ Trouve l\'échec et mat' : '⚡ Phase libre';
+    caption.textContent = isMate ? "⚔️ Trouve l'échec et mat" : '⚡ Phase libre';
   }
 }
 
@@ -4260,7 +2170,7 @@ function createInitialGameState(level = state.campaignLevel) {
     locked: false,
     selectedSquare: null,
     message: exploration
-      ? "Mode exploration: teste les lignes ou sors du livre sans perdre de vie."
+      ? 'Mode exploration: teste les lignes ou sors du livre sans perdre de vie.'
       : `Niveau ${level}: ${formatLevelObjective(level)} après l'ouverture.`,
     lastMove: null,
     moveLog: [],
@@ -4279,119 +2189,22 @@ function createInitialGameState(level = state.campaignLevel) {
     cinematicTimer: null,
     victoryCinematic: false, // conversion automatique vers le mat en cours
     victoryConverted: false, // déjà déclenchée une fois pour cette partie
-    takebackLocked: false,   // verrou après un retour arrière « dernière chance »
-    gameRecorded: false,     // M : partie déjà ajoutée à l'historique
-    replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
-    revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
-    finalMateLives: 0,       // S : retours « dernière chance » en phase finale du mat
-    mateExpected: null,      // distance au mat attendue (mat en X) pendant la conversion
+    takebackLocked: false, // verrou après un retour arrière « dernière chance »
+    gameRecorded: false, // M : partie déjà ajoutée à l'historique
+    replayWonLine: false, // N : le joueur a choisi de rejouer une ligne gagnée
+    revealLegalDots: false, // Q : cases légales révélées (Normal, après 5 s / erreur)
+    finalMateLives: 0, // S : retours « dernière chance » en phase finale du mat
+    mateExpected: null, // distance au mat attendue (mat en X) pendant la conversion
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
-    premove: null,           // T : { from, to } armé pendant la réflexion adverse
-    premoveSelect: null,     // T : case source sélectionnée pour armer le prémouvement
-    revision: null,          // Révision : { phase: replay|question|feedback|done, step, answerUci }
-    influence: null,         // Influence : { selectedUci, lineSans?, lineIndex? } — revue ‹ › + choix
+    premove: null, // T : { from, to } armé pendant la réflexion adverse
+    premoveSelect: null, // T : case source sélectionnée pour armer le prémouvement
+    revision: null, // Révision : { phase: replay|question|feedback|done, step, answerUci }
+    influence: null, // Influence : { selectedUci, lineSans?, lineIndex? } — revue ‹ › + choix
     influencePending: false, // Influence : ouverture auto programmée (anti-flash du carton)
-    influenceDone: false,    // Influence : phase close → CTA finaux de défaite
+    influenceDone: false, // Influence : phase close → CTA finaux de défaite
     defeatCinematicPending: false, // Punition : suite en cours de construction/lecture
-    skipDefeatCinematic: false     // ⏩ demandé avant que la suite soit prête
+    skipDefeatCinematic: false // ⏩ demandé avant que la suite soit prête
   };
-}
-
-// U — Construit l'état d'horloge initial pour une partie d'aventure (null si la
-// cadence est « sans horloge » ou hors aventure).
-function makeInitialClock() {
-  const tc = getTimeControlConfig(state.adventure?.timeControl);
-  if (state.screen !== 'adventure' || tc.id === 'off') {
-    return null;
-  }
-  return { control: tc.id, w: tc.baseMs, b: tc.baseMs, lastTickTs: null };
-}
-
-let clockTimer = null;
-
-function startClockTicker() {
-  if (clockTimer) {
-    return;
-  }
-  clockTimer = setInterval(tickClock, 200);
-}
-
-// Décompte temps réel de l'horloge du joueur quand c'est à lui de jouer.
-// L'horloge de Stockfish, elle, est décrémentée d'un échantillon (loi normale)
-// à chaque coup adverse (cf. deductStockfishClock).
-function tickClock() {
-  const game = state.game;
-  if (!game?.clock) {
-    return;
-  }
-  if (game.status !== 'playing') {
-    game.clock.lastTickTs = null;
-    return;
-  }
-  const playerToMove =
-    game.chess.turn() === 'w' && !game.locked && !game.cinematic && game.historyView == null;
-  if (playerToMove) {
-    const now = performance.now();
-    if (game.clock.lastTickTs != null) {
-      game.clock.w = Math.max(0, game.clock.w - (now - game.clock.lastTickTs));
-    }
-    game.clock.lastTickTs = now;
-    if (game.clock.w <= 0) {
-      game.clock.w = 0;
-      renderClocks();
-      finishGame('lost', '⏰ Temps écoulé : tu perds au temps.');
-      return;
-    }
-  } else {
-    game.clock.lastTickTs = null; // horloge du joueur en pause hors de son tour
-  }
-  renderClocks();
-}
-
-// Décrémente l'horloge de Stockfish du temps « réfléchi » (loi normale). Renvoie
-// true s'il tombe au temps (la partie est alors gagnée par le joueur).
-function deductStockfishClock(game) {
-  if (!game?.clock) {
-    return false;
-  }
-  const tc = getTimeControlConfig(game.clock.control);
-  game.clock.b = Math.max(0, game.clock.b - sampleStockfishMoveTime(tc));
-  if (game.clock.b <= 0) {
-    game.clock.b = 0;
-    renderClocks();
-    finishGame('won', '⏰ Stockfish tombe au temps — tu gagnes !');
-    return true;
-  }
-  renderClocks();
-  return false;
-}
-
-function renderClocks() {
-  const wrap = document.querySelector('#advClocks');
-  if (!wrap) {
-    return;
-  }
-  const game = state.game;
-  const clock = game?.clock;
-  const show =
-    Boolean(clock) &&
-    state.screen === 'adventure' &&
-    document.body.classList.contains('is-adv-board-view');
-  wrap.hidden = !show;
-  if (!show) {
-    return;
-  }
-  const playing = game.status === 'playing';
-  const whiteActive = playing && game.chess.turn() === 'w' && !game.locked && !game.cinematic;
-  const blackActive = playing && game.chess.turn() === 'b';
-  const whiteEl = document.querySelector('#advClockWhite');
-  const blackEl = document.querySelector('#advClockBlack');
-  advSetText('#advClockWhiteTime', formatClock(clock.w));
-  advSetText('#advClockBlackTime', formatClock(clock.b));
-  whiteEl?.classList.toggle('is-active', whiteActive);
-  blackEl?.classList.toggle('is-active', blackActive);
-  whiteEl?.classList.toggle('is-low', clock.w < 20000);
-  blackEl?.classList.toggle('is-low', clock.b < 20000);
 }
 
 function getGameNode() {
@@ -4410,16 +2223,6 @@ function getGameNodeByFen() {
     state.nodesByPositionKey.get(fenPositionKey(state.game.chess.fen())) ??
     null
   );
-}
-
-function getRawOutgoingEdges(nodeId, color = null) {
-  const node = getNode(nodeId);
-  if (!node) {
-    return [];
-  }
-  return node.outgoing
-    .map(getEdge)
-    .filter((edge) => edge && (!color || edge.color === color));
 }
 
 function buildRawPathToNode(nodeId) {
@@ -4675,10 +2478,7 @@ function advWonBossLines() {
   return (state.adventure?.games || [])
     .filter(
       (g) =>
-        g.result === 'won' &&
-        g.kind === 'boss' &&
-        Array.isArray(g.lineSans) &&
-        g.lineSans.length
+        g.result === 'won' && g.kind === 'boss' && Array.isArray(g.lineSans) && g.lineSans.length
     )
     .map((g) => g.lineSans);
 }
@@ -4713,10 +2513,6 @@ function advWonLineMaskingActive() {
     !state.game?.replayWonLine &&
     advWonBossLines().length > 0
   );
-}
-
-function moveToUci(move) {
-  return `${move.from}${move.to}${move.promotion ?? ''}`;
 }
 
 function tryMoveInput(chess, rawInput) {
@@ -4755,8 +2551,7 @@ function findMatchingBookEdge(rawInput) {
   const uci = moveToUci(move);
   const san = normalizeSanForCompare(move.san);
   const edge = expected.find(
-    (candidate) =>
-      candidate.uci === uci || normalizeSanForCompare(candidate.san) === san
+    (candidate) => candidate.uci === uci || normalizeSanForCompare(candidate.san) === san
   );
   return { legal: true, move, edge: edge ?? null };
 }
@@ -4791,9 +2586,7 @@ function buildOpeningMismatchMessage(move) {
     : '';
   const hint = getKnownWhiteBookMoveHint(move);
   if (hint) {
-    const sourceText = hint.sources.length
-      ? ` (${formatSourceList(hint.sources)})`
-      : '';
+    const sourceText = hint.sources.length ? ` (${formatSourceList(hint.sources)})` : '';
     return (
       `${move.san} existe dans une autre branche du livre${sourceText}, ` +
       `mais pas depuis cette position.${expectedText} Retour utilisé, rejoue un coup d'ouverture.`
@@ -4801,60 +2594,6 @@ function buildOpeningMismatchMessage(move) {
   }
 
   return `Ce coup sort du livre attendu.${expectedText} Retour utilisé, rejoue un coup d'ouverture.`;
-}
-
-function normalizeWeightedCandidates(candidates) {
-  if (!candidates.length) {
-    return [];
-  }
-
-  const total = candidates.reduce(
-    (sum, candidate) => sum + Math.max(0, candidate.probability ?? 0),
-    0
-  );
-  if (total <= 0) {
-    const equal = 1 / candidates.length;
-    return candidates.map((candidate) => ({ ...candidate, probability: equal }));
-  }
-
-  return candidates.map((candidate) => ({
-    ...candidate,
-    probability: Math.max(0, candidate.probability ?? 0) / total
-  }));
-}
-
-function randomUnit() {
-  if (globalThis.crypto?.getRandomValues) {
-    const values = new Uint32Array(1);
-    globalThis.crypto.getRandomValues(values);
-    return values[0] / 4294967296;
-  }
-  return Math.random();
-}
-
-function pickWeightedCandidate(candidates) {
-  const normalized = normalizeWeightedCandidates(candidates);
-  if (!normalized.length) {
-    return null;
-  }
-
-  const weighted = normalized.map((candidate) => ({
-    ...candidate,
-    lotteryWeight: candidate.probability
-  }));
-
-  const total = weighted.reduce((sum, candidate) => sum + candidate.lotteryWeight, 0);
-  let roll = randomUnit() * total;
-  let selected = weighted[weighted.length - 1];
-  for (const candidate of weighted) {
-    roll -= candidate.lotteryWeight;
-    if (roll <= 0) {
-      selected = candidate;
-      break;
-    }
-  }
-
-  return selected;
 }
 
 function canOpponentLeaveBookAtPly(ply) {
@@ -4872,7 +2611,10 @@ function buildOpponentBookCandidates(bookEdges, ply = state.game?.chess.history(
   const branchFen = state.game?.chess.fen();
   return normalizeWeightedCandidates([
     ...bookEdges.map((edge) => {
-      const weighted = Math.max(0, edge.probability + advBlackChoiceWeight(branchFen, edge.uci) / 100);
+      const weighted = Math.max(
+        0,
+        edge.probability + advBlackChoiceWeight(branchFen, edge.uci) / 100
+      );
       return {
         id: `book:${edge.id}`,
         type: 'book',
@@ -4982,54 +2724,6 @@ function formatEvalDelta(deltaCp) {
   return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
 }
 
-// L — Verdicts type Lichess (sur les coups BLANCS, ceux du joueur), selon la
-// perte d'évaluation par rapport au meilleur coup.
-const MOVE_VERDICTS = {
-  brilliant: { label: 'Brillant', short: '✦', cls: 'brilliant' },
-  good: { label: 'Bon', short: '✓', cls: 'good' },
-  inaccuracy: { label: 'Imprécision', short: '?!', cls: 'inaccuracy' },
-  mistake: { label: 'Erreur', short: '?', cls: 'mistake' },
-  blunder: { label: 'Gaffe', short: '??', cls: 'blunder' },
-  book: { label: 'Livre', short: '📖', cls: 'book' }
-};
-const MOVE_VERDICT_LOSS = { inaccuracy: 50, mistake: 100, blunder: 200 };
-const MOVE_BRILLIANT_GAIN = 200; // gain d'éval (cp) pour un coup « brillant »
-const MOVE_BRILLIANT_MIN_CP = 300; // position nettement gagnante après le coup
-
-function advMoveVerdict(entry) {
-  if (!entry || entry.color !== 'w') {
-    return null;
-  }
-  if (entry.phase === 'opening') {
-    return { key: 'book', ...MOVE_VERDICTS.book };
-  }
-  if (entry.phase !== 'free') {
-    return null; // suite Stockfish / variantes d'analyse : pas de verdict joueur
-  }
-  if (!Number.isFinite(entry.beforeEvalCp) || !Number.isFinite(entry.afterEvalCp)) {
-    return null;
-  }
-  const before = entry.beforeEvalCp;
-  const after = entry.afterEvalCp;
-  // Coup brillant : ton coup crée un mat forcé, ou gagne décisivement (gros gain
-  // d'éval vers une position nettement gagnante).
-  const createsMate = isMateScore(after) && after > 0 && !(isMateScore(before) && before > 0);
-  const decisiveGain = after - before >= MOVE_BRILLIANT_GAIN && after >= MOVE_BRILLIANT_MIN_CP;
-  if (createsMate || decisiveGain) {
-    return { key: 'brilliant', loss: 0, ...MOVE_VERDICTS.brilliant };
-  }
-  const loss = before - after; // perte d'éval côté blanc
-  let key = 'good';
-  if (loss >= MOVE_VERDICT_LOSS.blunder) {
-    key = 'blunder';
-  } else if (loss >= MOVE_VERDICT_LOSS.mistake) {
-    key = 'mistake';
-  } else if (loss >= MOVE_VERDICT_LOSS.inaccuracy) {
-    key = 'inaccuracy';
-  }
-  return { key, loss, ...MOVE_VERDICTS[key] };
-}
-
 // Meilleur coup qui était disponible avant ce coup (1er coup de la PV du parent).
 function advReviewBestAlternative(entry) {
   const parent = getReviewParent(entry);
@@ -5084,15 +2778,15 @@ function buildReviewMoveAnalysis(entry) {
     entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < state.survivalLimitCp
       ? ` Le coup passe sous le seuil ${formatEval(state.survivalLimitCp)}.`
       : '';
-  const statusText = entry.status === 'returned'
-    ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
-    : entry.status === 'losing'
-      ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
-      : entry.status === 'evaluating'
-        ? ' Évaluation détaillée en cours: le score affiché est provisoire.'
-      : '';
-  const pvText =
-    entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
+  const statusText =
+    entry.status === 'returned'
+      ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
+      : entry.status === 'losing'
+        ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
+        : entry.status === 'evaluating'
+          ? ' Évaluation détaillée en cours: le score affiché est provisoire.'
+          : '';
+  const pvText = entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
   const humanEval =
     entry.phase !== 'opening' && Math.abs(entry.afterEvalCp) >= 80
       ? buildHumanEval(entry.afterFen, {
@@ -5105,9 +2799,7 @@ function buildReviewMoveAnalysis(entry) {
     humanEval && (entry.status === 'losing' || entry.phase === 'engine-line')
       ? ` ${humanEval.advice}`
       : '';
-  const humanEvalText = humanEval
-    ? ` Lecture humaine: ${humanEval.sentence}${adviceText}`
-    : '';
+  const humanEvalText = humanEval ? ` Lecture humaine: ${humanEval.sentence}${adviceText}` : '';
   // L : préfixe catégoriel (Lichess) + meilleur coup disponible sur une faute.
   const moveVerdict = advMoveVerdict(entry);
   const verdictPrefix =
@@ -5375,9 +3067,7 @@ async function hydrateDefeatLineEvaluations(game, entries, initialCpWhite) {
 
 function hasPostGameFreeReview() {
   return Boolean(
-    state.game &&
-      state.game.status !== 'playing' &&
-      state.game.freeReviewMoves.length
+    state.game && state.game.status !== 'playing' && state.game.freeReviewMoves.length
   );
 }
 
@@ -5385,11 +3075,11 @@ function isPostGameReviewPlayable() {
   const game = state.game;
   return Boolean(
     game &&
-      game.status !== 'playing' &&
-      game.freeReview?.active &&
-      getActiveFreeReviewEntry() &&
-      !game.locked &&
-      !game.cinematic?.active
+    game.status !== 'playing' &&
+    game.freeReview?.active &&
+    getActiveFreeReviewEntry() &&
+    !game.locked &&
+    !game.cinematic?.active
   );
 }
 
@@ -5439,8 +3129,7 @@ async function launchPostGameFreeAnalysis() {
     .slice(0, originEntry.index + 1)
     .map((entry, index) => ({ ...entry, index }));
   const originNode =
-    state.nodesByFen.get(chess.fen()) ??
-    state.nodesByPositionKey.get(fenPositionKey(chess.fen()));
+    state.nodesByFen.get(chess.fen()) ?? state.nodesByPositionKey.get(fenPositionKey(chess.fen()));
 
   state.playMode = 'exploration';
   syncPlayModeButtons();
@@ -5568,10 +3257,7 @@ function finishCampaignByMate(message = null) {
   }
   game.finalVictory = true;
   game.nextLevel = null;
-  finishGame(
-    'won',
-    message ?? `Échec et mat: campagne terminée au niveau ${game.level}.`
-  );
+  finishGame('won', message ?? `Échec et mat: campagne terminée au niveau ${game.level}.`);
 }
 
 function finishSurvivalLevel() {
@@ -5751,7 +3437,10 @@ async function submitOpeningMove(input) {
   if (!result.edge) {
     if (isExplorationMode()) {
       state.game.expectedOpeningArrows = [];
-      await submitExplorationMove(input, "Sortie du livre explorée: l'adversaire passe au calcul libre.");
+      await submitExplorationMove(
+        input,
+        "Sortie du livre explorée: l'adversaire passe au calcul libre."
+      );
       return;
     }
     state.game.expectedOpeningArrows = getExpectedWhiteBookArrows();
@@ -5946,9 +3635,7 @@ async function advanceOpponentTurn() {
   if (game.phase === 'opening') {
     const blackBookEdges = getOpponentBookEdgesForRun();
     const decision = blackBookEdges.length
-      ? pickWeightedCandidate(
-          buildOpponentBookCandidates(blackBookEdges)
-        )
+      ? pickWeightedCandidate(buildOpponentBookCandidates(blackBookEdges))
       : null;
 
     if (decision?.type === 'book') {
@@ -5979,7 +3666,7 @@ async function advanceOpponentTurn() {
 
     enterFreePhase(
       decision?.type === 'free'
-        ? "Les Noirs cassent le livre et passent aux coups Stockfish."
+        ? 'Les Noirs cassent le livre et passent aux coups Stockfish.'
         : "La branche d'ouverture est terminée: les Noirs passent à Stockfish."
     );
   }
@@ -6070,12 +3757,12 @@ async function playStockfishBlackMove() {
   game.message = isExplorationMode()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
     : replyCritical
-    ? `⚠️ Position critique après ${move.san} (éval ${formatEval(afterEvaluation.cpWhite)}). Joue : ton coup et sa réévaluation décideront du sort.`
-    : isAdventureRun()
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
-    : isMateObjective(game)
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
-    : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
+      ? `⚠️ Position critique après ${move.san} (éval ${formatEval(afterEvaluation.cpWhite)}). Joue : ton coup et sa réévaluation décideront du sort.`
+      : isAdventureRun()
+        ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
+        : isMateObjective(game)
+          ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
+          : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
 }
 
 function enterFreePhase(message) {
@@ -6105,7 +3792,12 @@ function consumeLife(message) {
   }
   game.lives = Math.max(0, game.lives - 1);
   if (game.lives <= 0) {
-    finishGame('lost', `${message} Plus aucun retour disponible.`, game.failureFen, game.failureEvaluation);
+    finishGame(
+      'lost',
+      `${message} Plus aucun retour disponible.`,
+      game.failureFen,
+      game.failureEvaluation
+    );
     return;
   }
   // Le nombre de vies restantes est porté par l'indicateur de cœurs.
@@ -6271,16 +3963,6 @@ function setGameLocked(isLocked) {
 }
 
 // Un score Stockfish encode un mat forcé quand il frôle MATE_SCORE_CP.
-function isMateScore(cpWhite) {
-  return Number.isFinite(cpWhite) && Math.abs(cpWhite) >= MATE_SCORE_CP - 1000;
-}
-
-// Reconstruit le « mat en X » à partir du score encodé (cf. parseWhiteCentipawn).
-function mateMovesFromCp(cpWhite) {
-  const penalty = MATE_SCORE_CP - Math.abs(cpWhite);
-  return Math.max(1, Math.round(penalty / 12));
-}
-
 // Enregistre dans l'historique de revue un coup JOUÉ AUTOMATIQUEMENT (conversion
 // vers le mat ou suite de défaite) : phase « engine-line » → ni XP joueur ni
 // verdict, mais le coup apparaît bien dans la revue et la sauvegarde.
@@ -6330,140 +4012,146 @@ async function runVictoryConversion() {
   let mateFound = null;
 
   try {
-  for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
-    if (state.game !== game || game.status !== 'playing') {
-      return; // partie changée ou terminée ailleurs
-    }
-
-    if (game.chess.turn() === 'w') {
-      // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
-      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+    for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
       if (state.game !== game || game.status !== 'playing') {
-        return;
+        return; // partie changée ou terminée ailleurs
       }
-      game.currentEvalCp = evalNow.cpWhite;
-      game.currentPv = evalNow.pv;
-      game.currentDepth = evalNow.depth;
-      if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
-        // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
-        // proche (≤ seuil) ; sinon la conversion continue automatiquement.
-        if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
-          mateFound = evalNow;
+
+      if (game.chess.turn() === 'w') {
+        // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
+        const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        game.currentEvalCp = evalNow.cpWhite;
+        game.currentPv = evalNow.pv;
+        game.currentDepth = evalNow.depth;
+        if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
+          // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
+          // proche (≤ seuil) ; sinon la conversion continue automatiquement.
+          if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
+            mateFound = evalNow;
+            break;
+          }
+        }
+        if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
+          break; // l'avantage s'est évaporé → on rend la main
+        }
+        if (!evalNow.bestMove) {
           break;
         }
-      }
-      if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
-        break; // l'avantage s'est évaporé → on rend la main
-      }
-      if (!evalNow.bestMove) {
-        break;
-      }
-      const wBeforeFen = game.chess.fen();
-      const wmove = playUciOnChess(game.chess, evalNow.bestMove);
-      if (!wmove) {
-        break;
-      }
-      applyFreeMove(wmove, 'Conversion auto');
-      recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
-      game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
-      renderGamePanel();
-      renderGameDetails();
-      if (game.chess.isCheckmate()) {
-        finishCampaignByMate('Mat ! La conversion automatique a conclu la partie.');
-        return;
-      }
-      if (game.chess.isDraw()) {
-        finishGameByStalemate(game.chess);
-        return;
-      }
-      await pause(VICTORY_CINEMATIC_STEP_MS);
-    } else {
-      // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
-      // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
-      // instantanément pendant la phase de mat (la position reste affichée
-      // pendant que Stockfish « réfléchit », puis le coup apparaît).
-      const bBeforeFen = game.chess.fen();
-      const bBeforeEvalCp = game.currentEvalCp;
-      game.message = `Stockfish ${formatStockfishLevel(profile)} cherche la défense…`;
-      setEngineThinking(true);
-      renderGamePanel();
-      renderGameDetails();
-      const thinkStart = performance.now();
-      const thinkTarget = randomThinkMs(900, 2600);
-      const search = await evaluator.pickMove(game.chess.fen(), profile);
-      if (state.game !== game || game.status !== 'playing') {
+        const wBeforeFen = game.chess.fen();
+        const wmove = playUciOnChess(game.chess, evalNow.bestMove);
+        if (!wmove) {
+          break;
+        }
+        applyFreeMove(wmove, 'Conversion auto');
+        recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
+        game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
+        renderGamePanel();
+        renderGameDetails();
+        if (game.chess.isCheckmate()) {
+          finishCampaignByMate('Mat ! La conversion automatique a conclu la partie.');
+          return;
+        }
+        if (game.chess.isDraw()) {
+          finishGameByStalemate(game.chess);
+          return;
+        }
+        await pause(VICTORY_CINEMATIC_STEP_MS);
+      } else {
+        // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
+        // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
+        // instantanément pendant la phase de mat (la position reste affichée
+        // pendant que Stockfish « réfléchit », puis le coup apparaît).
+        const bBeforeFen = game.chess.fen();
+        const bBeforeEvalCp = game.currentEvalCp;
+        game.message = `Stockfish ${formatStockfishLevel(profile)} cherche la défense…`;
+        setEngineThinking(true);
+        renderGamePanel();
+        renderGameDetails();
+        const thinkStart = performance.now();
+        const thinkTarget = randomThinkMs(900, 2600);
+        const search = await evaluator.pickMove(game.chess.fen(), profile);
+        if (state.game !== game || game.status !== 'playing') {
+          setEngineThinking(false);
+          return;
+        }
+        if (!search.bestMove) {
+          setEngineThinking(false);
+          break;
+        }
+        await pause(thinkTarget - (performance.now() - thinkStart));
         setEngineThinking(false);
-        return;
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        const bmove = playUciOnChess(game.chess, search.bestMove);
+        if (!bmove) {
+          break;
+        }
+        applyFreeMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`);
+        const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        game.currentEvalCp = evalNow.cpWhite;
+        recordAutoMove(
+          bmove,
+          `Stockfish ${formatStockfishLevel(profile)}`,
+          bBeforeFen,
+          bBeforeEvalCp,
+          evalNow.cpWhite
+        );
+        game.currentPv = evalNow.pv;
+        game.currentDepth = evalNow.depth;
+        renderGamePanel();
+        renderGameDetails();
+        if (game.chess.isCheckmate()) {
+          // Les Noirs matent (très improbable depuis une position gagnante).
+          finishGame('lost', 'Échec et mat subi pendant la conversion.', game.chess.fen(), evalNow);
+          return;
+        }
+        if (game.chess.isDraw()) {
+          finishGameByStalemate(game.chess);
+          return;
+        }
+        // Plus de pause « flat » : la réflexion ci-dessus a déjà donné le tempo.
       }
-      if (!search.bestMove) {
-        setEngineThinking(false);
-        break;
-      }
-      await pause(thinkTarget - (performance.now() - thinkStart));
-      setEngineThinking(false);
-      if (state.game !== game || game.status !== 'playing') {
-        return;
-      }
-      const bmove = playUciOnChess(game.chess, search.bestMove);
-      if (!bmove) {
-        break;
-      }
-      applyFreeMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`);
-      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
-      if (state.game !== game || game.status !== 'playing') {
-        return;
-      }
-      game.currentEvalCp = evalNow.cpWhite;
-      recordAutoMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`, bBeforeFen, bBeforeEvalCp, evalNow.cpWhite);
-      game.currentPv = evalNow.pv;
-      game.currentDepth = evalNow.depth;
-      renderGamePanel();
-      renderGameDetails();
-      if (game.chess.isCheckmate()) {
-        // Les Noirs matent (très improbable depuis une position gagnante).
-        finishGame('lost', 'Échec et mat subi pendant la conversion.', game.chess.fen(), evalNow);
-        return;
-      }
-      if (game.chess.isDraw()) {
-        finishGameByStalemate(game.chess);
-        return;
-      }
-      // Plus de pause « flat » : la réflexion ci-dessus a déjà donné le tempo.
     }
-  }
 
-  // Fin de la conversion : on déverrouille et on rend la main — jamais au trait noir.
-  if (state.game !== game) {
-    return;
-  }
-  game.victoryCinematic = false;
-  setGameLocked(false);
-  game.freeRoundPending = false;
-  if (game.status !== 'playing') {
-    return;
-  }
+    // Fin de la conversion : on déverrouille et on rend la main — jamais au trait noir.
+    if (state.game !== game) {
+      return;
+    }
+    game.victoryCinematic = false;
+    setGameLocked(false);
+    game.freeRoundPending = false;
+    if (game.status !== 'playing') {
+      return;
+    }
 
-  // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
-  // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
-  // Blancs au lieu de laisser le joueur bloqué.
-  if (game.chess.turn() === 'b') {
-    game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
+    // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
+    // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
+    // Blancs au lieu de laisser le joueur bloqué.
+    if (game.chess.turn() === 'b') {
+      game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
+      renderGamePanel();
+      renderGameDetails();
+      await advanceOpponentTurn();
+      return;
+    }
+
+    if (mateFound) {
+      const x = mateMovesFromCp(mateFound.cpWhite);
+      game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
+      game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
+    } else {
+      game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
+    }
     renderGamePanel();
     renderGameDetails();
-    await advanceOpponentTurn();
-    return;
-  }
-
-  if (mateFound) {
-    const x = mateMovesFromCp(mateFound.cpWhite);
-    game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
-    game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
-  } else {
-    game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
-  }
-  renderGamePanel();
-  renderGameDetails();
-  } catch (err) {
+  } catch {
     // Sécurité : une erreur du moteur (timeout…) ne doit jamais bloquer le joueur.
     if (state.game === game) {
       game.victoryCinematic = false;
@@ -6557,7 +4245,7 @@ function syncGameGraphSelection(view) {
   const directNode = view.nodesById.get(currentId);
   const containingSegment = findCurrentViewSegment(view, currentId, rawPath);
   const currentNode = getNode(currentId);
-  const currentLabel = currentId === 'root' ? 'départ' : currentNode?.san ?? currentId;
+  const currentLabel = currentId === 'root' ? 'départ' : (currentNode?.san ?? currentId);
   // Nœud du graphe correspondant à la position en cours de la partie (« vous êtes ici »).
   state.gameViewNodeId = containingSegment ? containingSegment.to : directNode ? currentId : null;
   if (containingSegment) {
@@ -6689,11 +4377,11 @@ function getGameInfoAnalysis(game, currentNode = null) {
   }
 
   if (game.phase === 'opening') {
-    return "Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.";
+    return 'Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.';
   }
 
   if (isExplorationMode()) {
-    return "Position libre: teste une idée, Stockfish répondra sans pénalité.";
+    return 'Position libre: teste une idée, Stockfish répondra sans pénalité.';
   }
 
   return `Position de survie: garde l'évaluation à ${formatEval(state.survivalLimitCp)} ou mieux.`;
@@ -6710,10 +4398,9 @@ function renderGameDetails() {
   const reviewEntry = getActiveFreeReviewEntry();
   const currentNode = getGameNode();
   const phaseLabel = formatGamePhase(game);
-  elements.nodeTitle.textContent =
-    reviewEntry
-      ? 'Revue de partie'
-      : game.status === 'won'
+  elements.nodeTitle.textContent = reviewEntry
+    ? 'Revue de partie'
+    : game.status === 'won'
       ? game.finalVictory
         ? 'Campagne terminée'
         : 'Niveau réussi'
@@ -6722,21 +4409,21 @@ function renderGameDetails() {
         : game.chess.turn() === 'w'
           ? 'Aux Blancs'
           : 'Réponse noire';
-  elements.nodeSubtitle.textContent =
-    reviewEntry
-      ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
-      : game.phase === 'opening'
+  elements.nodeSubtitle.textContent = reviewEntry
+    ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
+    : game.phase === 'opening'
       ? "Reste dans les coups d'ouverture attendus."
       : isExplorationMode()
         ? 'Exploration libre: teste la position contre Stockfish.'
         : isMateObjective(game)
           ? `Objectif final: mater sans passer sous ${formatEval(state.survivalLimitCp)}.`
           : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
-  elements.nodeEval.textContent = reviewEntry ? formatEval(reviewEntry.afterEvalCp) : formatEval(game.currentEvalCp);
-  elements.nodeFuture.textContent =
-    reviewEntry
-      ? formatEvalDelta(reviewEntry.afterEvalCp - reviewEntry.beforeEvalCp)
-      : game.phase === 'free'
+  elements.nodeEval.textContent = reviewEntry
+    ? formatEval(reviewEntry.afterEvalCp)
+    : formatEval(game.currentEvalCp);
+  elements.nodeFuture.textContent = reviewEntry
+    ? formatEvalDelta(reviewEntry.afterEvalCp - reviewEntry.beforeEvalCp)
+    : game.phase === 'free'
       ? formatFreeRemaining(game)
       : formatEval(currentNode?.futureMeanCp);
   elements.nodeTurn.textContent = sideLabel(reviewEntry ? boardNode.sideToMove : game.chess.turn());
@@ -6801,19 +4488,17 @@ function renderGamePanel(phaseLabel = null) {
   elements.gamePhase.textContent = phase;
   elements.gameFreeRemaining.textContent = formatFreeRemaining(game);
   elements.gameEval.textContent = formatEval(reviewEntry?.afterEvalCp ?? game.currentEvalCp);
-  elements.gameTurn.textContent = sideLabel(reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn());
+  elements.gameTurn.textContent = sideLabel(
+    reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn()
+  );
   elements.gameMessage.textContent = formatGamePanelMessage(game, reviewEntry);
   const reviewPlayable = isPostGameReviewPlayable();
   elements.playMoveButton.disabled =
     game.locked || !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === 'w'));
   elements.moveInput.disabled = elements.playMoveButton.disabled;
-  const inputSide = reviewPlayable
-    ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1])
-    : 'Blancs';
+  const inputSide = reviewPlayable ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1]) : 'Blancs';
   elements.moveInputLabel.textContent = reviewPlayable ? `Coup des ${inputSide}` : 'Coup blanc';
-  elements.moveInput.placeholder = reviewPlayable
-    ? `${inputSide}: SAN ou UCI`
-    : 'ex. Nf3 ou g1f3';
+  elements.moveInput.placeholder = reviewPlayable ? `${inputSide}: SAN ou UCI` : 'ex. Nf3 ou g1f3';
   elements.newGameButton.textContent =
     game.status === 'playing'
       ? isExplorationMode()
@@ -6866,11 +4551,9 @@ function formatFreeRemaining(game) {
     return 'libre';
   }
   if (game.phase !== 'free') {
-    return isMateObjective(game) ? "objectif mat" : `objectif ${formatSurvivalTarget(game)}`;
+    return isMateObjective(game) ? 'objectif mat' : `objectif ${formatSurvivalTarget(game)}`;
   }
-  return isMateObjective(game)
-    ? "jusqu'au mat"
-    : `${game.freeRemaining}/${game.objective.target}`;
+  return isMateObjective(game) ? "jusqu'au mat" : `${game.freeRemaining}/${game.objective.target}`;
 }
 
 function renderExpectedMoveList() {
@@ -7015,7 +4698,7 @@ function renderMoveLog() {
           label: entry.branchLabel ? `${entry.label} · ${entry.branchLabel}` : entry.label,
           color: entry.color
         }))
-    : state.game?.moveLog ?? [];
+    : (state.game?.moveLog ?? []);
   for (const item of moves) {
     const row = document.createElement('li');
     row.innerHTML = `<strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(item.label)}</span>`;
@@ -7077,8 +4760,7 @@ function renderFreeReviewPanel() {
   }
   // En aventure, on n'ouvre l'analyse rapide qu'après une vraie partie
   // (au-delà de la simple position de départ).
-  const reviewReady =
-    hasPostGameFreeReview() && (!inAdventure || game.freeReviewMoves.length > 1);
+  const reviewReady = hasPostGameFreeReview() && (!inAdventure || game.freeReviewMoves.length > 1);
   if (!reviewReady) {
     host.hidden = true;
     return;
@@ -7086,7 +4768,8 @@ function renderFreeReviewPanel() {
 
   host.hidden = false;
   ensureReviewTree(game);
-  const activeEntry = getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const activeEntry =
+    getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
   const parentEntry = getReviewParent(activeEntry);
   const nextEntry = getPreferredReviewChild(activeEntry);
   const childEntries = getReviewChildren(activeEntry.index);
@@ -7255,7 +4938,8 @@ function renderGameChoices() {
   if (game.phase === 'opening' && expected.length) {
     if (isExplorationMode()) {
       const free = document.createElement('p');
-      free.textContent = 'Exploration: les coups du livre sont proposés, mais tu peux aussi jouer directement sur l’échiquier pour sortir de la ligne.';
+      free.textContent =
+        'Exploration: les coups du livre sont proposés, mais tu peux aussi jouer directement sur l’échiquier pour sortir de la ligne.';
       elements.choiceList.append(free);
     }
     for (const edge of expected) {
@@ -7493,9 +5177,6 @@ function populateControls() {
 /* =====================================================================
    Mode Aventure : cerveau RPG (apprentissage + domination Stockfish)
    ===================================================================== */
-const ADV_STORAGE_KEY = 'roguechess-adventure-v1';
-const ADV_MAX_GAMES = 60; // historique des parties conservées (M)
-const ADV_ACT2_UNLOCK = 0.5;
 const ADV_LESSONS = [
   { id: 'l1', target: 0.25, title: 'Premiers neurones', icon: '🌱' },
   { id: 'l2', target: 0.5, title: 'Réseau en éveil', icon: '✨' },
@@ -7506,320 +5187,6 @@ const ADV_XP_PER_SYNAPSE = 8;
 const ADV_XP_BOOK_MOVE = 4;
 const ADV_XP_LESSON = 50;
 let advSurgeTimer = null;
-
-function createAdventureState() {
-  return {
-    xp: 0,
-    nodes: new Set(),
-    lessons: {},
-    bosses: {},          // record d'étoiles par boss (0-3) : « déjà acquises », permanent
-    bossStreaks: {},     // série de victoires en cours par boss (0-3), remise à 0 à la défaite
-    highestBoss: 0,
-    act2Announced: false,
-    movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
-    playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
-    games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
-    difficulty: DEFAULT_ADV_DIFFICULTY,
-    timeControl: DEFAULT_TIME_CONTROL, // U : cadence de la pendule
-    customClockMinutes: 10, // U : minutes/camp de la cadence personnalisée
-    coins: 0,            // Boutique : pièces gagnées par victoire
-    boostedLines: [],    // (héritage) ancien système de surpondération de ligne
-    // O — pondération des choix d'ouverture de Stockfish (±5%), valable pour le
-    // prochain boss puis remise à zéro. Clé = `${fenAvantCoupNoir}|${uci}`.
-    openingWeights: {},  // { clé: pourcentage } (réinitialisé après chaque partie de boss)
-    openingDeck: null,   // file des propositions restantes (null = à (re)remplir, [] = épuisée)
-    openingLocks: [],    // cadenas : propositions non consommées (cumulables)
-    threatsEnabled: false, // R : aide « voir les menaces » activée
-    mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
-    influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur
-    influenceMode: 'random', // 'random' = nœud tiré au hasard ; 'game' = nœuds de la partie jouée
-    // Vies globales : nombre de défaites possibles contre les bots. 0 au départ ;
-    // 3 débloquées à 50 % d'apprentissage ; -1 par défaite ; rechargées par la
-    // révision ou le lendemain.
-    globalLives: 0,
-    livesUnlocked: false, // a déjà atteint 50 % une fois
-    livesDate: null, // YYYY-MM-DD du dernier remplissage (reset quotidien)
-    bestScores: {} // records du score d'apprentissage par mode (lesson/trap/quiz/mate)
-  };
-}
-
-function loadAdventure() {
-  const base = createAdventureState();
-  try {
-    const raw = localStorage.getItem(ADV_STORAGE_KEY);
-    if (!raw) {
-      return base;
-    }
-    const data = JSON.parse(raw);
-    base.xp = Number(data.xp) || 0;
-    base.nodes = new Set(Array.isArray(data.nodes) ? data.nodes : []);
-    base.lessons = data.lessons && typeof data.lessons === 'object' ? data.lessons : {};
-    base.bosses = data.bosses && typeof data.bosses === 'object' ? data.bosses : {};
-    base.bossStreaks =
-      data.bossStreaks && typeof data.bossStreaks === 'object' ? data.bossStreaks : {};
-    base.highestBoss = Number(data.highestBoss) || 0;
-    base.act2Announced = Boolean(data.act2Announced);
-    base.movesPlayed = Number(data.movesPlayed) || 0;
-    base.playerXp = Number(data.playerXp) || 0;
-    base.games = Array.isArray(data.games) ? data.games.slice(0, ADV_MAX_GAMES) : [];
-    base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
-      ? data.difficulty
-      : DEFAULT_ADV_DIFFICULTY;
-    base.timeControl = TIME_CONTROLS.some((t) => t.id === data.timeControl)
-      ? data.timeControl
-      : DEFAULT_TIME_CONTROL;
-    base.customClockMinutes = clamp(Number(data.customClockMinutes) || 10, 0.5, 180);
-    base.coins = Math.max(0, Number(data.coins) || 0);
-    base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
-    base.openingWeights =
-      data.openingWeights && typeof data.openingWeights === 'object' ? data.openingWeights : {};
-    base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : null;
-    base.openingLocks = Array.isArray(data.openingLocks) ? data.openingLocks.slice(0, 40) : [];
-    base.threatsEnabled = Boolean(data.threatsEnabled);
-    base.mateHandover = MATE_HANDOVER_OPTIONS.some((o) => o.id === Number(data.mateHandover))
-      ? Number(data.mateHandover)
-      : DEFAULT_MATE_HANDOVER;
-    base.influenceDisabled = Boolean(data.influenceDisabled);
-    base.influenceMode = data.influenceMode === 'game' ? 'game' : 'random';
-    base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
-    base.livesUnlocked = Boolean(data.livesUnlocked);
-    base.livesDate = typeof data.livesDate === 'string' ? data.livesDate : null;
-    base.bestScores = data.bestScores && typeof data.bestScores === 'object' ? data.bestScores : {};
-  } catch {
-    return createAdventureState();
-  }
-  return base;
-}
-
-function saveAdventure() {
-  if (!state.adventure) {
-    return;
-  }
-  try {
-    localStorage.setItem(
-      ADV_STORAGE_KEY,
-      JSON.stringify({
-        xp: state.adventure.xp,
-        nodes: [...state.adventure.nodes],
-        lessons: state.adventure.lessons,
-        bosses: state.adventure.bosses,
-        bossStreaks: state.adventure.bossStreaks || {},
-        highestBoss: state.adventure.highestBoss,
-        act2Announced: state.adventure.act2Announced,
-        movesPlayed: state.adventure.movesPlayed || 0,
-        playerXp: state.adventure.playerXp || 0,
-        games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
-        difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY,
-        timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL,
-        customClockMinutes: state.adventure.customClockMinutes || 10,
-        coins: state.adventure.coins || 0,
-        boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
-        openingWeights: state.adventure.openingWeights || {},
-        openingDeck: Array.isArray(state.adventure.openingDeck)
-          ? state.adventure.openingDeck.slice(0, 40)
-          : null,
-        openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
-        threatsEnabled: Boolean(state.adventure.threatsEnabled),
-        mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
-        influenceDisabled: Boolean(state.adventure.influenceDisabled),
-        influenceMode: state.adventure.influenceMode === 'game' ? 'game' : 'random',
-        globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
-        livesUnlocked: Boolean(state.adventure.livesUnlocked),
-        livesDate: state.adventure.livesDate || null,
-        bestScores: state.adventure.bestScores || {}
-      })
-    );
-  } catch {
-    /* stockage indisponible: on continue en mémoire */
-  }
-}
-
-function advTotalSynapseNodes() {
-  return state.data ? state.data.nodes.filter((node) => node.id !== 'root').length : 0;
-}
-
-function advCoverage() {
-  const total = advTotalSynapseNodes();
-  return total ? Math.min(1, state.adventure.nodes.size / total) : 0;
-}
-
-function advCoveragePct() {
-  return Math.round(advCoverage() * 100);
-}
-
-// === Vies globales (méta) : nombre de défaites possibles contre les bots ========
-const ADV_GLOBAL_LIVES_MAX = 3;
-const ADV_LIVES_UNLOCK_COVERAGE = 0.5; // 50 % d'apprentissage débloque les vies
-
-function advTodayKey() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function advGlobalLives() {
-  return Math.max(0, Number(state.adventure?.globalLives) || 0);
-}
-
-function advLivesUnlocked() {
-  return Boolean(state.adventure?.livesUnlocked);
-}
-
-function advCanFightBots() {
-  return advGlobalLives() > 0;
-}
-
-// Déblocage à 50 % + reset quotidien. À appeler à l'ouverture de la carte / après
-// apprentissage. Renvoie true si l'état a changé.
-function advSyncGlobalLives() {
-  const adv = state.adventure;
-  if (!adv) {
-    return false;
-  }
-  let changed = false;
-  if (!adv.livesUnlocked && advCoverage() >= ADV_LIVES_UNLOCK_COVERAGE) {
-    adv.livesUnlocked = true;
-    adv.globalLives = ADV_GLOBAL_LIVES_MAX;
-    adv.livesDate = advTodayKey();
-    changed = true;
-    showAdventureToast({
-      icon: '❤️',
-      title: '3 vies débloquées !',
-      text: '50 % du cortex : tu peux affronter les bots. 3 défaites possibles.',
-      kind: 'boss'
-    });
-  }
-  if (adv.livesUnlocked && adv.livesDate !== advTodayKey()) {
-    adv.livesDate = advTodayKey();
-    if ((adv.globalLives || 0) < ADV_GLOBAL_LIVES_MAX) {
-      adv.globalLives = ADV_GLOBAL_LIVES_MAX;
-      showAdventureToast({
-        icon: '🌅',
-        title: 'Vies rechargées',
-        text: 'Nouveau jour : 3 défaites à nouveau possibles contre les bots.',
-        kind: null
-      });
-    }
-    changed = true;
-  }
-  if (changed) {
-    saveAdventure();
-  }
-  return changed;
-}
-
-function advConsumeGlobalLife() {
-  const adv = state.adventure;
-  if (!adv || !adv.livesUnlocked) {
-    return;
-  }
-  adv.globalLives = Math.max(0, (adv.globalLives || 0) - 1);
-  saveAdventure();
-}
-
-// Récupération des vies par l'apprentissage (révision réussie / leçon terminée).
-function advRefillGlobalLivesFromLearning() {
-  const adv = state.adventure;
-  if (!adv) {
-    return;
-  }
-  advSyncGlobalLives(); // peut débloquer si on vient de franchir 50 %
-  if (!adv.livesUnlocked || (adv.globalLives || 0) >= ADV_GLOBAL_LIVES_MAX) {
-    return;
-  }
-  adv.globalLives = ADV_GLOBAL_LIVES_MAX;
-  adv.livesDate = advTodayKey();
-  saveAdventure();
-  showAdventureToast({
-    icon: '❤️',
-    title: 'Vies rechargées',
-    text: 'Révision réussie : 3 défaites à nouveau possibles.',
-    kind: 'boss'
-  });
-}
-
-// Message quand on tente d'affronter un bot sans vie.
-function advNotifyNoLives() {
-  showAdventureToast({
-    icon: '💔',
-    title: 'Plus de vies',
-    text: advLivesUnlocked()
-      ? 'Révise une ligne (Illuminer le cerveau) ou reviens demain pour 3 nouvelles défaites.'
-      : 'Atteins 50 % du cortex (Illuminer le cerveau) pour débloquer 3 vies.',
-    kind: null
-  });
-}
-
-function advLevelSpan(level) {
-  return 260 + (level - 1) * 120;
-}
-
-function advBrainProgress() {
-  let level = 1;
-  let remaining = state.adventure ? state.adventure.xp : 0;
-  while (remaining >= advLevelSpan(level)) {
-    remaining -= advLevelSpan(level);
-    level += 1;
-  }
-  return { level, into: remaining, span: advLevelSpan(level) };
-}
-
-// Niveau « joueur » : XP gagnée sur les coups BLANCS, pondérée par leur qualité.
-// Courbe croissante (de plus en plus d'XP par niveau). Témoin d'engagement.
-const PLAYER_XP_BASE = 10; // coup correct
-const PLAYER_XP_STEP = 45; // XP cumulée pour atteindre le niveau L = STEP·(L-1)²
-
-function advPlayerMoves() {
-  return state.adventure?.movesPlayed || 0;
-}
-
-function advPlayerXp() {
-  return state.adventure?.playerXp || 0;
-}
-
-// XP d'un coup blanc : gaffe (perte > 1 en éval) = 0, coup brillant (gain > 1) = double.
-function advMoveXp(deltaCp) {
-  if (!Number.isFinite(deltaCp) || deltaCp <= -100) {
-    return 0;
-  }
-  if (deltaCp >= 100) {
-    return PLAYER_XP_BASE * 2;
-  }
-  return PLAYER_XP_BASE;
-}
-
-function advAwardPlayerXp(deltaCp) {
-  if (state.screen !== 'adventure' || !state.adventure) {
-    return;
-  }
-  state.adventure.playerXp = (state.adventure.playerXp || 0) + advMoveXp(deltaCp);
-}
-
-function advPlayerLevel(xp = advPlayerXp()) {
-  return Math.floor(Math.sqrt(Math.max(0, xp) / PLAYER_XP_STEP)) + 1;
-}
-
-// Progression vers le niveau joueur suivant (pour la jauge).
-function advPlayerProgress() {
-  const xp = advPlayerXp();
-  const level = advPlayerLevel(xp);
-  const floorXp = PLAYER_XP_STEP * (level - 1) * (level - 1);
-  const nextXp = PLAYER_XP_STEP * level * level;
-  const span = Math.max(1, nextXp - floorXp);
-  return { level, xp, moves: advPlayerMoves(), into: xp - floorXp, span };
-}
-
-// --- Difficulté Aventure : aides modulables ---
-
-function advDifficultyById(id) {
-  return (
-    ADV_DIFFICULTIES.find((d) => d.id === id) ||
-    ADV_DIFFICULTIES.find((d) => d.id === DEFAULT_ADV_DIFFICULTY)
-  );
-}
-
-function advCurrentDifficulty() {
-  return advDifficultyById(state.adventure?.difficulty || DEFAULT_ADV_DIFFICULTY);
-}
 
 // Aides actives : selon la difficulté en Aventure, complètes ailleurs (Atelier).
 function advAids() {
@@ -7915,7 +5282,13 @@ function setAdvDifficulty(id) {
 // pour rejouer la position. Disponible seulement à ton tour, hors verrou.
 function advTakeBack() {
   const game = state.game;
-  if (!game || !advAids().takeback || game.takebackLocked || game.status !== 'playing' || game.locked) {
+  if (
+    !game ||
+    !advAids().takeback ||
+    game.takebackLocked ||
+    game.status !== 'playing' ||
+    game.locked
+  ) {
     return;
   }
   if (game.chess.turn() !== 'w' || game.chess.history().length < 2) {
@@ -8216,15 +5589,6 @@ function advToggleInfluenceFeature() {
 // === Vies + « mat en X » ========================================================
 // Indicateur de vies unifié (cœurs) + réglage du moment où la cinématique de
 // victoire rend la main au joueur pour conclure le mat.
-const MATE_HANDOVER_OPTIONS = [
-  { id: 1, label: 'Mat en 1' },
-  { id: 2, label: 'Mat en 2' },
-  { id: 3, label: 'Mat en 3' },
-  { id: 5, label: 'Mat en 5' },
-  { id: 99, label: 'Au plus tôt' }
-];
-const DEFAULT_MATE_HANDOVER = 3;
-
 function advMateHandover() {
   const v = Number(state.adventure?.mateHandover);
   return Number.isFinite(v) && v > 0 ? v : DEFAULT_MATE_HANDOVER;
@@ -8259,7 +5623,12 @@ function advLivesState(game) {
     };
   }
   if (game.phase === 'opening') {
-    return { kind: 'opening', count: Math.max(0, game.lives), max: STARTING_LIVES, label: 'Ouverture' };
+    return {
+      kind: 'opening',
+      count: Math.max(0, game.lives),
+      max: STARTING_LIVES,
+      label: 'Ouverture'
+    };
   }
   return { kind: 'sudden', count: 1, max: 1, label: 'Mort subite' };
 }
@@ -8376,139 +5745,6 @@ function renderAdvShop() {
   }
 }
 
-let advCarouselIndex = 0;
-
-// Carrousel : une proposition à la fois (un coup noir d'embranchement), avec
-// boutons −5 % / +5 % (10 🪙) et « passer ». Chaque action consomme le choix et
-// passe au suivant, jusqu'à épuisement. Le cadenas conserve un choix (cumulable).
-function renderAdvOpeningCarousel(host) {
-  host.replaceChildren();
-  const deck = advEnsureOpeningDeck();
-  if (!deck.length) {
-    const empty = document.createElement('p');
-    empty.className = 'adv-shop-empty';
-    empty.textContent = advInfluenceableChoices().length
-      ? 'Toutes les propositions ont été passées. Reviens après une partie de boss.'
-      : "Aucune ouverture à influencer : le livre ne laisse pas de choix aux Noirs.";
-    host.append(empty);
-    // Récap des pondérations actives même quand la file est vide.
-    renderAdvWeightSummary(host);
-    return;
-  }
-  if (advCarouselIndex >= deck.length) {
-    advCarouselIndex = 0;
-  }
-  const key = deck[advCarouselIndex];
-  const choice = advChoiceByKey(key);
-  if (!choice) {
-    advCarouselIndex = 0;
-    return;
-  }
-
-  const card = document.createElement('div');
-  card.className = 'adv-weight-card';
-
-  const top = document.createElement('div');
-  top.className = 'adv-weight-top';
-  top.innerHTML =
-    `<span class="adv-weight-count">${advCarouselIndex + 1} / ${deck.length}</span>` +
-    `<span class="adv-weight-coins">${advCoins()} 🪙</span>`;
-  card.append(top);
-
-  const body = document.createElement('div');
-  body.className = 'adv-weight-body';
-  const nameLabel = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
-  const thumb = makeOpeningThumb(choice.sans, nameLabel, choice.sans.join(' '), choice.key);
-  if (thumb) {
-    body.append(thumb);
-  }
-  const info = document.createElement('div');
-  info.className = 'adv-weight-info';
-  const ply = choice.sans.length;
-  const moveNo = Math.ceil(ply / 2);
-  const weight = advOpeningWeightOf(key);
-  const weightTxt = weight > 0 ? `+${weight}%` : weight < 0 ? `${weight}%` : '0%';
-  const weightCls = weight > 0 ? 'is-up' : weight < 0 ? 'is-down' : '';
-  info.innerHTML =
-    `<b>${escapeHtml(nameLabel)}</b>` +
-    `<span class="adv-weight-move">Stockfish (Noirs) : ${moveNo}…${escapeHtml(choice.san)}</span>` +
-    `<span class="adv-weight-stats">Base ${Math.round(choice.baseProb * 100)}% · ` +
-    `<i class="adv-weight-delta ${weightCls}">pondération ${weightTxt}</i></span>`;
-  body.append(info);
-  card.append(body);
-
-  // Actions : −5 % / +5 % (paye, puis la proposition est consommée et on passe à la suivante)
-  const buys = document.createElement('div');
-  buys.className = 'adv-weight-buys';
-  const makeBuy = (dir, label) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `adv-weight-buy ${dir > 0 ? 'is-up' : 'is-down'}`;
-    btn.textContent = `${label} (${OPENING_WEIGHT_COST}🪙)`;
-    btn.disabled = advCoins() < OPENING_WEIGHT_COST;
-    btn.addEventListener('click', () => {
-      if (advAdjustOpeningWeight(key, dir)) {
-        advConsumeOpeningChoice(key); // choix consommé → suivant (cadenas = conservé)
-      }
-      renderAdvShop();
-    });
-    return btn;
-  };
-  buys.append(makeBuy(-1, '− 5%'), makeBuy(1, '+ 5%'));
-  card.append(buys);
-
-  // Cadenas (gratuit) + passer
-  const nav = document.createElement('div');
-  nav.className = 'adv-weight-nav';
-  const lockBtn = document.createElement('button');
-  lockBtn.type = 'button';
-  lockBtn.className = 'adv-ghost adv-weight-lock';
-  const locked = advOpeningLockIs(key);
-  lockBtn.classList.toggle('is-active', locked);
-  lockBtn.textContent = locked ? '🔒 Gardée' : '🔓 Garder';
-  lockBtn.addEventListener('click', () => {
-    advToggleOpeningLock(key);
-    renderAdvShop();
-  });
-  const skipBtn = document.createElement('button');
-  skipBtn.type = 'button';
-  skipBtn.className = 'adv-ghost adv-weight-skip';
-  skipBtn.textContent = 'Passer ›';
-  skipBtn.addEventListener('click', () => {
-    advConsumeOpeningChoice(key); // « passer » consomme aussi le choix
-    renderAdvShop();
-  });
-  nav.append(lockBtn, skipBtn);
-  card.append(nav);
-
-  host.append(card);
-
-  renderAdvWeightSummary(host);
-}
-
-// Récapitulatif des pondérations actives (lisible d'un coup d'œil), pour le prochain boss.
-function renderAdvWeightSummary(host) {
-  const active = Object.entries(state.adventure?.openingWeights || {}).filter(([, v]) => v);
-  if (!active.length) {
-    return;
-  }
-  const summary = document.createElement('div');
-  summary.className = 'adv-weight-summary';
-  summary.innerHTML = '<span class="adv-tally-label">Pondérations actives (prochain boss)</span>';
-  const chips = document.createElement('div');
-  chips.className = 'adv-weight-chips';
-  for (const [k, v] of active) {
-    const c = advChoiceByKey(k);
-    const chip = document.createElement('span');
-    chip.className = `adv-weight-chip ${v > 0 ? 'is-up' : 'is-down'}`;
-    const nm = c ? advOpeningDisplayLabel(c.sans, c.name || c.san) : k;
-    chip.textContent = `${nm} ${v > 0 ? '+' : ''}${v}%`;
-    chips.append(chip);
-  }
-  summary.append(chips);
-  host.append(summary);
-}
-
 function advToggleThreats() {
   if (!state.adventure || !advThreatsUnlocked()) {
     return;
@@ -8529,13 +5765,13 @@ function renderAdvTakeBack() {
   const game = state.game;
   const canUndo = Boolean(
     advAids().takeback &&
-      game &&
-      !game.takebackLocked &&
-      game.status === 'playing' &&
-      !game.locked &&
-      game.historyView == null &&
-      game.chess.turn() === 'w' &&
-      game.chess.history().length >= 2
+    game &&
+    !game.takebackLocked &&
+    game.status === 'playing' &&
+    !game.locked &&
+    game.historyView == null &&
+    game.chess.turn() === 'w' &&
+    game.chess.history().length >= 2
   );
   btn.disabled = !canUndo;
 }
@@ -8582,167 +5818,6 @@ function renderAdvPlayerBadge() {
     });
   }
   lastPlayerLevelShown = prog.level;
-}
-
-function advBossXp(level) {
-  return 120 + level * 40;
-}
-
-function advAct2Unlocked() {
-  return advCoverage() >= ADV_ACT2_UNLOCK;
-}
-
-// Un boss se maîtrise en 3 victoires d'affilée (3 étoiles).
-const ADV_BOSS_STARS = 3;
-
-// Étoiles « déjà acquises » (record permanent, conservé même après défaite).
-function advBossRecord(level) {
-  return clamp(Math.round(state.adventure?.bosses?.[level] || 0), 0, ADV_BOSS_STARS);
-}
-
-// Série de victoires en cours (remise à 0 à la défaite).
-function advBossStreakCount(level) {
-  return clamp(Math.round(state.adventure?.bossStreaks?.[level] || 0), 0, ADV_BOSS_STARS);
-}
-
-function advBossConquered(level) {
-  return advBossRecord(level) >= ADV_BOSS_STARS;
-}
-
-// Le boss suivant s'ouvre dès une étoile (une victoire) sur le précédent.
-function advBossUnlocked(level) {
-  if (!advAct2Unlocked()) {
-    return false;
-  }
-  if (level <= 1) {
-    return true;
-  }
-  return advBossRecord(level - 1) >= 1;
-}
-
-// Prochain boss à travailler : le plus petit débloqué pas encore maîtrisé.
-function advCurrentBossTarget() {
-  for (let level = 1; level <= 10; level += 1) {
-    if (advBossUnlocked(level) && !advBossConquered(level)) {
-      return level;
-    }
-  }
-  return 0;
-}
-
-// Étoiles d'un boss en deux couleurs : série en cours (or) + déjà acquises (cyan).
-function advBossStarsMarkup(level) {
-  const streak = advBossStreakCount(level);
-  const record = advBossRecord(level);
-  let html = '';
-  for (let i = 1; i <= ADV_BOSS_STARS; i += 1) {
-    if (i <= streak) {
-      html += '<span class="adv-star is-streak">★</span>';
-    } else if (i <= record) {
-      html += '<span class="adv-star is-earned">★</span>';
-    } else {
-      html += '<span class="adv-star is-empty">☆</span>';
-    }
-  }
-  return html;
-}
-
-function isAdventureRun() {
-  return state.screen === 'adventure' && Boolean(state.advRun);
-}
-
-// Seuil de déficit toléré en aventure, fonction de la difficulté choisie.
-// La difficulté la plus basse (N1) tolère jusqu'à -5 ; la plus haute (N10)
-// n'autorise plus qu'un déficit de -1 avant la cinématique de défaite.
-function advDeficitThresholdCp(level) {
-  const safe = clamp(Math.round(Number(level) || 1), 1, 10);
-  const easiestCp = -500; // -5 pions au niveau le plus facile
-  const hardestCp = -100; // -1 pion au niveau le plus difficile
-  const t = (safe - 1) / 9;
-  return Math.round((easiestCp + (hardestCp - easiestCp) * t) / 10) * 10;
-}
-
-// Difficulté de la partie d'aventure courante (niveau du boss, sinon la force
-// Stockfish active pour une leçon).
-function advRunDifficultyLevel() {
-  const run = state.advRun;
-  if (!run) {
-    return state.stockfishLevel;
-  }
-  return run.kind === 'boss' ? run.bossLevel : state.stockfishLevel;
-}
-
-function advRunDeficitThresholdCp() {
-  return advDeficitThresholdCp(advRunDifficultyLevel());
-}
-
-function isAdventureMastered(id) {
-  return state.screen === 'adventure' && Boolean(state.adventure?.nodes.has(id));
-}
-
-function isAdventureLesson() {
-  return isAdventureRun() && state.advRun?.kind === 'lesson';
-}
-
-function isAdventureEdgeMastered(edge) {
-  if (state.screen !== 'adventure' || !state.adventure || !edge) {
-    return false;
-  }
-  if (edge.from && edge.from !== 'root' && !state.adventure.nodes.has(edge.from)) {
-    return false;
-  }
-  const ids = edge.pathNodeIds?.length ? edge.pathNodeIds : [edge.to];
-  return ids.every((id) => state.adventure.nodes.has(id));
-}
-
-function showAdventureToast({ icon = '✨', title = '', text = '', kind = '' } = {}) {
-  const host = document.querySelector('#adventureToasts');
-  if (!host) {
-    return;
-  }
-  const toast = document.createElement('div');
-  toast.className = `adv-toast${kind ? ` is-${kind}` : ''}`;
-  toast.setAttribute('role', 'status');
-
-  const iconEl = document.createElement('div');
-  iconEl.className = 'adv-toast-icon';
-  iconEl.textContent = icon;
-
-  const body = document.createElement('div');
-  body.className = 'adv-toast-body';
-  const titleEl = document.createElement('strong');
-  titleEl.textContent = title;
-  body.append(titleEl);
-  if (text) {
-    const textEl = document.createElement('span');
-    textEl.textContent = text;
-    body.append(textEl);
-  }
-
-  toast.append(iconEl, body);
-  host.append(toast);
-
-  // Retire le toast après l'animation de sortie (var(--toast-life) 2.4s + 0.36s).
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
-}
-
-function advAddXp(amount) {
-  if (!amount || !state.adventure) {
-    return;
-  }
-  const before = advBrainProgress().level;
-  state.adventure.xp += amount;
-  const after = advBrainProgress().level;
-  if (after > before) {
-    showAdventureToast({
-      icon: '🧠',
-      title: `Cerveau niveau ${after} !`,
-      text: 'Nouveau palier neuronal atteint.',
-      kind: 'levelup'
-    });
-  }
 }
 
 function triggerBrainSurge() {
@@ -8800,80 +5875,6 @@ function adventureLightEdge(edge) {
   }
 }
 
-// === Score d'apprentissage =====================================================
-// Par coup : points de temps (100 pts à ≤1 s → 1 pt à ≥30 s, linéaire) moins
-// 50 pts par erreur sur ce coup. Le nombre de coups scorés est CONSTANT par mode
-// (défini au lancement) pour que les scores restent comparables entre sessions.
-const ADV_SCORE_MOVE_COUNT = 10; // leçon libre / piège
-const ADV_SCORE_ERROR_PENALTY = 50;
-
-function advScoreTimePoints(elapsedMs) {
-  const sec = (Number(elapsedMs) || 30000) / 1000;
-  if (sec <= 1) {
-    return 100;
-  }
-  if (sec >= 30) {
-    return 1;
-  }
-  return Math.round(100 - ((sec - 1) * 99) / 29);
-}
-
-function advScoreInit(run, target) {
-  run.scoreTarget = target;
-  run.scoreTotal = 0;
-  run.scorePlayed = 0;
-  run.scoreMoveStart = null;
-  run.scoreMoveErrors = 0;
-}
-
-// Enregistre le score du coup courant (temps − erreurs×50) puis réarme.
-function advScoreRegisterMove(run, elapsedMs) {
-  if (!run || run.scoreTarget == null || (run.scorePlayed || 0) >= run.scoreTarget) {
-    return;
-  }
-  const pts = advScoreTimePoints(elapsedMs) - (run.scoreMoveErrors || 0) * ADV_SCORE_ERROR_PENALTY;
-  run.scoreTotal = (run.scoreTotal || 0) + pts;
-  run.scorePlayed = (run.scorePlayed || 0) + 1;
-  run.scoreMoveStart = null;
-  run.scoreMoveErrors = 0;
-}
-
-// Le chrono du coup démarre quand le trait revient aux Blancs (leçons/pièges).
-function advScoreArmTimer() {
-  const run = state.advRun;
-  const game = state.game;
-  if (!run || run.scoreTarget == null || run.revisionMode || !game) {
-    return;
-  }
-  if (game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
-    return;
-  }
-  if (run.scoreMoveStart == null) {
-    run.scoreMoveStart = Date.now();
-  }
-}
-
-function advScoreKey(run) {
-  return run.revisionMode || (run.trapsMode ? 'trap' : 'lesson');
-}
-
-// Ligne d'affichage du score (résultat de fin) — lecture seule, le record est
-// mis à jour une seule fois dans adventureOnGameFinished.
-function advScoreResultLine(run) {
-  if (!run || run.scoreTarget == null || !(run.scorePlayed > 0)) {
-    return '';
-  }
-  const total = Math.round(run.scoreTotal || 0);
-  const max = run.scoreTarget * 100;
-  const best = Number(state.adventure?.bestScores?.[advScoreKey(run)]);
-  const rec = run.scoreIsRecord
-    ? ' · 🏆 record !'
-    : Number.isFinite(best)
-      ? ` · record ${best}`
-      : '';
-  return ` ⚡ Score : ${total}/${max} (${run.scorePlayed}/${run.scoreTarget} coups)${rec}`;
-}
-
 function adventureOnCorrectWhiteBook() {
   const run = state.advRun;
   if (!run) {
@@ -8929,837 +5930,9 @@ function adventureOnTrapSolved() {
   );
 }
 
-// M — Signature de l'ouverture jouée : libellé PGN compact (« 1.e4 e5 2.Nf3 »)
-// pour l'affichage, et clé = enchaînement des coups BLANCS (le choix du joueur)
-// pour regrouper les parties par ouverture (et alimenter le masquage N).
-function advOpeningSignature(game) {
-  const openingEntries = (game?.freeReviewMoves || []).filter((e) => e.phase === 'opening');
-  if (!openingEntries.length) {
-    return { key: 'hors-livre', label: 'Hors livre' };
-  }
-  let label = '';
-  let moveNo = 0;
-  const whiteSans = [];
-  const sans = [];
-  for (const entry of openingEntries) {
-    sans.push(entry.san);
-    if (entry.color === 'w') {
-      moveNo += 1;
-      whiteSans.push(entry.san);
-      label += `${label ? ' ' : ''}${moveNo}.${entry.san}`;
-    } else {
-      label += ` ${entry.san}`;
-    }
-  }
-  return {
-    key: whiteSans.join(' ') || 'hors-livre',
-    label: label || 'Hors livre',
-    sans // suite complète (deux couleurs) pour le préfixe des lignes (N)
-  };
-}
-
 // Nom d'ouverture (PGN/ECO) le plus précis atteint en rejouant une suite de coups :
 // on suit la ligne dans le graphe et on garde le nom du nœud le plus profond.
-function advOpeningInfoFromSans(sans) {
-  if (!Array.isArray(sans) || !sans.length || !(state.nodesByFen instanceof Map)) {
-    return null;
-  }
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return null;
-  }
-  let best = null;
-  for (const san of sans) {
-    let mv = null;
-    try {
-      mv = chess.move(san);
-    } catch {
-      mv = null;
-    }
-    if (!mv) break;
-    const node = state.nodesByFen.get(chess.fen());
-    if (node && (node.opening || node.eco)) {
-      best = { name: node.opening || null, eco: node.eco || null };
-    }
-  }
-  return best;
-}
-
 // Libellé d'ouverture lisible : « Nom (ECO) » si connu, sinon la séquence de coups.
-function advOpeningDisplayLabel(sans, fallbackLabel) {
-  const info = advOpeningInfoFromSans(sans);
-  if (info?.name) {
-    return info.eco ? `${info.name} (${info.eco})` : info.name;
-  }
-  return fallbackLabel || 'Hors livre';
-}
-
-// === Visuel d'ouverture : vignette (position finale) + visionneuse animée ===
-const OPENING_MAX_PLIES = 16;
-const OPENING_VIEWER_SPEEDS = [
-  { label: '🐢 Lent', ms: 1500 },
-  { label: 'Normal', ms: 850 },
-  { label: '🐇 Rapide', ms: 380 }
-];
-
-// FEN → 64 pièces (index 0 = a8 … 63 = h1) : lettre de pièce ou null.
-function fenToPieceArray(fen) {
-  const board = String(fen || '').split(' ')[0];
-  const cells = [];
-  for (const rankStr of board.split('/')) {
-    for (const ch of rankStr) {
-      if (/\d/.test(ch)) {
-        for (let i = 0; i < Number(ch); i += 1) cells.push(null);
-      } else {
-        cells.push(ch);
-      }
-    }
-  }
-  return cells;
-}
-
-// Images successives d'une ouverture : départ + après chaque coup (FEN, from, to, san).
-function buildOpeningFrames(sans, maxPlies = OPENING_MAX_PLIES) {
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return null;
-  }
-  const frames = [{ fen: chess.fen(), from: null, to: null, san: null }];
-  for (const san of (sans || []).slice(0, maxPlies)) {
-    let mv = null;
-    try {
-      mv = chess.move(san);
-    } catch {
-      mv = null;
-    }
-    if (!mv) break;
-    frames.push({ fen: chess.fen(), from: mv.from, to: mv.to, san: mv.san });
-  }
-  return frames.length >= 2 ? frames : null;
-}
-
-// Remplit un conteneur avec un échiquier (pièces SVG nettes) pour une position donnée.
-function fillOpeningBoard(container, frame) {
-  container.replaceChildren();
-  const pieces = fenToPieceArray(frame.fen);
-  const files = 'abcdefgh';
-  for (let row = 0; row < 8; row += 1) {
-    for (let col = 0; col < 8; col += 1) {
-      const sq = `${files[col]}${8 - row}`;
-      const cell = document.createElement('div');
-      cell.className = `opening-sq ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
-      if (sq === frame.from || sq === frame.to) {
-        cell.classList.add('is-move');
-      }
-      const pc = pieces[row * 8 + col];
-      if (pc) {
-        const img = document.createElement('img');
-        img.src = `/pieces/merida/${pc === pc.toUpperCase() ? 'w' : 'b'}${pc.toUpperCase()}.svg`;
-        img.alt = '';
-        img.setAttribute('aria-hidden', 'true');
-        cell.append(img);
-      }
-      container.append(cell);
-    }
-  }
-}
-
-// Vignette cliquable : la position FINALE de l'ouverture (statique, pièces nettes).
-// `shopKey` (facultatif) : si fourni, la visionneuse ouverte propose les actions
-// boutique (±5 % / cadenas / passer) pour choisir sans revenir au carrousel.
-function makeOpeningThumb(sans, name, label, shopKey = null) {
-  const frames = buildOpeningFrames(sans);
-  if (!frames) {
-    return null;
-  }
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'opening-thumb';
-  btn.setAttribute('aria-label', `Voir l'animation de l'ouverture : ${name || label || ''}`);
-  const board = document.createElement('div');
-  board.className = 'opening-board';
-  fillOpeningBoard(board, frames[frames.length - 1]);
-  const hint = document.createElement('span');
-  hint.className = 'opening-thumb-hint';
-  hint.textContent = '▶';
-  btn.append(board, hint);
-  btn.addEventListener('click', () => openOpeningViewer(sans, name, label, shopKey));
-  return btn;
-}
-
-// --- Visionneuse animée plein écran (lecture/pause + vitesse réglable) ---
-let openingViewer = null;
-
-function closeOpeningViewer() {
-  if (!openingViewer) {
-    return;
-  }
-  if (openingViewer.timer) {
-    window.clearInterval(openingViewer.timer);
-  }
-  if (openingViewer.keyHandler) {
-    window.removeEventListener('keydown', openingViewer.keyHandler);
-  }
-  openingViewer.overlay.remove();
-  openingViewer = null;
-}
-
-function openingViewerRender() {
-  const v = openingViewer;
-  if (!v) {
-    return;
-  }
-  const frame = v.frames[v.index];
-  fillOpeningBoard(v.board, frame);
-  v.counter.textContent = `${v.index} / ${v.frames.length - 1}`;
-  v.moveLabel.textContent = frame.san
-    ? `${Math.ceil(v.index / 2)}${v.index % 2 === 1 ? '.' : '…'} ${frame.san}`
-    : 'Position de départ';
-  v.playBtn.textContent = v.playing ? '⏸' : '▶';
-}
-
-function openingViewerStep(delta) {
-  const v = openingViewer;
-  if (!v) {
-    return;
-  }
-  v.index = (v.index + delta + v.frames.length) % v.frames.length;
-  openingViewerRender();
-}
-
-function openingViewerSetPlaying(play) {
-  const v = openingViewer;
-  if (!v) {
-    return;
-  }
-  v.playing = play;
-  if (v.timer) {
-    window.clearInterval(v.timer);
-    v.timer = null;
-  }
-  if (play) {
-    v.timer = window.setInterval(() => {
-      v.index = v.index + 1 >= v.frames.length ? 0 : v.index + 1;
-      openingViewerRender();
-    }, OPENING_VIEWER_SPEEDS[v.speed].ms);
-  }
-  openingViewerRender();
-}
-
-function openingViewerSetSpeed(speedIndex) {
-  const v = openingViewer;
-  if (!v) {
-    return;
-  }
-  v.speed = clamp(speedIndex, 0, OPENING_VIEWER_SPEEDS.length - 1);
-  v.speedBtns.forEach((btn, i) => btn.classList.toggle('is-active', i === v.speed));
-  if (v.playing) {
-    openingViewerSetPlaying(true); // relance le minuteur à la nouvelle vitesse
-  }
-}
-
-function openOpeningViewer(sans, name, label, shopKey = null, maxPlies = OPENING_MAX_PLIES) {
-  const frames = buildOpeningFrames(sans, maxPlies);
-  if (!frames) {
-    return;
-  }
-  closeOpeningViewer();
-
-  const overlay = document.createElement('div');
-  overlay.className = 'opening-viewer';
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) {
-      closeOpeningViewer();
-    }
-  });
-
-  const panel = document.createElement('div');
-  panel.className = 'opening-viewer-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-modal', 'true');
-
-  const head = document.createElement('header');
-  head.className = 'opening-viewer-head';
-  const title = document.createElement('div');
-  title.className = 'opening-viewer-title';
-  title.innerHTML = `<strong>${escapeHtml(name || 'Ouverture')}</strong><span>${escapeHtml(
-    label || ''
-  )}</span>`;
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'opening-viewer-x';
-  closeBtn.textContent = '✕';
-  closeBtn.setAttribute('aria-label', 'Fermer');
-  closeBtn.addEventListener('click', closeOpeningViewer);
-  head.append(title, closeBtn);
-
-  const board = document.createElement('div');
-  board.className = 'opening-board opening-board-large';
-
-  const moveLabel = document.createElement('p');
-  moveLabel.className = 'opening-viewer-move';
-
-  const controls = document.createElement('div');
-  controls.className = 'opening-viewer-controls';
-  const prev = document.createElement('button');
-  prev.type = 'button';
-  prev.className = 'opening-ctl';
-  prev.textContent = '‹';
-  prev.setAttribute('aria-label', 'Coup précédent');
-  const playBtn = document.createElement('button');
-  playBtn.type = 'button';
-  playBtn.className = 'opening-ctl is-play';
-  playBtn.setAttribute('aria-label', 'Lecture / Pause');
-  const next = document.createElement('button');
-  next.type = 'button';
-  next.className = 'opening-ctl';
-  next.textContent = '›';
-  next.setAttribute('aria-label', 'Coup suivant');
-  const counter = document.createElement('span');
-  counter.className = 'opening-viewer-counter';
-  prev.addEventListener('click', () => {
-    openingViewerSetPlaying(false);
-    openingViewerStep(-1);
-  });
-  next.addEventListener('click', () => {
-    openingViewerSetPlaying(false);
-    openingViewerStep(1);
-  });
-  playBtn.addEventListener('click', () => openingViewerSetPlaying(!openingViewer.playing));
-  controls.append(prev, playBtn, next, counter);
-
-  const speeds = document.createElement('div');
-  speeds.className = 'opening-viewer-speeds';
-  const speedBtns = OPENING_VIEWER_SPEEDS.map((s, i) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'opening-speed';
-    btn.textContent = s.label;
-    btn.addEventListener('click', () => openingViewerSetSpeed(i));
-    speeds.append(btn);
-    return btn;
-  });
-
-  // Actions boutique (±5 % / cadenas / passer) directement depuis la visionneuse,
-  // pour choisir sans revenir au carrousel. Renseignées par renderOpeningViewerShop().
-  const shopActions = document.createElement('div');
-  shopActions.className = 'opening-viewer-shop';
-
-  panel.append(head, board, moveLabel, controls, speeds, shopActions);
-  overlay.append(panel);
-  document.body.append(overlay);
-
-  const keyHandler = (event) => {
-    if (event.key === 'Escape') {
-      closeOpeningViewer();
-    } else if (event.key === 'ArrowLeft') {
-      openingViewerSetPlaying(false);
-      openingViewerStep(-1);
-    } else if (event.key === 'ArrowRight') {
-      openingViewerSetPlaying(false);
-      openingViewerStep(1);
-    }
-  };
-  window.addEventListener('keydown', keyHandler);
-
-  openingViewer = {
-    overlay,
-    panel,
-    board,
-    titleEl: title,
-    moveLabel,
-    counter,
-    playBtn,
-    speedBtns,
-    shopActions,
-    shopKey,
-    frames,
-    index: 0,
-    playing: false,
-    speed: 1,
-    timer: null,
-    keyHandler
-  };
-  panel.classList.toggle('has-shop', Boolean(shopKey));
-  openingViewerSetSpeed(1);
-  renderOpeningViewerShop();
-  openingViewerSetPlaying(true); // démarre l'animation
-}
-
-// Charge une autre proposition dans la visionneuse ouverte (sans la recréer).
-function loadOpeningViewerChoice(choice) {
-  const v = openingViewer;
-  if (!v) {
-    return;
-  }
-  const frames = buildOpeningFrames(choice.sans);
-  if (!frames) {
-    closeOpeningViewer();
-    return;
-  }
-  v.frames = frames;
-  v.index = 0;
-  v.shopKey = choice.key;
-  const name = advOpeningDisplayLabel(choice.sans, choice.name || 'Hors livre');
-  v.titleEl.innerHTML = `<strong>${escapeHtml(name)}</strong><span>${escapeHtml(
-    choice.sans.join(' ')
-  )}</span>`;
-  renderOpeningViewerShop();
-  openingViewerSetPlaying(true);
-}
-
-// Rangée d'actions boutique dans la visionneuse (coins + pondération + ±5 / cadenas / passer).
-function renderOpeningViewerShop() {
-  const v = openingViewer;
-  if (!v?.shopActions) {
-    return;
-  }
-  v.shopActions.replaceChildren();
-  if (!v.shopKey) {
-    v.shopActions.hidden = true;
-    return;
-  }
-  v.shopActions.hidden = false;
-  const weight = advOpeningWeightOf(v.shopKey);
-  const wTxt = weight > 0 ? `+${weight}%` : weight < 0 ? `${weight}%` : '0%';
-  const info = document.createElement('div');
-  info.className = 'opening-viewer-shop-info';
-  info.innerHTML =
-    `<span class="opening-viewer-shop-coins">${advCoins()} 🪙</span>` +
-    `<span class="adv-weight-delta ${weight > 0 ? 'is-up' : weight < 0 ? 'is-down' : ''}">pondération ${wTxt}</span>`;
-  v.shopActions.append(info);
-
-  const buys = document.createElement('div');
-  buys.className = 'adv-weight-buys';
-  const makeBuy = (dir, label) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `adv-weight-buy ${dir > 0 ? 'is-up' : 'is-down'}`;
-    btn.textContent = `${label} (${OPENING_WEIGHT_COST}🪙)`;
-    btn.disabled = advCoins() < OPENING_WEIGHT_COST;
-    btn.addEventListener('click', () => openingViewerShopWeight(dir));
-    return btn;
-  };
-  buys.append(makeBuy(-1, '− 5%'), makeBuy(1, '+ 5%'));
-  v.shopActions.append(buys);
-
-  const nav = document.createElement('div');
-  nav.className = 'adv-weight-nav';
-  const lockBtn = document.createElement('button');
-  lockBtn.type = 'button';
-  lockBtn.className = 'adv-ghost adv-weight-lock';
-  const locked = advOpeningLockIs(v.shopKey);
-  lockBtn.classList.toggle('is-active', locked);
-  lockBtn.textContent = locked ? '🔒 Gardée' : '🔓 Garder';
-  lockBtn.addEventListener('click', openingViewerShopLock);
-  const skipBtn = document.createElement('button');
-  skipBtn.type = 'button';
-  skipBtn.className = 'adv-ghost adv-weight-skip';
-  skipBtn.textContent = 'Passer ›';
-  skipBtn.addEventListener('click', openingViewerShopSkip);
-  nav.append(lockBtn, skipBtn);
-  v.shopActions.append(nav);
-}
-
-function openingViewerShopWeight(dir) {
-  const v = openingViewer;
-  if (!v?.shopKey) {
-    return;
-  }
-  if (advAdjustOpeningWeight(v.shopKey, dir)) {
-    openingViewerShopAdvance();
-  } else {
-    renderOpeningViewerShop(); // pas assez de pièces : on reste sur la position
-  }
-}
-
-function openingViewerShopSkip() {
-  if (openingViewer?.shopKey) {
-    openingViewerShopAdvance();
-  }
-}
-
-function openingViewerShopLock() {
-  const v = openingViewer;
-  if (!v?.shopKey) {
-    return;
-  }
-  advToggleOpeningLock(v.shopKey);
-  renderAdvShop(); // garde le carrousel en phase
-  renderOpeningViewerShop();
-}
-
-// Après un choix : consomme la proposition et enchaîne sur la suivante dans la visionneuse.
-function openingViewerShopAdvance() {
-  const v = openingViewer;
-  if (!v?.shopKey) {
-    return;
-  }
-  advConsumeOpeningChoice(v.shopKey);
-  renderAdvShop();
-  const deck = advEnsureOpeningDeck();
-  const nextKey = deck[advCarouselIndex];
-  const next = nextKey ? advChoiceByKey(nextKey) : null;
-  if (next) {
-    loadOpeningViewerChoice(next);
-  } else {
-    closeOpeningViewer(); // plus de proposition : on referme
-  }
-}
-
-// M — Enregistre une partie terminée dans l'historique persistant.
-// Coups joués (avec évals) d'une partie, version compacte persistable, pour la
-// revue + analyse a posteriori. Construite depuis freeReviewMoves à la fin.
-const ADV_MAX_REVIEW_MOVES = 160;
-function buildGameReviewMoves(game) {
-  const entries = (game?.freeReviewMoves || []).filter((e) => e.phase && e.phase !== 'start');
-  return entries.slice(0, ADV_MAX_REVIEW_MOVES).map((entry) => {
-    const best =
-      entry.color === 'w' && (entry.phase === 'free' || entry.phase === 'opening')
-        ? String(getReviewParent(entry)?.pv || '')
-            .trim()
-            .split(/\s+/)[0] || ''
-        : '';
-    return {
-      san: entry.san,
-      color: entry.color,
-      phase: entry.phase,
-      before: Number.isFinite(entry.beforeEvalCp) ? Math.round(entry.beforeEvalCp) : null,
-      after: Number.isFinite(entry.afterEvalCp) ? Math.round(entry.afterEvalCp) : null,
-      best
-    };
-  });
-}
-
-function advRecordGame(result) {
-  const game = state.game;
-  const run = state.advRun;
-  if (!state.adventure || !game || !run || game.gameRecorded) {
-    return;
-  }
-  // « Illuminer le cerveau » (leçons libres + pièges) = entraînement : ces parties
-  // ne sont PAS enregistrées dans l'historique. Seule l'arène (boss) y figure.
-  // Les matchs de tournoi ne polluent pas non plus l'historique de l'arène.
-  if (run.kind !== 'boss' || run.tournament) {
-    game.gameRecorded = true;
-    return;
-  }
-  game.gameRecorded = true;
-  const opening = advOpeningSignature(game);
-  const plies = (game.freeReviewMoves || []).filter(
-    (e) => e.phase !== 'start' && e.phase !== 'engine-line'
-  ).length;
-  state.adventure.games = state.adventure.games || [];
-  const record = {
-    ts: Date.now(),
-    result, // 'won' | 'lost'
-    kind: run.kind, // 'lesson' | 'boss'
-    bossLevel: run.kind === 'boss' ? run.bossLevel : null,
-    opponentLevel: advRunDifficultyLevel(),
-    trapsMode: Boolean(run.trapsMode),
-    openingKey: opening.key,
-    openingLabel: opening.label,
-    lineSans: opening.sans, // suite d'ouverture complète (N : préfixe de ligne)
-    moves: buildGameReviewMoves(game), // revue + analyse a posteriori
-    plies,
-    mate: Boolean(game.chess?.isCheckmate?.()),
-    difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY
-  };
-  state.adventure.games.unshift(record);
-  // La suite de défaite est ajoutée plus tard (asynchrone) : on garde un lien vers
-  // ce record pour y réintégrer les coups auto une fois la suite enregistrée.
-  game.recordRef = record;
-  if (state.adventure.games.length > ADV_MAX_GAMES) {
-    state.adventure.games.length = ADV_MAX_GAMES;
-  }
-}
-
-// Met à jour les coups sauvegardés du dernier record (ex. après l'ajout async de
-// la suite de défaite) pour que la revue d'historique inclue les coups auto.
-function advRefreshRecordedMoves(game) {
-  if (game?.recordRef && state.adventure?.games?.includes(game.recordRef)) {
-    game.recordRef.moves = buildGameReviewMoves(game);
-    saveAdventure();
-  }
-}
-
-// M — Agrégats victoires/défaites par adversaire et par ouverture.
-function advGameStats(gameFilter = null) {
-  const source = state.adventure?.games || [];
-  const games = gameFilter ? source.filter(gameFilter) : source;
-  const byOpening = new Map();
-  const byOpponent = new Map();
-  let won = 0;
-  let lost = 0;
-  for (const g of games) {
-    const isWin = g.result === 'won';
-    if (isWin) won += 1;
-    else lost += 1;
-
-    const oKey = g.openingKey || 'hors-livre';
-    const o = byOpening.get(oKey) || {
-      key: oKey,
-      label: g.openingLabel || oKey,
-      lineSans: Array.isArray(g.lineSans) ? g.lineSans : null, // pour nom d'ouverture + mini-échiquier
-      won: 0,
-      lost: 0
-    };
-    if (!o.lineSans && Array.isArray(g.lineSans)) {
-      o.lineSans = g.lineSans;
-    }
-    if (isWin) o.won += 1;
-    else o.lost += 1;
-    byOpening.set(oKey, o);
-
-    const pKey = g.kind === 'boss' ? `boss-${g.bossLevel}` : `lesson-${g.opponentLevel}`;
-    const p = byOpponent.get(pKey) || {
-      key: pKey,
-      kind: g.kind,
-      level: g.kind === 'boss' ? g.bossLevel : g.opponentLevel,
-      won: 0,
-      lost: 0
-    };
-    if (isWin) p.won += 1;
-    else p.lost += 1;
-    byOpponent.set(pKey, p);
-  }
-  const sortByGames = (a, b) => b.won + b.lost - (a.won + a.lost);
-  return {
-    games,
-    won,
-    lost,
-    byOpening: [...byOpening.values()].sort(sortByGames),
-    byOpponent: [...byOpponent.values()].sort((a, b) => (a.level || 0) - (b.level || 0))
-  };
-}
-
-// === Boutique : monnaie « pièces », surpondération de ligne (O), menaces (R) ===
-const SHOP_LINE_BOOST_COST = 30;     // O : coût pour surpondérer une ligne d'ouverture
-const SHOP_THREATS_BOSS_UNLOCK = 3;  // R : « voir les menaces » débloqué après 3 boss
-
-// Récompense en pièces pour une victoire (boss = davantage selon le niveau).
-function advWinCoinReward(run) {
-  if (!run) {
-    return 0;
-  }
-  if (run.kind === 'boss') {
-    return 20 + (run.bossLevel || 1) * 5;
-  }
-  return run.trapsMode ? 8 : 5; // leçon / piège
-}
-
-function advCoins() {
-  return state.adventure?.coins || 0;
-}
-
-function advAwardCoins(amount) {
-  if (!state.adventure || amount <= 0) {
-    return;
-  }
-  state.adventure.coins = (state.adventure.coins || 0) + amount;
-}
-
-function advThreatsUnlocked() {
-  return (state.adventure?.highestBoss || 0) >= SHOP_THREATS_BOSS_UNLOCK;
-}
-
-function advThreatsActive() {
-  return Boolean(state.adventure?.threatsEnabled) && advThreatsUnlocked();
-}
-
-// === O — Pondération des choix d'ouverture de Stockfish (boutique) ===
-const OPENING_WEIGHT_STEP = 5; // points de % par achat
-const OPENING_WEIGHT_COST = 10; // pièces par ±5 %
-const OPENING_WEIGHT_MAX = 60; // bornes de la pondération cumulée
-const OPENING_DECK_SIZE = 6; // nombre de propositions tirées dans le carrousel
-const OPENING_BRANCH_MAX_PLY = 20;
-
-let advChoicesCache = null;
-
-// Énumère tous les coups noirs « influençables » : positions du livre où les Noirs
-// ont au moins 2 réponses (vrai choix de Stockfish). Un élément = un coup à un
-// embranchement. Mis en cache (le livre est statique).
-function advInfluenceableChoices() {
-  if (advChoicesCache) {
-    return advChoicesCache;
-  }
-  const out = [];
-  if (!(state.edgesById instanceof Map)) {
-    return out;
-  }
-  const seen = new Set();
-  const queue = [{ id: 'root', sans: [] }];
-  let guard = 0;
-  while (queue.length && guard < 6000) {
-    guard += 1;
-    const { id, sans } = queue.shift();
-    if (seen.has(id)) {
-      continue;
-    }
-    seen.add(id);
-    const node = getNode(id);
-    if (!node) {
-      continue;
-    }
-    const outs = getRawOutgoingEdges(id);
-    const blacks = outs.filter((edge) => edge.color === 'b');
-    if (blacks.length >= 2 && sans.length <= OPENING_BRANCH_MAX_PLY) {
-      for (const edge of blacks) {
-        const child = getNode(edge.to);
-        out.push({
-          key: `${node.fen}|${edge.uci}`,
-          fen: node.fen,
-          uci: edge.uci,
-          san: edge.san,
-          sans: [...sans, edge.san],
-          name: child?.opening || null,
-          eco: child?.eco || null,
-          baseProb: Number(edge.probability) || 0
-        });
-      }
-    }
-    if (sans.length < OPENING_BRANCH_MAX_PLY + 4) {
-      for (const edge of outs) {
-        if (!seen.has(edge.to)) {
-          queue.push({ id: edge.to, sans: [...sans, edge.san] });
-        }
-      }
-    }
-  }
-  advChoicesCache = out;
-  return out;
-}
-
-function advChoiceByKey(key) {
-  return advInfluenceableChoices().find((choice) => choice.key === key) || null;
-}
-
-// === Refonte boutique : surpondération d'un COUP à un NŒUD d'embranchement ======
-// On regroupe les coups noirs par nœud (position où les Noirs ont ≥2 réponses) ;
-// pour chaque coup candidat on calcule la suite la plus probable jusqu'au prochain
-// embranchement (aperçu de la ligne, pour décider quel coup pousser). Cache : le
-// livre est statique.
-let advNodesCache = null;
-function advInfluenceableNodes() {
-  if (advNodesCache) {
-    return advNodesCache;
-  }
-  const out = [];
-  if (!(state.edgesById instanceof Map)) {
-    return out;
-  }
-  const seen = new Set();
-  const queue = [{ id: 'root', sans: [] }];
-  let guard = 0;
-  while (queue.length && guard < 6000) {
-    guard += 1;
-    const { id, sans } = queue.shift();
-    if (seen.has(id)) {
-      continue;
-    }
-    seen.add(id);
-    const node = getNode(id);
-    if (!node) {
-      continue;
-    }
-    const outs = getRawOutgoingEdges(id);
-    const blacks = outs.filter((edge) => edge.color === 'b');
-    if (blacks.length >= 2 && sans.length <= OPENING_BRANCH_MAX_PLY) {
-      const moves = blacks.map((edge) => {
-        const child = getNode(edge.to);
-        return {
-          uci: edge.uci,
-          san: edge.san,
-          baseProb: Number(edge.probability) || 0,
-          name: child?.opening || null,
-          eco: child?.eco || null,
-          line: advLineToNextBranch(edge.to)
-        };
-      });
-      out.push({ key: node.fen, fen: node.fen, sans: [...sans], moves });
-    }
-    if (sans.length < OPENING_BRANCH_MAX_PLY + 4) {
-      for (const edge of outs) {
-        if (!seen.has(edge.to)) {
-          queue.push({ id: edge.to, sans: [...sans, edge.san] });
-        }
-      }
-    }
-  }
-  advNodesCache = out;
-  return out;
-}
-
-// Suite la plus probable depuis un nœud, jusqu'au prochain embranchement noir (ou cap).
-function advLineToNextBranch(startId, maxPlies = 6) {
-  const lineSans = [];
-  let cur = startId;
-  const visited = new Set();
-  for (let i = 0; i < maxPlies; i += 1) {
-    if (visited.has(cur)) {
-      break;
-    }
-    visited.add(cur);
-    const outs = getRawOutgoingEdges(cur);
-    if (!outs.length) {
-      break;
-    }
-    if (i > 0 && outs.filter((e) => e.color === 'b').length >= 2) {
-      break; // prochain embranchement atteint
-    }
-    const best = outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
-    if (!best) {
-      break;
-    }
-    lineSans.push(best.san);
-    cur = best.to;
-  }
-  return lineSans;
-}
-
-// Surpondère un coup : +5 % au coup choisi, et −5 %/(nombre d'autres coups) à chacun
-// des autres (somme nulle). Coût 10 🪙, une seule fois par défaite. true si appliqué.
-function advOverweightMove(node, chosenUci) {
-  const adv = state.adventure;
-  if (!adv || !node || !advInfluenceEnabled()) {
-    return false;
-  }
-  if (state.advRun?.overweightUsed) {
-    showAdventureToast({ icon: '🎚️', title: 'Déjà fait', text: 'Une seule surpondération par défaite.', kind: null });
-    return false;
-  }
-  const moves = node.moves || [];
-  if (moves.length < 2 || !moves.some((m) => m.uci === chosenUci)) {
-    return false;
-  }
-  adv.openingWeights = adv.openingWeights || {};
-  const bump = (uci, delta) => {
-    const key = `${node.fen}|${uci}`;
-    const next = clamp((Number(adv.openingWeights[key]) || 0) + delta, -OPENING_WEIGHT_MAX, OPENING_WEIGHT_MAX);
-    if (Math.abs(next) < 1e-6) {
-      delete adv.openingWeights[key];
-    } else {
-      adv.openingWeights[key] = next;
-    }
-  };
-  const others = moves.filter((m) => m.uci !== chosenUci);
-  bump(chosenUci, OPENING_WEIGHT_STEP);
-  const per = OPENING_WEIGHT_STEP / others.length;
-  for (const m of others) {
-    bump(m.uci, -per);
-  }
-  // Gratuit : plus de coût en pièces (la monnaie reste pour d'autres fonctions).
-  if (state.advRun) {
-    state.advRun.overweightUsed = true;
-  }
-  saveAdventure();
-  return true;
-}
-
 // --- « Influencer l'ouverture » (fin de défaite, dans la vue de jeu) -----------
 const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
 
@@ -9771,9 +5944,7 @@ const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
 let advInfluenceFenIndex = null;
 function advInfluenceNodeByFen(fen) {
   if (!advInfluenceFenIndex) {
-    advInfluenceFenIndex = new Map(
-      advInfluenceableNodes().map((n) => [fenPositionKey(n.fen), n])
-    );
+    advInfluenceFenIndex = new Map(advInfluenceableNodes().map((n) => [fenPositionKey(n.fen), n]));
   }
   return advInfluenceFenIndex.get(fenPositionKey(fen)) || null;
 }
@@ -9839,7 +6010,12 @@ function openAdvInfluence() {
   if (advInfluenceMode() === 'random') {
     const nodes = advInfluenceableNodes();
     if (!nodes.length) {
-      showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
+      showAdventureToast({
+        icon: '🎚️',
+        title: 'Aucun choix',
+        text: 'Le livre ne laisse pas de choix aux Noirs.',
+        kind: null
+      });
       return;
     }
     const node = nodes[Math.floor(randomUnit() * nodes.length)];
@@ -9995,39 +6171,6 @@ function applyAdvInfluenceArrows() {
 // === Révision : quiz « trouve le coup » + refaire un mat passé =================
 // Rejeu accéléré d'une ligne (livre) ou d'une partie gagnée, puis on interroge le
 // joueur sur les coups blancs. Réussir une révision recharge les vies globales.
-function advShuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(randomUnit() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-// Options d'un quiz : coup correct + 2 leurres légaux, à une position (leadSans).
-function advQuizOptions(leadSans, correctUci) {
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return [];
-  }
-  for (const s of leadSans) {
-    try {
-      if (!chess.move(s)) return [];
-    } catch {
-      return [];
-    }
-  }
-  const all = chess
-    .moves({ verbose: true })
-    .map((m) => ({ uci: m.from + m.to + (m.promotion || ''), san: m.san }));
-  const correct = all.find((o) => o.uci === correctUci);
-  if (!correct) {
-    return [];
-  }
-  const decoys = advShuffle(all.filter((o) => o.uci !== correctUci)).slice(0, 2);
-  return advShuffle([correct, ...decoys]);
-}
 
 // Quiz « trouve le coup » : ligne principale du livre, interrogation des coups blancs.
 function advBuildQuizSteps() {
@@ -10058,7 +6201,9 @@ function advBuildQuizSteps() {
     whiteIdx.push(idx);
   }
   // Tire jusqu'à 3 points de quiz au hasard, puis remet l'ordre chronologique.
-  const chosen = advShuffle(whiteIdx).slice(0, 3).sort((a, b) => a - b);
+  const chosen = advShuffle(whiteIdx)
+    .slice(0, 3)
+    .sort((a, b) => a - b);
   const steps = [];
   for (const idx of chosen) {
     const options = advQuizOptions(lineSans.slice(0, idx), lineUcis[idx]);
@@ -10142,7 +6287,12 @@ function launchRevision(mode) {
   } else {
     steps = advBuildQuizSteps();
     if (!steps.length) {
-      showAdventureToast({ icon: '⚡', title: 'Quiz indisponible', text: 'Le livre est trop court.', kind: null });
+      showAdventureToast({
+        icon: '⚡',
+        title: 'Quiz indisponible',
+        text: 'Le livre est trop court.',
+        kind: null
+      });
       return;
     }
   }
@@ -10288,7 +6438,9 @@ function advRevisionAnswer(uci) {
   if (mv) {
     game.lastMove = mv;
   }
-  game.message = correct ? `✅ Bravo : ${step.correctSan} !` : `❌ Le bon coup était ${step.correctSan}.`;
+  game.message = correct
+    ? `✅ Bravo : ${step.correctSan} !`
+    : `❌ Le bon coup était ${step.correctSan}.`;
   flashAdvBoard(correct ? 'good' : 'bad');
   renderGameDetails();
   renderGamePanel();
@@ -10378,789 +6530,6 @@ function renderAdvWeightRecap(host) {
   host.append(summary);
 }
 
-// Pondération (points de %) d'un coup noir donné — seulement en partie de boss.
-// La surpondération peut être désactivée dans les réglages.
-function advInfluenceEnabled() {
-  return !state.adventure?.influenceDisabled;
-}
-
-function advBlackChoiceWeight(fen, uci) {
-  const weights = state.adventure?.openingWeights;
-  if (!weights || state.advRun?.kind !== 'boss' || !advInfluenceEnabled()) {
-    return 0;
-  }
-  return Number(weights[`${fen}|${uci}`]) || 0;
-}
-
-function advOpeningWeightOf(key) {
-  return Number(state.adventure?.openingWeights?.[key]) || 0;
-}
-
-function advOpeningLocks() {
-  return state.adventure?.openingLocks || [];
-}
-
-function advOpeningLockIs(key) {
-  return advOpeningLocks().includes(key);
-}
-
-// File des propositions du carrousel. null → on (re)remplit avec TOUS les choix
-// (cadenas en tête) ; un tableau (même vide) signifie « déjà parcourue » et n'est
-// pas re-rempli avant une partie de boss.
-function advEnsureOpeningDeck() {
-  const adv = state.adventure;
-  if (!adv) {
-    return [];
-  }
-  const all = advInfluenceableChoices();
-  const valid = new Set(all.map((choice) => choice.key));
-  adv.openingLocks = (adv.openingLocks || []).filter((key) => valid.has(key));
-  if (Array.isArray(adv.openingDeck)) {
-    adv.openingDeck = adv.openingDeck.filter((key) => valid.has(key));
-    return adv.openingDeck;
-  }
-  // (Re)remplissage : tous les choix, cadenas d'abord puis le reste dans l'ordre du livre.
-  const locked = advOpeningLocks();
-  const rest = all.map((c) => c.key).filter((key) => !locked.includes(key));
-  adv.openingDeck = [...locked, ...rest];
-  saveAdventure();
-  return adv.openingDeck;
-}
-
-// Consomme la proposition courante (passer/+5/−5) : elle disparaît du carrousel et
-// on passe à la suivante. Une proposition cadenassée n'est PAS consommée (cumulable).
-function advConsumeOpeningChoice(key) {
-  const adv = state.adventure;
-  if (!adv || !Array.isArray(adv.openingDeck)) {
-    return;
-  }
-  if (advOpeningLockIs(key)) {
-    if (adv.openingDeck.length) {
-      advCarouselIndex = (advCarouselIndex + 1) % adv.openingDeck.length;
-    }
-    return;
-  }
-  const idx = adv.openingDeck.indexOf(key);
-  if (idx >= 0) {
-    adv.openingDeck.splice(idx, 1);
-  }
-  if (advCarouselIndex >= adv.openingDeck.length) {
-    advCarouselIndex = 0;
-  }
-  saveAdventure();
-}
-
-// Remise à zéro après une partie de boss : pondérations + propositions (cadenas gardés).
-function advResetOpeningInfluence() {
-  if (!state.adventure) {
-    return;
-  }
-  state.adventure.openingWeights = {};
-  state.adventure.openingDeck = null;
-}
-
-// Achat : ajuste la pondération d'un coup de ±5 % (10 🪙). Renvoie true si appliqué.
-function advAdjustOpeningWeight(key, direction) {
-  const adv = state.adventure;
-  if (!adv || !advChoiceByKey(key)) {
-    return false;
-  }
-  if (advCoins() < OPENING_WEIGHT_COST) {
-    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
-    return false;
-  }
-  const next = clamp(
-    advOpeningWeightOf(key) + direction * OPENING_WEIGHT_STEP,
-    -OPENING_WEIGHT_MAX,
-    OPENING_WEIGHT_MAX
-  );
-  if (next === advOpeningWeightOf(key)) {
-    return false; // borne atteinte
-  }
-  adv.openingWeights = adv.openingWeights || {};
-  if (next === 0) {
-    delete adv.openingWeights[key];
-  } else {
-    adv.openingWeights[key] = next;
-  }
-  adv.coins = Math.max(0, advCoins() - OPENING_WEIGHT_COST);
-  saveAdventure();
-  return true;
-}
-
-function advToggleOpeningLock(key) {
-  const adv = state.adventure;
-  if (!adv) {
-    return;
-  }
-  adv.openingLocks = adv.openingLocks || [];
-  if (adv.openingLocks.includes(key)) {
-    adv.openingLocks = adv.openingLocks.filter((k) => k !== key);
-  } else {
-    adv.openingLocks.push(key);
-    if (!(adv.openingDeck || []).includes(key)) {
-      adv.openingDeck = [...(adv.openingDeck || []), key];
-    }
-  }
-  saveAdventure();
-}
-
-// Libellé court de l'adversaire d'une partie enregistrée (M).
-function advFormatGameOpponent(g) {
-  if (g.kind === 'boss') {
-    return `Boss N${g.bossLevel}`;
-  }
-  if (g.trapsMode) {
-    return `Piège · N${g.opponentLevel}`;
-  }
-  const profile = getStockfishLevelProfile(g.opponentLevel);
-  return profile?.label || `Leçon N${g.opponentLevel}`;
-}
-
-function advFormatOpponentGroup(p) {
-  if (p.kind === 'boss') {
-    return `Boss N${p.level}`;
-  }
-  const profile = getStockfishLevelProfile(p.level);
-  return profile?.label || `Leçon N${p.level}`;
-}
-
-// Date relative compacte pour l'historique.
-function advFormatRelativeTime(ts) {
-  const diff = Date.now() - (Number(ts) || 0);
-  if (diff < 60_000) {
-    return "à l'instant";
-  }
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) {
-    return `il y a ${mins} min`;
-  }
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) {
-    return `il y a ${hours} h`;
-  }
-  const days = Math.floor(hours / 24);
-  return `il y a ${days} j`;
-}
-
-function makeAdvTallyChip(title, won, lost) {
-  const chip = document.createElement('span');
-  chip.className = 'adv-tally-chip';
-  const total = won + lost;
-  const rate = total ? Math.round((won / total) * 100) : 0;
-  chip.classList.toggle('is-positive', won > lost);
-  chip.classList.toggle('is-negative', lost > won);
-  chip.innerHTML = `<b>${title}</b><em>${won}–${lost}</em><i>${rate}%</i>`;
-  chip.title = `${title} : ${won} victoire(s), ${lost} défaite(s) — ${rate}% de réussite`;
-  return chip;
-}
-
-// Barre data-viz victoires/défaites : segment vert (V) + rouge (D) proportionnels,
-// libellé court à gauche, score V–D à droite. Lecture immédiate.
-function makeWinLossBar(label, won, lost) {
-  const total = won + lost;
-  const rate = total ? Math.round((won / total) * 100) : 0;
-  const row = document.createElement('div');
-  row.className = 'adv-wl-bar';
-  row.innerHTML =
-    `<span class="adv-wl-label">${escapeHtml(label)}</span>` +
-    `<span class="adv-wl-track">` +
-    `<span class="adv-wl-win" style="flex:${won}"></span>` +
-    `<span class="adv-wl-loss" style="flex:${lost}"></span>` +
-    `</span>` +
-    `<span class="adv-wl-count">${won}<i>–</i>${lost}</span>`;
-  row.title = `${label} : ${won} V / ${lost} D — ${rate}% de réussite`;
-  return row;
-}
-
-// M — Affiche l'historique des parties (tallies par adversaire/ouverture + liste).
-// Seules les parties d'arène (boss) sont listées : les leçons « illuminer le
-// cerveau » sont de l'entraînement et n'apparaissent pas dans l'historique.
-function renderAdvGameHistory() {
-  const stats = advGameStats((g) => g.kind === 'boss');
-  const summary = document.querySelector('#advHistorySummary');
-  const tallies = document.querySelector('#advHistoryTallies');
-  const list = document.querySelector('#advHistoryList');
-
-  if (summary) {
-    summary.textContent = stats.games.length
-      ? `${stats.won} victoire${stats.won > 1 ? 's' : ''} · ${stats.lost} défaite${
-          stats.lost > 1 ? 's' : ''
-        } sur ${stats.games.length} partie${stats.games.length > 1 ? 's' : ''}.`
-      : "Aucune partie jouée pour l'instant.";
-  }
-
-  if (tallies) {
-    tallies.replaceChildren();
-
-    // Bilan global : une barre V/D pour un coup d'œil immédiat.
-    if (stats.games.length) {
-      const group = document.createElement('div');
-      group.className = 'adv-tally-group';
-      group.innerHTML = '<span class="adv-tally-label">Bilan</span>';
-      const bars = document.createElement('div');
-      bars.className = 'adv-wl-bars';
-      bars.append(makeWinLossBar('Total', stats.won, stats.lost));
-      group.append(bars);
-      tallies.append(group);
-    }
-
-    // Par boss : data-viz V/D par niveau (N1 → N10), l'info clé demandée.
-    const bosses = stats.byOpponent
-      .filter((p) => p.kind === 'boss')
-      .sort((a, b) => (a.level || 0) - (b.level || 0));
-    if (bosses.length) {
-      const group = document.createElement('div');
-      group.className = 'adv-tally-group';
-      group.innerHTML = '<span class="adv-tally-label">Par boss</span>';
-      const bars = document.createElement('div');
-      bars.className = 'adv-wl-bars';
-      for (const b of bosses) {
-        bars.append(makeWinLossBar(`N${b.level}`, b.won, b.lost));
-      }
-      group.append(bars);
-      tallies.append(group);
-    }
-
-    if (stats.byOpening.length) {
-      const group = document.createElement('div');
-      group.className = 'adv-tally-group';
-      group.innerHTML = '<span class="adv-tally-label">Par ouverture</span>';
-      for (const o of stats.byOpening.slice(0, 6)) {
-        group.append(makeAdvTallyChip(advOpeningDisplayLabel(o.lineSans, o.label), o.won, o.lost));
-      }
-      tallies.append(group);
-    }
-  }
-
-  if (list) {
-    list.replaceChildren();
-    for (const g of stats.games.slice(0, 12)) {
-      const li = document.createElement('li');
-      const reviewable = Array.isArray(g.moves) && g.moves.length > 0;
-      li.className = `adv-history-row is-${g.result}${reviewable ? ' is-reviewable' : ''}`;
-      const icon = g.result === 'won' ? '✅' : '❌';
-      const mateBadge = g.mate ? '<span class="adv-history-mate">mat</span>' : '';
-      const chevron = reviewable ? '<span class="adv-history-chevron" aria-hidden="true">▸</span>' : '';
-      const openingText = advOpeningDisplayLabel(g.lineSans, g.openingLabel);
-      li.innerHTML = `
-        <span class="adv-history-result">${icon}</span>
-        <span class="adv-history-main">
-          <b>${escapeHtml(advFormatGameOpponent(g))}</b>${mateBadge}
-          <i>${escapeHtml(openingText)}</i>
-        </span>
-        <span class="adv-history-meta">${g.plies} c · ${advFormatRelativeTime(g.ts)}</span>${chevron}`;
-      if (reviewable) {
-        li.setAttribute('role', 'button');
-        li.setAttribute('tabindex', '0');
-        li.setAttribute('aria-label', `Revoir la partie : ${advFormatGameOpponent(g)}`);
-        li.addEventListener('click', () => openGameReview(g));
-        li.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            openGameReview(g);
-          }
-        });
-      }
-      list.append(li);
-    }
-  }
-}
-
-// === Revue d'une partie historique : échiquier rejouable + analyse a posteriori ===
-function advStoredVerdict(move) {
-  return advMoveVerdict({
-    color: move.color,
-    phase: move.phase,
-    beforeEvalCp: move.before,
-    afterEvalCp: move.after
-  });
-}
-
-// Précision : part des coups BLANCS du joueur sans faute (bon / livre).
-function advGameAccuracy(moves) {
-  const whiteMoves = (moves || []).filter(
-    (m) => m.color === 'w' && (m.phase === 'free' || m.phase === 'opening')
-  );
-  if (!whiteMoves.length) {
-    return null;
-  }
-  let clean = 0;
-  for (const m of whiteMoves) {
-    const verdict = advStoredVerdict(m);
-    if (verdict && ['good', 'book', 'brilliant'].includes(verdict.key)) {
-      clean += 1;
-    }
-  }
-  return Math.round((clean / whiteMoves.length) * 100);
-}
-
-// L — Compte les coups BLANCS par verdict (brillant/bon/imprécision/erreur/gaffe).
-function advMoveStatsFromStored(moves) {
-  const counts = { brilliant: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0, book: 0 };
-  let total = 0;
-  for (const m of moves || []) {
-    const verdict = advStoredVerdict(m);
-    if (!verdict) {
-      continue;
-    }
-    counts[verdict.key] = (counts[verdict.key] || 0) + 1;
-    total += 1;
-  }
-  return { counts, total };
-}
-
-// Bandeau d'analyse de fin de partie : compteurs par verdict + précision.
-function buildMoveStatsRow(moves) {
-  const { counts, total } = advMoveStatsFromStored(moves);
-  if (!total) {
-    return null;
-  }
-  const wrap = document.createElement('div');
-  wrap.className = 'adv-analysis';
-  // « Bon coup » regroupe les coups solides + les coups de livre.
-  const tiers = [
-    { key: 'brilliant', n: counts.brilliant },
-    { key: 'good', n: counts.good + counts.book },
-    { key: 'inaccuracy', n: counts.inaccuracy },
-    { key: 'mistake', n: counts.mistake },
-    { key: 'blunder', n: counts.blunder }
-  ];
-  for (const tier of tiers) {
-    const v = MOVE_VERDICTS[tier.key];
-    const stat = document.createElement('span');
-    stat.className = `adv-analysis-stat is-${v.cls}`;
-    stat.innerHTML = `<i>${v.short}</i> ${tier.n}`;
-    stat.title = `${v.label} : ${tier.n}`;
-    wrap.append(stat);
-  }
-  const acc = advGameAccuracy(moves);
-  const accEl = document.createElement('span');
-  accEl.className = 'adv-analysis-accuracy';
-  accEl.textContent = `Précision ${acc == null ? '—' : `${acc} %`}`;
-  wrap.append(accEl);
-  return wrap;
-}
-
-function buildStoredMoveComment(move) {
-  const verdict = advStoredVerdict(move);
-  const label =
-    verdict && verdict.key !== 'good' && verdict.key !== 'book' ? `${verdict.label}. ` : '';
-  const evalTxt =
-    move.before != null && move.after != null
-      ? `Éval ${formatEval(move.before)} → ${formatEval(move.after)}.`
-      : '';
-  const best =
-    move.best && verdict && ['inaccuracy', 'mistake', 'blunder'].includes(verdict.key)
-      ? ` Meilleur coup : ${move.best}.`
-      : '';
-  return `${label}${evalTxt}${best}`.trim() || 'Coup joué.';
-}
-
-function openGameReview(game) {
-  if (!game || !Array.isArray(game.moves) || !game.moves.length) {
-    return;
-  }
-  const chess = new Chess();
-  const positions = [{ fen: chess.fen(), from: '', to: '', san: 'Départ', moveIndex: -1 }];
-  for (let i = 0; i < game.moves.length; i += 1) {
-    let move = null;
-    try {
-      move = chess.move(game.moves[i].san);
-    } catch {
-      move = null;
-    }
-    if (!move) {
-      break; // SAN illisible : on s'arrête là (sécurité)
-    }
-    positions.push({ fen: chess.fen(), from: move.from, to: move.to, san: move.san, moveIndex: i });
-  }
-  state.gameReview = {
-    game,
-    positions,
-    index: positions.length - 1,
-    branch: null, // sous-variante explorée (engine ou perso)
-    sel: null, // case sélectionnée (clic 1) pour jouer une variante
-    engine: null, // analyse Stockfish de la position affichée
-    engineToken: 0
-  };
-  const overlay = document.querySelector('#advGameReview');
-  if (overlay) {
-    overlay.hidden = false;
-  }
-  renderGameReview();
-  gameReviewAnalyze();
-}
-
-function closeGameReview() {
-  if (state.gameReview) {
-    state.gameReview.engineToken += 1; // invalide toute analyse en cours
-  }
-  state.gameReview = null;
-  const overlay = document.querySelector('#advGameReview');
-  if (overlay) {
-    overlay.hidden = true;
-  }
-}
-
-function gameReviewStep(delta) {
-  const review = state.gameReview;
-  if (!review) {
-    return;
-  }
-  review.branch = null; // naviguer la ligne principale quitte la sous-variante
-  review.sel = null;
-  if (delta === 'first') {
-    review.index = 0;
-  } else if (delta === 'last') {
-    review.index = review.positions.length - 1;
-  } else {
-    review.index = clamp(review.index + delta, 0, review.positions.length - 1);
-  }
-  renderGameReview();
-  gameReviewAnalyze();
-}
-
-function gameReviewGoTo(positionIndex) {
-  const review = state.gameReview;
-  if (!review) {
-    return;
-  }
-  review.branch = null;
-  review.sel = null;
-  review.index = clamp(positionIndex, 0, review.positions.length - 1);
-  renderGameReview();
-  gameReviewAnalyze();
-}
-
-// Position actuellement affichée : sous-variante (branche) si active, sinon ligne principale.
-function gameReviewShownPosition() {
-  const r = state.gameReview;
-  if (!r) {
-    return null;
-  }
-  if (r.branch) {
-    if (r.branch.view < 0) {
-      const base = r.positions[r.branch.baseIndex];
-      return { fen: base.fen, from: '', to: '', san: base.san, inBranch: true, view: -1 };
-    }
-    const p = r.branch.plies[r.branch.view];
-    return { fen: p.fen, from: p.from, to: p.to, san: p.san, inBranch: true, view: r.branch.view };
-  }
-  const p = r.positions[r.index];
-  return { fen: p.fen, from: p.from, to: p.to, san: p.san, inBranch: false };
-}
-
-// Joue un coup (UCI) depuis la position affichée → l'ajoute à la sous-variante.
-function gameReviewPlayUci(uci) {
-  const r = state.gameReview;
-  if (!r) {
-    return false;
-  }
-  const shown = gameReviewShownPosition();
-  const chess = new Chess(shown.fen);
-  const move = playUciOnChess(chess, uci);
-  if (!move) {
-    return false;
-  }
-  const ply = { san: move.san, from: move.from, to: move.to, fen: chess.fen(), color: move.color };
-  if (!r.branch) {
-    r.branch = { baseIndex: r.index, plies: [ply], view: 0 };
-  } else {
-    // jouer depuis une position intermédiaire tronque la suite avant d'ajouter
-    if (r.branch.view < r.branch.plies.length - 1) {
-      r.branch.plies = r.branch.plies.slice(0, r.branch.view + 1);
-    }
-    r.branch.plies.push(ply);
-    r.branch.view = r.branch.plies.length - 1;
-  }
-  r.sel = null;
-  return true;
-}
-
-// Clic sur une case du plateau de revue : sélection puis jeu d'un coup (variante perso).
-function gameReviewClickSquare(sq) {
-  const r = state.gameReview;
-  if (!r) {
-    return;
-  }
-  const shown = gameReviewShownPosition();
-  const chess = new Chess(shown.fen);
-  const turn = chess.turn();
-  const piece = chess.get(sq);
-  if (r.sel) {
-    if (sq === r.sel) {
-      r.sel = null;
-      renderGameReview();
-      return;
-    }
-    const legal = chess.moves({ square: r.sel, verbose: true });
-    const target = legal.find((m) => m.to === sq);
-    if (target) {
-      if (gameReviewPlayUci(`${r.sel}${sq}${target.promotion || ''}`)) {
-        renderGameReview();
-        gameReviewAnalyze();
-      }
-      return;
-    }
-    if (piece && piece.color === turn) {
-      r.sel = sq;
-    } else {
-      r.sel = null;
-    }
-    renderGameReview();
-    return;
-  }
-  if (piece && piece.color === turn) {
-    r.sel = sq;
-    renderGameReview();
-  }
-}
-
-// Joue les `count` premiers coups de la meilleure suite de Stockfish dans la variante.
-function gameReviewPlayEngineLine(count) {
-  const r = state.gameReview;
-  const line = r?.engine?.pvUci;
-  if (!Array.isArray(line) || !line.length) {
-    return;
-  }
-  let played = 0;
-  for (let i = 0; i < count && i < line.length; i += 1) {
-    if (!gameReviewPlayUci(line[i])) {
-      break;
-    }
-    played += 1;
-  }
-  if (played) {
-    renderGameReview();
-    gameReviewAnalyze();
-  }
-}
-
-function gameReviewSetBranchView(view) {
-  const r = state.gameReview;
-  if (!r?.branch) {
-    return;
-  }
-  r.branch.view = clamp(view, -1, r.branch.plies.length - 1);
-  r.sel = null;
-  renderGameReview();
-  gameReviewAnalyze();
-}
-
-function gameReviewExitBranch() {
-  const r = state.gameReview;
-  if (!r) {
-    return;
-  }
-  r.branch = null;
-  r.sel = null;
-  renderGameReview();
-  gameReviewAnalyze();
-}
-
-// Analyse Stockfish de la position affichée (meilleure suite). Asynchrone, anti-périmé.
-async function gameReviewAnalyze() {
-  const r = state.gameReview;
-  if (!r) {
-    return;
-  }
-  const shown = gameReviewShownPosition();
-  const fen = shown.fen;
-  if (r.engine && r.engine.fen === fen && !r.engine.loading) {
-    renderReviewEngine();
-    return;
-  }
-  const token = (r.engineToken += 1);
-  r.engine = { fen, loading: true };
-  renderReviewEngine();
-  try {
-    const evaluator = await ensureStockfishReady(false);
-    const evaluation = await evaluator.evaluate(fen);
-    if (state.gameReview !== r || token !== r.engineToken) {
-      return; // position changée entre-temps : résultat périmé
-    }
-    r.engine = {
-      fen,
-      loading: false,
-      cp: evaluation.cpWhite,
-      pv: evaluation.pv || '',
-      pvUci: evaluation.pvUci || []
-    };
-  } catch {
-    if (state.gameReview === r && token === r.engineToken) {
-      r.engine = { fen, loading: false, error: true };
-    }
-  }
-  renderReviewEngine();
-}
-
-// Affiche la meilleure suite de Stockfish (coups cliquables) pour la position affichée.
-function renderReviewEngine() {
-  const host = document.querySelector('#advReviewEngine');
-  if (!host) {
-    return;
-  }
-  host.replaceChildren();
-  const eng = state.gameReview?.engine;
-  if (!eng) {
-    return;
-  }
-  if (eng.loading) {
-    host.textContent = 'Stockfish analyse la suite…';
-    return;
-  }
-  if (eng.error || !Array.isArray(eng.pvUci) || !eng.pvUci.length) {
-    return;
-  }
-  const label = document.createElement('span');
-  label.className = 'game-review-engine-label';
-  label.textContent = `Meilleure suite (${formatEval(eng.cp)}) :`;
-  host.append(label);
-  const chess = new Chess(eng.fen);
-  let i = 0;
-  for (const uci of eng.pvUci.slice(0, 8)) {
-    const move = playUciOnChess(chess, uci);
-    if (!move) {
-      break;
-    }
-    const step = i;
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'game-review-engine-move';
-    chip.textContent = move.san;
-    chip.title = 'Jouer cette suite dans la variante';
-    chip.addEventListener('click', () => gameReviewPlayEngineLine(step + 1));
-    host.append(chip);
-    i += 1;
-  }
-}
-
-// Fil d'Ariane de la sous-variante explorée (coups cliquables + retour ligne principale).
-function renderReviewVariation() {
-  const host = document.querySelector('#advReviewVariation');
-  if (!host) {
-    return;
-  }
-  const r = state.gameReview;
-  if (!r?.branch) {
-    host.hidden = true;
-    host.replaceChildren();
-    return;
-  }
-  host.hidden = false;
-  host.replaceChildren();
-  const exit = document.createElement('button');
-  exit.type = 'button';
-  exit.className = 'game-review-variation-exit';
-  exit.textContent = '↩ Ligne principale';
-  exit.addEventListener('click', gameReviewExitBranch);
-  host.append(exit);
-  const moves = document.createElement('div');
-  moves.className = 'game-review-variation-moves';
-  r.branch.plies.forEach((ply, idx) => {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = `game-review-variation-move${idx === r.branch.view ? ' is-active' : ''}`;
-    const moveNo = Math.floor((r.branch.baseIndex + idx) / 2) + 1;
-    const prefix = ply.color === 'w' ? `${moveNo}.` : `${moveNo}…`;
-    chip.textContent = `${prefix} ${ply.san}`;
-    chip.addEventListener('click', () => gameReviewSetBranchView(idx));
-    moves.append(chip);
-  });
-  host.append(moves);
-}
-
-function renderGameReview() {
-  const review = state.gameReview;
-  if (!review) {
-    return;
-  }
-  const game = review.game;
-  advSetText('#advReviewTitle', `${advFormatGameOpponent(game)} · ${advFormatRelativeTime(game.ts)}`);
-
-  const resultEl = document.querySelector('#advReviewResult');
-  if (resultEl) {
-    resultEl.textContent =
-      game.result === 'won' ? (game.mate ? 'Victoire (mat)' : 'Victoire') : 'Défaite';
-    resultEl.className = game.result === 'won' ? 'is-won' : 'is-lost';
-  }
-  advSetText('#advReviewOpening', advOpeningDisplayLabel(game.lineSans, game.openingLabel));
-  const accuracy = advGameAccuracy(game.moves);
-  advSetText('#advReviewAccuracy', accuracy == null ? '—' : `${accuracy} %`);
-  const analysisHost = document.querySelector('#advReviewAnalysis');
-  if (analysisHost) {
-    analysisHost.replaceChildren();
-    const statsRow = buildMoveStatsRow(game.moves);
-    if (statsRow) {
-      analysisHost.append(statsRow);
-    }
-  }
-
-  // Position affichée : sous-variante (branche) si active, sinon ligne principale.
-  const shown = gameReviewShownPosition();
-  const position = review.positions[review.index];
-  const boardEl = document.querySelector('#advReviewBoard');
-  if (boardEl && shown) {
-    renderBoard(
-      { id: 'review', fen: shown.fen, from: shown.from, to: shown.to, san: shown.san },
-      boardEl
-    );
-    // Surbrillance de la sélection (clic 1) + cases légales, pour jouer une variante.
-    if (review.sel) {
-      const selEl = boardEl.querySelector(`.board-square[data-square="${review.sel}"]`);
-      selEl?.classList.add('is-selected');
-      const chess = new Chess(shown.fen);
-      for (const m of chess.moves({ square: review.sel, verbose: true })) {
-        boardEl.querySelector(`.board-square[data-square="${m.to}"]`)?.classList.add('is-target');
-      }
-    }
-  }
-  advSetText(
-    '#advReviewPly',
-    shown.inBranch ? `variante` : `${review.index} / ${review.positions.length - 1}`
-  );
-
-  const comment = document.querySelector('#advReviewComment');
-  if (comment) {
-    if (shown.inBranch) {
-      comment.textContent = 'Sous-variante explorée — l\'analyse Stockfish s\'affiche ci-dessous.';
-    } else {
-      const move = position && position.moveIndex >= 0 ? game.moves[position.moveIndex] : null;
-      comment.textContent = move ? buildStoredMoveComment(move) : 'Position de départ.';
-    }
-  }
-
-  renderReviewEngine();
-  renderReviewVariation();
-
-  const list = document.querySelector('#advReviewMoves');
-  if (list) {
-    list.replaceChildren();
-    game.moves.forEach((move, index) => {
-      const li = document.createElement('li');
-      const isActive = !shown.inBranch && position && position.moveIndex === index;
-      li.className = `game-review-move${isActive ? ' is-active' : ''}`;
-      const verdict = advStoredVerdict(move);
-      const badge = verdict
-        ? `<i class="move-verdict is-${verdict.cls}" title="${escapeHtml(verdict.label)}">${escapeHtml(
-            verdict.short
-          )}</i>`
-        : '';
-      const moveNo = Math.floor(index / 2) + 1;
-      const prefix = move.color === 'w' ? `${moveNo}.` : `${moveNo}…`;
-      const evalTxt = move.after != null ? formatEval(move.after) : '';
-      li.innerHTML =
-        `<span class="game-review-move-san">${escapeHtml(prefix)} ${escapeHtml(move.san)}${badge}</span>` +
-        `<em>${escapeHtml(evalTxt)}</em>`;
-      li.addEventListener('click', () => gameReviewGoTo(index + 1));
-      list.append(li);
-    });
-    const activeEl = list.querySelector('.game-review-move.is-active');
-    activeEl?.scrollIntoView({ block: 'nearest' });
-  }
-}
-
 function adventureOnGameFinished(result) {
   const run = state.advRun;
   if (!state.adventure || !run) {
@@ -11173,7 +6542,12 @@ function adventureOnGameFinished(result) {
     const reward = advWinCoinReward(run);
     if (reward > 0) {
       advAwardCoins(reward);
-      showAdventureToast({ icon: '🪙', title: `+${reward} pièces`, text: 'À dépenser à la boutique.', kind: null });
+      showAdventureToast({
+        icon: '🪙',
+        title: `+${reward} pièces`,
+        text: 'À dépenser à la boutique.',
+        kind: null
+      });
     }
   }
   // Score d'apprentissage : enregistre le record du mode (une seule fois).
@@ -11245,16 +6619,16 @@ function adventureOnGameFinished(result) {
         title: drawn
           ? `${drawKindLabel(chess)} — pas de mat`
           : matedReally
-          ? 'Échec et mat subi'
-          : 'Position effondrée',
+            ? 'Échec et mat subi'
+            : 'Position effondrée',
         text:
           hadStreak > 0
             ? `Série interrompue : tu repars de 0. Tes ${advBossRecord(level)} étoile(s) acquises restent.`
             : drawn
-            ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
-            : matedReally
-            ? 'Le boss te mate. Relance l’assaut.'
-            : 'Ta position est tombée trop bas. Relance l’assaut.',
+              ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
+              : matedReally
+                ? 'Le boss te mate. Relance l’assaut.'
+                : 'Ta position est tombée trop bas. Relance l’assaut.',
         kind: null
       });
     }
@@ -11545,22 +6919,6 @@ function closeAdvTournament() {
   document.body.classList.remove('is-adv-tournament-open');
 }
 
-// Tirage pondéré d'une arête de livre (par probabilité) pour l'ouverture simulée.
-function advPickBookEdge(edges) {
-  const total = edges.reduce((s, e) => s + (Number(e.probability) || 0), 0);
-  if (total <= 0) {
-    return edges[Math.floor(randomUnit() * edges.length)];
-  }
-  let roll = randomUnit() * total;
-  for (const e of edges) {
-    roll -= Number(e.probability) || 0;
-    if (roll <= 0) {
-      return e;
-    }
-  }
-  return edges[edges.length - 1];
-}
-
 // Simule un match bot-vs-bot : ouverture suivie du livre, puis playout Stockfish des
 // deux camps (à leur niveau) jusqu'au mat / résignation / plafond. Vainqueur réel.
 async function advSimulateBotMatch(whiteLevel, blackLevel) {
@@ -11609,7 +6967,10 @@ async function advSimulateBotMatch(whiteLevel, blackLevel) {
         break;
       }
       const evalNow = await evaluator.evaluate(chess.fen());
-      if (Number.isFinite(evalNow.cpWhite) && Math.abs(evalNow.cpWhite) >= TOURNAMENT_SIM_RESIGN_CP) {
+      if (
+        Number.isFinite(evalNow.cpWhite) &&
+        Math.abs(evalNow.cpWhite) >= TOURNAMENT_SIM_RESIGN_CP
+      ) {
         winner = evalNow.cpWhite > 0 ? 'w' : 'b';
         break;
       }
@@ -12029,7 +7390,11 @@ function renderAdvMovesStrip() {
         btn.disabled = used;
         const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
         const tag =
-          w > 0.01 ? `+${Math.round(w)}%` : w < -0.01 ? `${Math.round(w)}%` : `${Math.round(m.baseProb * 100)}%`;
+          w > 0.01
+            ? `+${Math.round(w)}%`
+            : w < -0.01
+              ? `${Math.round(w)}%`
+              : `${Math.round(m.baseProb * 100)}%`;
         btn.innerHTML =
           `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
           `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
@@ -12067,7 +7432,8 @@ function renderAdvMovesStrip() {
   const showChoices = advAids().moveChoices;
 
   // 1) Coups blancs jouables (selectionnables) pendant l'ouverture.
-  const whitePlayable = inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
+  const whitePlayable =
+    inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
   const whiteEdges = whitePlayable && showChoices ? getExpectedWhiteBookEdges() : [];
   for (const edge of whiteEdges) {
     const btn = document.createElement('button');
@@ -12083,7 +7449,13 @@ function renderAdvMovesStrip() {
   // 2) Reponses de Stockfish encore dans la theorie : touches "fantomes" non
   //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
   let ghosts = [];
-  if (showChoices && !whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
+  if (
+    showChoices &&
+    !whiteEdges.length &&
+    inPlay &&
+    game.chess.turn() === 'b' &&
+    game.phase === 'opening'
+  ) {
     ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
   }
   for (const cand of ghosts) {
@@ -12115,12 +7487,12 @@ function renderAdvMovesStrip() {
     ph.textContent = yourTurnNoAid
       ? 'À toi de jouer sur l’échiquier'
       : game?.victoryCinematic
-      ? 'Conversion automatique en cours…'
-      : game?.status === 'playing' && game.chess.turn() === 'b'
-        ? 'Au tour de Stockfish…'
-        : game?.status === 'playing' && game.phase !== 'opening'
-          ? 'Hors du livre : joue ton coup sur l’échiquier'
-          : ' ';
+        ? 'Conversion automatique en cours…'
+        : game?.status === 'playing' && game.chess.turn() === 'b'
+          ? 'Au tour de Stockfish…'
+          : game?.status === 'playing' && game.phase !== 'opening'
+            ? 'Hors du livre : joue ton coup sur l’échiquier'
+            : ' ';
     host.append(ph);
   }
   host.classList.toggle('is-empty', !hasContent);
@@ -12223,7 +7595,11 @@ function renderAdvHistory() {
     if (label) {
       const san = cur > 0 ? infl.lineSans[cur - 1] : null;
       const moveNo = Math.ceil(cur / 2);
-      const moveLabel = san ? (cur % 2 === 1 ? `${moveNo}. ${san}` : `${moveNo}… ${san}`) : 'Départ';
+      const moveLabel = san
+        ? cur % 2 === 1
+          ? `${moveNo}. ${san}`
+          : `${moveNo}… ${san}`
+        : 'Départ';
       label.textContent = `${moveLabel} · ${cur}/${len}`;
     }
     if (prev) prev.disabled = cur <= 0;
@@ -12246,25 +7622,6 @@ function renderAdvHistory() {
   }
   if (prev) prev.disabled = current <= 0;
   if (next) next.disabled = !reviewing; // déjà à la position en cours
-}
-
-function advSetText(selector, text) {
-  const el = document.querySelector(selector);
-  if (el) {
-    el.textContent = text;
-  }
-}
-
-function advSetWidth(selector, pct) {
-  const el = document.querySelector(selector);
-  if (el) {
-    el.style.width = `${clamp(pct, 0, 100)}%`;
-  }
-}
-
-function advStarString(count) {
-  const filled = clamp(Math.round(count), 0, 3);
-  return '★'.repeat(filled) + '☆'.repeat(3 - filled);
 }
 
 function updateHomeProgress() {
@@ -12290,7 +7647,7 @@ function advResultButton(label, handler, primary = false) {
 // Phrase d'évaluation de la position effondrée : rend la défaite explicite
 // (« tu n'avais plus aucune chance ») en chiffrant l'écart pour le joueur (Blancs).
 function advDefeatEvalLine(game) {
-  if (Boolean(game?.chess?.isCheckmate?.())) {
+  if (game?.chess?.isCheckmate?.()) {
     return 'Échec et mat sur l’échiquier — plus aucune ressource.';
   }
   const cp = game?.failureEvaluation?.cpWhite;
@@ -12371,7 +7728,9 @@ function renderBossDefeatResult(el, game, run) {
           : '↶ Revenir en arrière';
       actions.append(advResultButton(label, () => advUndoDefeat(), true));
     }
-    actions.append(advResultButton('⏩ Avance rapide', () => advSkipDefeatCinematic(), !canComeback));
+    actions.append(
+      advResultButton('⏩ Avance rapide', () => advSkipDefeatCinematic(), !canComeback)
+    );
     el.append(heading, actions);
     return;
   }
@@ -12548,7 +7907,12 @@ function renderAdventureResult(el, game, run) {
 
   // « Analyser la partie » : ouvre la revue (sous-variantes : meilleure suite Stockfish
   // + exploration perso) pour comprendre l'effondrement coup par coup.
-  if (!win && game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
+  if (
+    !win &&
+    game.recordRef &&
+    Array.isArray(game.recordRef.moves) &&
+    game.recordRef.moves.length
+  ) {
     actions.append(
       advResultButton('🔍 Analyser la partie', () => {
         const record = game.recordRef;
@@ -12636,8 +8000,7 @@ function renderAdventureHud() {
           : 'Révision · Quiz';
     if (title)
       title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total} · ⚡ ${Math.round(run.scoreTotal || 0)}`;
-    if (objective)
-      objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
+    if (objective) objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
   } else if (run.kind === 'lesson') {
     if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
     if (title)
@@ -12825,17 +8188,6 @@ function renderAdvLessonChoice() {
     trapSub.textContent = unlocked
       ? 'Fais tomber Stockfish dans un piège'
       : 'Verrouillé · illumine 100 % du cortex';
-  }
-}
-
-// Bouton « Illuminer le cerveau » : leçon d'ouverture, ou pièges une fois tout le
-// cortex illuminé (progression naturelle).
-function launchBrainLesson() {
-  const allDone = ADV_LESSONS.every((l) => state.adventure?.lessons?.[l.id]);
-  if (allDone && advTrapsUnlocked()) {
-    launchTrapsLesson();
-  } else {
-    launchLesson();
   }
 }
 
@@ -13093,8 +8445,12 @@ function bindAdventureEvents() {
 }
 
 function bindEvents() {
-  bindPanelResizeHandles();
+  bindPanelResizeHandles(renderGraph);
   bindBoardDragEvents();
+  initBrainScrub({ renderGraph, renderBoard }); // injection : re-rendu graphe + échiquier
+  initAdventureHistory({ getReviewParent }); // injection : parent d'un coup dans l'arbre de revue
+  initOpeningViewer({ renderAdvShop }); // injection : re-rendu du carrousel boutique (HUD)
+  initGameReview({ renderBoard, ensureStockfishReady }); // injection : échiquier + moteur
   bindBrainScrubEvents();
 
   elements.temperatureRange.addEventListener('input', () => {
@@ -13204,6 +8560,7 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
+  initClocks({ finishGame }); // injection : fin de partie au temps
   startClockTicker(); // U : démarre le décompte de la pendule
 }
 

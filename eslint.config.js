@@ -11,6 +11,7 @@ export default [
       'dist/**',
       'node_modules/**',
       'site/opening-neural-poc/vendor/**', // tiers : chess.js, stockfish
+      'site/opening-neural-poc/public/**', // assets servis tels quels (moteur tiers, pièces, livre)
       'site/pieces/**',
     ],
   },
