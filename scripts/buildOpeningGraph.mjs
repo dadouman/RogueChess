@@ -11,7 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
-const DEFAULT_PGN_PATH = 'C:\\Users\\Jocelyn\\Downloads\\italian_opening_PK7F0mR6_lignes_detaillees.pgn';
+const DEFAULT_PGN_PATH =
+  'C:\\Users\\Jocelyn\\Downloads\\italian_opening_PK7F0mR6_lignes_detaillees.pgn';
 const DEFAULT_OUTPUT_PATH = path.join(repoRoot, 'site', 'opening-neural-poc', 'opening-graph.json');
 const MATE_SCORE_CP = 100000;
 const DEFAULT_DEPTH = 8;
@@ -27,7 +28,9 @@ function getArgValue(name, fallback) {
 }
 
 function normalizeText(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function splitGames(pgn) {
@@ -293,7 +296,13 @@ function parseWhiteCentipawn(line, fen) {
 }
 
 function parsePv(line) {
-  return line.match(/\bpv\s+(.+)$/)?.[1]?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return (
+    line
+      .match(/\bpv\s+(.+)$/)?.[1]
+      ?.trim()
+      .split(/\s+/)
+      .filter(Boolean) ?? []
+  );
 }
 
 function formatPvFromFen(fen, pvMoves, limit = 7) {
@@ -359,8 +368,16 @@ class StockfishEvaluator {
   async init() {
     this.engine = await initStockfish('lite-single');
     this.engine.listener = (line) => this.handleLine(String(line));
-    await this.waitFor((line) => line === 'uciok', () => this.send('uci'), 7000);
-    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 7000);
+    await this.waitFor(
+      (line) => line === 'uciok',
+      () => this.send('uci'),
+      7000
+    );
+    await this.waitFor(
+      (line) => line === 'readyok',
+      () => this.send('isready'),
+      7000
+    );
     this.send('setoption name Hash value 32');
     this.send('setoption name MultiPV value 1');
     this.send('ucinewgame');
@@ -600,7 +617,9 @@ async function main() {
   const lines = splitGames(pgn).map(parseGame);
   const graph = buildOpeningGraph(lines);
 
-  console.log(`PGN: ${lines.length} lignes, ${graph.nodes.length} noeuds, ${graph.edges.length} arcs.`);
+  console.log(
+    `PGN: ${lines.length} lignes, ${graph.nodes.length} noeuds, ${graph.edges.length} arcs.`
+  );
   console.log(`Stockfish: profondeur ${depth}.`);
 
   const evaluator = new StockfishEvaluator(depth);

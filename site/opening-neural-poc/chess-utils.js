@@ -48,7 +48,13 @@ export function mateMovesFromCp(cpWhite) {
 }
 
 export function parsePv(line) {
-  return line.match(/\bpv\s+(.+)$/)?.[1]?.trim().split(/\s+/).filter(Boolean) ?? [];
+  return (
+    line
+      .match(/\bpv\s+(.+)$/)?.[1]
+      ?.trim()
+      .split(/\s+/)
+      .filter(Boolean) ?? []
+  );
 }
 
 export function playUciOnChess(chess, uci) {

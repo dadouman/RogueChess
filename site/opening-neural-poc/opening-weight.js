@@ -167,7 +167,12 @@ function advOverweightMove(node, chosenUci) {
     return false;
   }
   if (state.advRun?.overweightUsed) {
-    showAdventureToast({ icon: '🎚️', title: 'Déjà fait', text: 'Une seule surpondération par défaite.', kind: null });
+    showAdventureToast({
+      icon: '🎚️',
+      title: 'Déjà fait',
+      text: 'Une seule surpondération par défaite.',
+      kind: null
+    });
     return false;
   }
   const moves = node.moves || [];
@@ -177,7 +182,11 @@ function advOverweightMove(node, chosenUci) {
   adv.openingWeights = adv.openingWeights || {};
   const bump = (uci, delta) => {
     const key = `${node.fen}|${uci}`;
-    const next = clamp((Number(adv.openingWeights[key]) || 0) + delta, -OPENING_WEIGHT_MAX, OPENING_WEIGHT_MAX);
+    const next = clamp(
+      (Number(adv.openingWeights[key]) || 0) + delta,
+      -OPENING_WEIGHT_MAX,
+      OPENING_WEIGHT_MAX
+    );
     if (Math.abs(next) < 1e-6) {
       delete adv.openingWeights[key];
     } else {
@@ -224,7 +233,6 @@ function advOpeningLockIs(key) {
   return advOpeningLocks().includes(key);
 }
 
-
 // --- File de propositions (carrousel) + économie de pondération (boutique) ---
 // File des propositions du carrousel. null → on (re)remplit avec TOUS les choix
 // (cadenas en tête) ; un tableau (même vide) signifie « déjà parcourue » et n'est
@@ -265,7 +273,12 @@ function advAdjustOpeningWeight(key, direction) {
     return false;
   }
   if (advCoins() < OPENING_WEIGHT_COST) {
-    showAdventureToast({ icon: '🪙', title: 'Pas assez de pièces', text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`, kind: null });
+    showAdventureToast({
+      icon: '🪙',
+      title: 'Pas assez de pièces',
+      text: `Il faut ${OPENING_WEIGHT_COST} 🪙.`,
+      kind: null
+    });
     return false;
   }
   const next = clamp(

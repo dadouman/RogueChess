@@ -5,11 +5,7 @@
 // (initAdventureHistory) pour éviter une dépendance circulaire. Acyclique sinon.
 import { state } from './state.js';
 import { saveAdventure } from './adventure-state.js';
-import {
-  ADV_MAX_REVIEW_MOVES,
-  ADV_MAX_GAMES,
-  DEFAULT_ADV_DIFFICULTY
-} from './adventure-config.js';
+import { ADV_MAX_REVIEW_MOVES, ADV_MAX_GAMES, DEFAULT_ADV_DIFFICULTY } from './adventure-config.js';
 import { advRunDifficultyLevel } from './adventure-status.js';
 import { getStockfishLevelProfile } from './engine.js';
 
@@ -186,9 +182,4 @@ function advGameStats(gameFilter = null) {
   };
 }
 
-export {
-  buildGameReviewMoves,
-  advRecordGame,
-  advRefreshRecordedMoves,
-  advGameStats
-};
+export { buildGameReviewMoves, advRecordGame, advRefreshRecordedMoves, advGameStats };

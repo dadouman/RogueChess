@@ -105,7 +105,9 @@ function renderAdvGameHistory() {
       li.className = `adv-history-row is-${g.result}${reviewable ? ' is-reviewable' : ''}`;
       const icon = g.result === 'won' ? '✅' : '❌';
       const mateBadge = g.mate ? '<span class="adv-history-mate">mat</span>' : '';
-      const chevron = reviewable ? '<span class="adv-history-chevron" aria-hidden="true">▸</span>' : '';
+      const chevron = reviewable
+        ? '<span class="adv-history-chevron" aria-hidden="true">▸</span>'
+        : '';
       const openingText = advOpeningDisplayLabel(g.lineSans, g.openingLabel);
       li.innerHTML = `
         <span class="adv-history-result">${icon}</span>

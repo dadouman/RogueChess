@@ -58,8 +58,18 @@ export class BrowserStockfishEvaluator {
         reject(new Error(`Stockfish worker: ${event.message}`));
       });
 
-      this.waitFor((line) => line === 'uciok', () => this.send('uci'), 12000)
-        .then(() => this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000))
+      this.waitFor(
+        (line) => line === 'uciok',
+        () => this.send('uci'),
+        12000
+      )
+        .then(() =>
+          this.waitFor(
+            (line) => line === 'readyok',
+            () => this.send('isready'),
+            12000
+          )
+        )
         .then(() => {
           this.send('setoption name Hash value 32');
           this.send('setoption name MultiPV value 1');
@@ -111,7 +121,11 @@ export class BrowserStockfishEvaluator {
 
     this.send('setoption name UCI_LimitStrength value false');
     this.send('setoption name Skill Level value 20');
-    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
+    await this.waitFor(
+      (line) => line === 'readyok',
+      () => this.send('isready'),
+      12000
+    );
     this.modeKey = 'analysis';
   }
 
@@ -131,7 +145,11 @@ export class BrowserStockfishEvaluator {
       this.send('setoption name Skill Level value 20');
     }
 
-    await this.waitFor((line) => line === 'readyok', () => this.send('isready'), 12000);
+    await this.waitFor(
+      (line) => line === 'readyok',
+      () => this.send('isready'),
+      12000
+    );
     this.modeKey = modeKey;
   }
 
@@ -196,7 +214,9 @@ export class BrowserStockfishEvaluator {
     }
 
     await this.configureForPlay(profile);
-    const command = profile.movetime ? `go movetime ${profile.movetime}` : `go depth ${profile.depth}`;
+    const command = profile.movetime
+      ? `go movetime ${profile.movetime}`
+      : `go depth ${profile.depth}`;
     const timeoutMs = profile.movetime ? Math.max(8000, profile.movetime + 6000) : 18000;
     return this.search(fen, command, timeoutMs);
   }

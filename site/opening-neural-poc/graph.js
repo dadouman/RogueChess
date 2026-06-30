@@ -17,9 +17,7 @@ export function getRawOutgoingEdges(nodeId, color = null) {
   if (!node) {
     return [];
   }
-  return node.outgoing
-    .map(getEdge)
-    .filter((edge) => edge && (!color || edge.color === color));
+  return node.outgoing.map(getEdge).filter((edge) => edge && (!color || edge.color === color));
 }
 
 export function normalizeWeightedCandidates(candidates) {

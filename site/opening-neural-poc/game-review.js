@@ -350,7 +350,10 @@ function renderGameReview() {
     return;
   }
   const game = review.game;
-  advSetText('#advReviewTitle', `${advFormatGameOpponent(game)} · ${advFormatRelativeTime(game.ts)}`);
+  advSetText(
+    '#advReviewTitle',
+    `${advFormatGameOpponent(game)} · ${advFormatRelativeTime(game.ts)}`
+  );
 
   const resultEl = document.querySelector('#advReviewResult');
   if (resultEl) {
@@ -397,7 +400,7 @@ function renderGameReview() {
   const comment = document.querySelector('#advReviewComment');
   if (comment) {
     if (shown.inBranch) {
-      comment.textContent = 'Sous-variante explorée — l\'analyse Stockfish s\'affiche ci-dessous.';
+      comment.textContent = "Sous-variante explorée — l'analyse Stockfish s'affiche ci-dessous.";
     } else {
       const move = position && position.moveIndex >= 0 ? game.moves[position.moveIndex] : null;
       comment.textContent = move ? buildStoredMoveComment(move) : 'Position de départ.';

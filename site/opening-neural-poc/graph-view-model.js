@@ -26,7 +26,7 @@ function getBranchValue(edge) {
   }
   return Number.isFinite(target.futureMeanCp)
     ? target.futureMeanCp
-    : target.evaluation?.cpWhite ?? 0;
+    : (target.evaluation?.cpWhite ?? 0);
 }
 
 function isMateNode(node) {
@@ -133,8 +133,7 @@ function recomputeViewProbabilities(view) {
 
     scored.forEach((item, index) => {
       const softmax = raw[index] / rawTotal;
-      item.edge.probability =
-        state.floorMass / scored.length + (1 - state.floorMass) * softmax;
+      item.edge.probability = state.floorMass / scored.length + (1 - state.floorMass) * softmax;
       item.edge.deltaCp = Math.round(item.score - average);
       item.edge.pathMeanCp = Math.round(item.pathMean);
       item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;

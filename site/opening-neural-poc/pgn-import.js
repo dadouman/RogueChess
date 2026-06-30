@@ -10,11 +10,15 @@ import { PROBABILITY_TEMPERATURE_CP, PROBABILITY_FLOOR_MASS } from './constants.
 const RESULT_TOKENS = new Set(['1-0', '0-1', '1/2-1/2', '*']);
 
 function normalizePgnText(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function splitPgnGames(pgn) {
-  const normalized = String(pgn ?? '').replace(/\r\n/g, '\n').trim();
+  const normalized = String(pgn ?? '')
+    .replace(/\r\n/g, '\n')
+    .trim();
   if (!normalized) {
     return [];
   }
@@ -167,12 +171,11 @@ function parsePgnGame(block, index) {
   const baseId = `line_${String(index + 1).padStart(2, '0')}`;
 
   return variants.map((moves, variantIndex) => ({
-    id: variants.length > 1
-      ? `${baseId}_${String(variantIndex + 1).padStart(2, '0')}`
-      : baseId,
-    event: variants.length > 1
-      ? `${baseEvent} · ${variantIndex === 0 ? 'ligne principale' : `variante ${variantIndex}`}`
-      : baseEvent,
+    id: variants.length > 1 ? `${baseId}_${String(variantIndex + 1).padStart(2, '0')}` : baseId,
+    event:
+      variants.length > 1
+        ? `${baseEvent} · ${variantIndex === 0 ? 'ligne principale' : `variante ${variantIndex}`}`
+        : baseEvent,
     opening: headers.Opening ?? '',
     eco: headers.ECO ?? '',
     result: headers.Result ?? '*',

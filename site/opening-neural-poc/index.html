@@ -35,8 +35,8 @@
           <span class="home-card-icon" aria-hidden="true">⚗️</span>
           <strong>Mode Créatif</strong>
           <span class="home-card-desc">
-            L'atelier complet : graphe neuronal d'ouverture, import PGN, analyse Stockfish,
-            défi et exploration libre.
+            L'atelier complet : graphe neuronal d'ouverture, import PGN, analyse Stockfish, défi et
+            exploration libre.
           </span>
           <span class="home-card-meta">
             <em>Outil complet</em>
@@ -45,7 +45,9 @@
         </button>
       </div>
       <footer class="home-footer">
-        <button id="homeResetAdventure" class="home-reset" type="button">Réinitialiser la progression</button>
+        <button id="homeResetAdventure" class="home-reset" type="button">
+          Réinitialiser la progression
+        </button>
       </footer>
     </div>
 
@@ -87,7 +89,14 @@
               <label for="survivalLimitRange">Seuil de défaite</label>
               <strong id="survivalLimitValue">-1.00</strong>
             </div>
-            <input id="survivalLimitRange" type="range" min="-300" max="-100" step="50" value="-100" />
+            <input
+              id="survivalLimitRange"
+              type="range"
+              min="-300"
+              max="-100"
+              step="50"
+              value="-100"
+            />
           </div>
 
           <div id="lifeRow" class="life-row" aria-label="Vies restantes"></div>
@@ -120,10 +129,23 @@
           </form>
 
           <p id="gameMessage" class="game-message">Prépare le livre d'ouverture...</p>
-          <div id="expectedMoveList" class="expected-move-list" aria-label="Coups blancs attendus"></div>
-          <div id="opponentGraphMini" class="opponent-graph-mini" aria-label="Plan succinct de l'adversaire"></div>
+          <div
+            id="expectedMoveList"
+            class="expected-move-list"
+            aria-label="Coups blancs attendus"
+          ></div>
+          <div
+            id="opponentGraphMini"
+            class="opponent-graph-mini"
+            aria-label="Plan succinct de l'adversaire"
+          ></div>
           <ol id="moveLogList" class="move-log" aria-label="Coups joués"></ol>
-          <div id="freeReviewPanel" class="free-review-panel" aria-label="Revue des coups libres" hidden></div>
+          <div
+            id="freeReviewPanel"
+            class="free-review-panel"
+            aria-label="Revue des coups libres"
+            hidden
+          ></div>
         </section>
 
         <section class="control-section">
@@ -137,7 +159,12 @@
             <strong id="pgnImportStatus">Livre actif</strong>
           </div>
           <input id="pgnFileInput" type="file" accept=".pgn,text/plain" />
-          <textarea id="pgnTextInput" rows="5" spellcheck="false" placeholder="[Event &quot;Mon répertoire&quot;]&#10;1. e4 e5 2. Nf3 Nc6"></textarea>
+          <textarea
+            id="pgnTextInput"
+            rows="5"
+            spellcheck="false"
+            placeholder='[Event "Mon répertoire"]&#10;1. e4 e5 2. Nf3 Nc6'
+          ></textarea>
           <div class="import-actions">
             <button id="buildPgnButton" type="button">Construire</button>
             <button id="defaultPgnButton" type="button">Livre italien</button>
@@ -189,8 +216,17 @@
       <aside id="adventurePanel" class="adventure-panel" aria-label="Aventure en cours">
         <div class="adv-topbar">
           <button id="advHomeButton" class="adv-ghost" type="button">‹ Accueil</button>
-          <button id="advViewToggle" class="adv-ghost" type="button" aria-label="Basculer vers la vue échiquier">🎮 Vue joueur</button>
-          <button id="advMapButton" class="adv-ghost adv-ghost-strong" type="button">Carte du cerveau</button>
+          <button
+            id="advViewToggle"
+            class="adv-ghost"
+            type="button"
+            aria-label="Basculer vers la vue échiquier"
+          >
+            🎮 Vue joueur
+          </button>
+          <button id="advMapButton" class="adv-ghost adv-ghost-strong" type="button">
+            Carte du cerveau
+          </button>
         </div>
 
         <div class="adv-brain-bar">
@@ -209,8 +245,12 @@
 
         <div class="adv-gauges">
           <div class="adv-gauge">
-            <div class="adv-gauge-head"><span>⚡ Puissance</span><strong id="advPowerValue">N0 / N10</strong></div>
-            <div class="adv-gauge-track"><div id="advPowerFill" class="adv-gauge-fill is-power"></div></div>
+            <div class="adv-gauge-head">
+              <span>⚡ Puissance</span><strong id="advPowerValue">N0 / N10</strong>
+            </div>
+            <div class="adv-gauge-track">
+              <div id="advPowerFill" class="adv-gauge-fill is-power"></div>
+            </div>
           </div>
         </div>
 
@@ -218,7 +258,9 @@
           <span class="kicker" id="advStageKicker">Mode Aventure</span>
           <strong id="advStageTitle">Choisis une étape</strong>
           <div id="advStars" class="adv-stars" aria-label="Étoiles obtenues"></div>
-          <p id="advObjective" class="adv-objective">Ouvre la carte du cerveau pour lancer une étape.</p>
+          <p id="advObjective" class="adv-objective">
+            Ouvre la carte du cerveau pour lancer une étape.
+          </p>
           <div id="advStreak" class="adv-streak" hidden></div>
         </section>
 
@@ -231,9 +273,16 @@
         </form>
 
         <div id="advExpected" class="adv-expected" aria-label="Coups suggérés"></div>
-        <p id="advMessage" class="adv-message">Bienvenue, cerveau. Ouvre la carte pour commencer.</p>
+        <p id="advMessage" class="adv-message">
+          Bienvenue, cerveau. Ouvre la carte pour commencer.
+        </p>
         <div id="advResult" class="adv-result" hidden></div>
-        <div id="advReviewPanel" class="free-review-panel adv-review-panel" aria-label="Analyse rapide de la partie" hidden></div>
+        <div
+          id="advReviewPanel"
+          class="free-review-panel adv-review-panel"
+          aria-label="Analyse rapide de la partie"
+          hidden
+        ></div>
       </aside>
 
       <main class="graph-stage" aria-label="Visualisation du graphe">
@@ -247,7 +296,8 @@
             <em>réfléchit…</em>
           </div>
           <p>
-            Les arcs comparent chaque suite future à la moyenne des choix frères. Le meilleur choix domine, les autres gardent une chance.
+            Les arcs comparent chaque suite future à la moyenne des choix frères. Le meilleur choix
+            domine, les autres gardent une chance.
           </p>
         </div>
         <svg id="graphSvg" role="img" aria-label="Graphe des coups d'ouverture"></svg>
@@ -296,8 +346,24 @@
 
         <div id="detailInfoContent" class="detail-info-content">
           <div class="adv-eval-row">
-            <button id="advHistToggle" class="adv-hist-toggle" type="button" aria-label="Afficher ou masquer l'historique" title="Historique des coups">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <button
+              id="advHistToggle"
+              class="adv-hist-toggle"
+              type="button"
+              aria-label="Afficher ou masquer l'historique"
+              title="Historique des coups"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
                 <path d="M3 3v5h5"></path>
                 <path d="M12 7v5l4 2"></path>
@@ -312,9 +378,23 @@
           <button id="advTakeBack" class="adv-takeback" type="button">↶ Annuler le coup</button>
           <div id="advHistory" class="adv-history" aria-label="Historique des coups">
             <div id="advHistNav" class="adv-hist-nav-group">
-              <button id="advHistPrev" class="adv-hist-nav" type="button" aria-label="Position précédente">‹</button>
+              <button
+                id="advHistPrev"
+                class="adv-hist-nav"
+                type="button"
+                aria-label="Position précédente"
+              >
+                ‹
+              </button>
               <span id="advHistLabel" class="adv-hist-label">—</span>
-              <button id="advHistNext" class="adv-hist-nav" type="button" aria-label="Position suivante">›</button>
+              <button
+                id="advHistNext"
+                class="adv-hist-nav"
+                type="button"
+                aria-label="Position suivante"
+              >
+                ›
+              </button>
             </div>
           </div>
           <dl class="eval-grid">
@@ -339,7 +419,9 @@
                 <strong id="segmentProgress">-</strong>
               </div>
               <div class="segment-controls">
-                <button id="segmentToggleButton" type="button" aria-label="Afficher tous les coups">Tous</button>
+                <button id="segmentToggleButton" type="button" aria-label="Afficher tous les coups">
+                  Tous
+                </button>
                 <button id="segmentPrevButton" type="button" aria-label="Coup précédent">‹</button>
                 <button id="segmentNextButton" type="button" aria-label="Coup suivant">›</button>
               </div>
@@ -365,11 +447,41 @@
         </div>
       </aside>
 
-      <div class="resize-handle resize-handle-left" data-resize-side="left" role="separator" aria-label="Redimensionner le volet gauche" aria-orientation="vertical" tabindex="0">
-        <button class="panel-collapse-button" data-collapse-side="left" type="button" aria-label="Masquer le volet gauche" aria-pressed="false">‹</button>
+      <div
+        class="resize-handle resize-handle-left"
+        data-resize-side="left"
+        role="separator"
+        aria-label="Redimensionner le volet gauche"
+        aria-orientation="vertical"
+        tabindex="0"
+      >
+        <button
+          class="panel-collapse-button"
+          data-collapse-side="left"
+          type="button"
+          aria-label="Masquer le volet gauche"
+          aria-pressed="false"
+        >
+          ‹
+        </button>
       </div>
-      <div class="resize-handle resize-handle-right" data-resize-side="right" role="separator" aria-label="Redimensionner le volet droit" aria-orientation="vertical" tabindex="0">
-        <button class="panel-collapse-button" data-collapse-side="right" type="button" aria-label="Masquer le volet droit" aria-pressed="false">›</button>
+      <div
+        class="resize-handle resize-handle-right"
+        data-resize-side="right"
+        role="separator"
+        aria-label="Redimensionner le volet droit"
+        aria-orientation="vertical"
+        tabindex="0"
+      >
+        <button
+          class="panel-collapse-button"
+          data-collapse-side="right"
+          type="button"
+          aria-label="Masquer le volet droit"
+          aria-pressed="false"
+        >
+          ›
+        </button>
       </div>
     </div>
 
@@ -379,14 +491,24 @@
           <strong id="boardZoomTitle">Échiquier</strong>
           <button id="boardZoomCloseButton" type="button">Réduire</button>
         </div>
-        <div id="boardZoomPreview" class="board-preview board-preview-large" aria-label="Échiquier agrandi"></div>
+        <div
+          id="boardZoomPreview"
+          class="board-preview board-preview-large"
+          aria-label="Échiquier agrandi"
+        ></div>
       </div>
     </div>
 
     <div id="adventureMap" class="adventure-map" hidden aria-label="Carte du cerveau">
       <div class="adv-map-panel" data-view="main">
         <header class="adv-map-header">
-          <div class="adv-map-level" id="advMapLevel" style="--xp-pct: 0" aria-label="Niveau joueur" title="Niveau joueur">
+          <div
+            class="adv-map-level"
+            id="advMapLevel"
+            style="--xp-pct: 0"
+            aria-label="Niveau joueur"
+            title="Niveau joueur"
+          >
             <span id="advMapLevelValue">1</span>
           </div>
           <div class="adv-map-title">
@@ -394,19 +516,41 @@
             <h2>Carte du cerveau</h2>
           </div>
           <div class="adv-map-header-actions">
-            <button id="advSettingsBtn" class="adv-icon-btn" type="button" aria-label="Réglages" title="Réglages">⚙️</button>
+            <button
+              id="advSettingsBtn"
+              class="adv-icon-btn"
+              type="button"
+              aria-label="Réglages"
+              title="Réglages"
+            >
+              ⚙️
+            </button>
           </div>
         </header>
 
         <div class="adv-tabbar" role="tablist" aria-label="Sections">
-          <button id="advTabMain" class="adv-tab is-active" type="button" data-view="main" role="tab">🧠 Principal</button>
-          <button id="advTabShop" class="adv-tab" type="button" data-view="shop" role="tab">🛒 Boutique</button>
+          <button
+            id="advTabMain"
+            class="adv-tab is-active"
+            type="button"
+            data-view="main"
+            role="tab"
+          >
+            🧠 Principal
+          </button>
+          <button id="advTabShop" class="adv-tab" type="button" data-view="shop" role="tab">
+            🛒 Boutique
+          </button>
         </div>
 
         <div class="adv-tab-content">
           <!-- Vue principale : 2 gros boutons + historique (stats joueur retirées) -->
           <section class="adv-view adv-view-main">
-            <div id="advLivesBanner" class="adv-lives-banner" aria-label="Vies contre les bots"></div>
+            <div
+              id="advLivesBanner"
+              class="adv-lives-banner"
+              aria-label="Vies contre les bots"
+            ></div>
             <div class="adv-main-actions">
               <button id="advBtnLesson" class="adv-big-btn" type="button">
                 <span class="adv-big-btn-ico" aria-hidden="true">🧠</span>
@@ -422,7 +566,11 @@
                   <i id="advBtnArenaSub">Affronte Stockfish</i>
                 </span>
               </button>
-              <button id="advBtnTournament" class="adv-big-btn adv-big-btn-tournament" type="button">
+              <button
+                id="advBtnTournament"
+                class="adv-big-btn adv-big-btn-tournament"
+                type="button"
+              >
                 <span class="adv-big-btn-ico" aria-hidden="true">🏆</span>
                 <span class="adv-big-btn-text">
                   <b>Tournoi</b>
@@ -463,15 +611,23 @@
                 </button>
                 <button id="advLessonQuiz" class="adv-pick-btn" type="button">
                   <span class="adv-pick-ico" aria-hidden="true">⚡</span>
-                  <span class="adv-pick-text"><b>Quiz</b><i>Rejeu accéléré : trouve le bon coup</i></span>
+                  <span class="adv-pick-text"
+                    ><b>Quiz</b><i>Rejeu accéléré : trouve le bon coup</i></span
+                  >
                 </button>
                 <button id="advLessonMate" class="adv-pick-btn" type="button">
                   <span class="adv-pick-ico" aria-hidden="true">🏆</span>
-                  <span class="adv-pick-text"><b>Refaire un mat</b><i id="advLessonMateSub">Reporte un mat d'une partie passée</i></span>
+                  <span class="adv-pick-text"
+                    ><b>Refaire un mat</b
+                    ><i id="advLessonMateSub">Reporte un mat d'une partie passée</i></span
+                  >
                 </button>
                 <button id="advLessonTrap" class="adv-pick-btn" type="button">
                   <span class="adv-pick-ico" aria-hidden="true">🎯</span>
-                  <span class="adv-pick-text"><b>Piège</b><i id="advLessonTrapSub">Fais tomber Stockfish dans un piège</i></span>
+                  <span class="adv-pick-text"
+                    ><b>Piège</b
+                    ><i id="advLessonTrapSub">Fais tomber Stockfish dans un piège</i></span
+                  >
                 </button>
               </div>
             </div>
@@ -506,7 +662,10 @@
               <div class="adv-shop-item adv-shop-item-block">
                 <div class="adv-shop-item-info">
                   <b>🎚️ Influence des ouvertures</b>
-                  <span>Se règle automatiquement après une défaite de boss (gratuit). Récap ci-dessous.</span>
+                  <span
+                    >Se règle automatiquement après une défaite de boss (gratuit). Récap
+                    ci-dessous.</span
+                  >
                 </div>
                 <div id="advShopLines" class="adv-shop-lines"></div>
               </div>
@@ -517,22 +676,46 @@
           <section class="adv-view adv-view-settings">
             <section class="adv-difficulty">
               <span class="kicker">Difficulté · aides affichées</span>
-              <div id="advDifficultyButtons" class="adv-difficulty-buttons" role="group" aria-label="Niveau de difficulté"></div>
+              <div
+                id="advDifficultyButtons"
+                class="adv-difficulty-buttons"
+                role="group"
+                aria-label="Niveau de difficulté"
+              ></div>
               <p id="advDifficultyDesc" class="adv-difficulty-desc"></p>
             </section>
             <section class="adv-difficulty">
               <span class="kicker">Cadence · pendule</span>
-              <div id="advTimeButtons" class="adv-difficulty-buttons" role="group" aria-label="Cadence de jeu"></div>
+              <div
+                id="advTimeButtons"
+                class="adv-difficulty-buttons"
+                role="group"
+                aria-label="Cadence de jeu"
+              ></div>
               <div class="adv-time-custom">
                 <label for="advTimeCustomInput">🎛️ Perso :</label>
-                <input id="advTimeCustomInput" class="adv-time-custom-input" type="number" min="0.5" max="180" step="0.5" inputmode="decimal" aria-label="Minutes par camp (cadence personnalisée)" />
+                <input
+                  id="advTimeCustomInput"
+                  class="adv-time-custom-input"
+                  type="number"
+                  min="0.5"
+                  max="180"
+                  step="0.5"
+                  inputmode="decimal"
+                  aria-label="Minutes par camp (cadence personnalisée)"
+                />
                 <span>min / camp</span>
               </div>
               <p id="advTimeDesc" class="adv-difficulty-desc"></p>
             </section>
             <section class="adv-difficulty">
               <span class="kicker">Mat en X · fin de la conversion</span>
-              <div id="advMateHandoverButtons" class="adv-difficulty-buttons" role="group" aria-label="Quand rendre la main pour conclure le mat"></div>
+              <div
+                id="advMateHandoverButtons"
+                class="adv-difficulty-buttons"
+                role="group"
+                aria-label="Quand rendre la main pour conclure le mat"
+              ></div>
               <p id="advMateHandoverDesc" class="adv-difficulty-desc"></p>
             </section>
             <section class="adv-difficulty">
@@ -540,11 +723,21 @@
               <div class="adv-shop-item">
                 <div class="adv-shop-item-info">
                   <b>🎚️ Surpondérer un coup après défaite</b>
-                  <span>À chaque défaite de boss, choisis un coup des Noirs à pousser (+5%) pour ta revanche. Désactive pour jouer le livre tel quel.</span>
+                  <span
+                    >À chaque défaite de boss, choisis un coup des Noirs à pousser (+5%) pour ta
+                    revanche. Désactive pour jouer le livre tel quel.</span
+                  >
                 </div>
-                <button id="advInfluenceToggle" class="adv-ghost" type="button" aria-pressed="true">Activé</button>
+                <button id="advInfluenceToggle" class="adv-ghost" type="button" aria-pressed="true">
+                  Activé
+                </button>
               </div>
-              <div id="advInfluenceModeButtons" class="adv-difficulty-buttons" role="group" aria-label="Mode de choix du nœud à influencer"></div>
+              <div
+                id="advInfluenceModeButtons"
+                class="adv-difficulty-buttons"
+                role="group"
+                aria-label="Mode de choix du nœud à influencer"
+              ></div>
               <p id="advInfluenceModeDesc" class="adv-difficulty-desc"></p>
             </section>
             <button id="advSettingsBack" class="adv-bottom-btn" type="button">← Retour</button>
@@ -561,12 +754,23 @@
             <span class="kicker">Revue de partie</span>
             <strong id="advReviewTitle">Partie</strong>
           </div>
-          <button id="advReviewClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+          <button id="advReviewClose" class="adv-ghost adv-ghost-strong" type="button">
+            Fermer ✕
+          </button>
         </header>
         <dl class="game-review-meta">
-          <div><dt>Résultat</dt><dd id="advReviewResult">—</dd></div>
-          <div><dt>Ouverture</dt><dd id="advReviewOpening">—</dd></div>
-          <div><dt>Précision</dt><dd id="advReviewAccuracy">—</dd></div>
+          <div>
+            <dt>Résultat</dt>
+            <dd id="advReviewResult">—</dd>
+          </div>
+          <div>
+            <dt>Ouverture</dt>
+            <dd id="advReviewOpening">—</dd>
+          </div>
+          <div>
+            <dt>Précision</dt>
+            <dd id="advReviewAccuracy">—</dd>
+          </div>
         </dl>
         <div id="advReviewAnalysis" class="game-review-analysis"></div>
         <div id="advReviewBoard" class="board-preview" aria-label="Échiquier de la revue"></div>
@@ -581,7 +785,9 @@
         <!-- Sous-variantes : meilleure suite de Stockfish (cliquable) + variante explorée -->
         <div id="advReviewEngine" class="game-review-engine"></div>
         <div id="advReviewVariation" class="game-review-variation" hidden></div>
-        <p class="game-review-hint">Touche une pièce sur l'échiquier pour explorer ta propre variante.</p>
+        <p class="game-review-hint">
+          Touche une pièce sur l'échiquier pour explorer ta propre variante.
+        </p>
         <ol id="advReviewMoves" class="game-review-moves"></ol>
       </div>
     </div>
@@ -594,7 +800,9 @@
             <span class="kicker">Tournoi · élimination directe</span>
             <strong>Toi (Blancs) vs 7 bots — atteins la finale</strong>
           </div>
-          <button id="advTournamentClose" class="adv-ghost adv-ghost-strong" type="button">Fermer ✕</button>
+          <button id="advTournamentClose" class="adv-ghost adv-ghost-strong" type="button">
+            Fermer ✕
+          </button>
         </header>
         <div id="advTournamentBody" class="adv-tournament-body"></div>
       </div>
@@ -619,7 +827,8 @@
     <!-- Version portable : barre d'actions de jeu (vue + analyse). La navigation/menu vit dans la bulle. -->
     <nav id="advMobileBar" class="adv-mobile-bar" aria-label="Actions de jeu">
       <button id="advBarView" type="button" class="adv-bar-btn">
-        <span class="adv-bar-ico" aria-hidden="true">🧠</span><span id="advBarViewLabel">Cerveau</span>
+        <span class="adv-bar-ico" aria-hidden="true">🧠</span
+        ><span id="advBarViewLabel">Cerveau</span>
       </button>
       <button id="advBarAnalyse" type="button" class="adv-bar-btn">
         <span class="adv-bar-ico" aria-hidden="true">🔬</span><span>Analyse</span>
@@ -640,12 +849,16 @@
               <em id="advQuickXp">0 XP</em>
             </div>
           </div>
-          <button class="adv-quick-x" type="button" data-quick-close aria-label="Fermer le menu">✕</button>
+          <button class="adv-quick-x" type="button" data-quick-close aria-label="Fermer le menu">
+            ✕
+          </button>
         </header>
         <div class="adv-quick-actions">
           <button id="advQuickMap" type="button" class="adv-quick-item">
             <span class="adv-quick-ico" aria-hidden="true">🗺️</span>
-            <span class="adv-quick-text"><b>Choix du mode de jeu</b><i>Choisir une étape ou un adversaire</i></span>
+            <span class="adv-quick-text"
+              ><b>Choix du mode de jeu</b><i>Choisir une étape ou un adversaire</i></span
+            >
           </button>
           <button id="advQuickSettings" type="button" class="adv-quick-item">
             <span class="adv-quick-ico" aria-hidden="true">⚙️</span>
@@ -661,7 +874,12 @@
 
     <div id="advAnalyseSheet" class="adv-move-sheet" aria-hidden="true">
       <div class="adv-sheet-backdrop" data-sheet-close></div>
-      <div class="adv-sheet-panel" role="dialog" aria-modal="true" aria-label="Analyse de la position">
+      <div
+        class="adv-sheet-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Analyse de la position"
+      >
         <div class="adv-sheet-grip" aria-hidden="true"></div>
         <div class="adv-sheet-head">
           <strong>Analyse de la position</strong>

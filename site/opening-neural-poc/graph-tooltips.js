@@ -27,9 +27,7 @@ export function showEdgeTooltip(edge, event) {
   const compressedText = edge.isCompressed
     ? `<span>Séquence compressée: ${escapeHtml(edge.sequenceLabel)}</span>`
     : '';
-  const mateText = edge.endsInMate
-    ? '<span>Branche de mat: probabilité minimale 1%.</span>'
-    : '';
+  const mateText = edge.endsInMate ? '<span>Branche de mat: probabilité minimale 1%.</span>' : '';
   elements.graphTooltip.innerHTML = `
     <strong>${edge.san} · ${formatPercent(edge.probability)}</strong>
     <span>Delta ${edge.deltaCp >= 0 ? '+' : ''}${edge.deltaCp} cp vs moyenne des suites</span>

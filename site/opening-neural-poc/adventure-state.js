@@ -20,23 +20,23 @@ export function createAdventureState() {
     xp: 0,
     nodes: new Set(),
     lessons: {},
-    bosses: {},          // record d'étoiles par boss (0-3) : « déjà acquises », permanent
-    bossStreaks: {},     // série de victoires en cours par boss (0-3), remise à 0 à la défaite
+    bosses: {}, // record d'étoiles par boss (0-3) : « déjà acquises », permanent
+    bossStreaks: {}, // série de victoires en cours par boss (0-3), remise à 0 à la défaite
     highestBoss: 0,
     act2Announced: false,
     movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
-    playerXp: 0,    // XP joueur pondérée par la qualité des coups → niveau joueur
-    games: [],      // historique des parties terminées (M) : résultat, adversaire, ouverture
+    playerXp: 0, // XP joueur pondérée par la qualité des coups → niveau joueur
+    games: [], // historique des parties terminées (M) : résultat, adversaire, ouverture
     difficulty: DEFAULT_ADV_DIFFICULTY,
     timeControl: DEFAULT_TIME_CONTROL, // U : cadence de la pendule
     customClockMinutes: 10, // U : minutes/camp de la cadence personnalisée
-    coins: 0,            // Boutique : pièces gagnées par victoire
-    boostedLines: [],    // (héritage) ancien système de surpondération de ligne
+    coins: 0, // Boutique : pièces gagnées par victoire
+    boostedLines: [], // (héritage) ancien système de surpondération de ligne
     // O — pondération des choix d'ouverture de Stockfish (±5%), valable pour le
     // prochain boss puis remise à zéro. Clé = `${fenAvantCoupNoir}|${uci}`.
-    openingWeights: {},  // { clé: pourcentage } (réinitialisé après chaque partie de boss)
-    openingDeck: null,   // file des propositions restantes (null = à (re)remplir, [] = épuisée)
-    openingLocks: [],    // cadenas : propositions non consommées (cumulables)
+    openingWeights: {}, // { clé: pourcentage } (réinitialisé après chaque partie de boss)
+    openingDeck: null, // file des propositions restantes (null = à (re)remplir, [] = épuisée)
+    openingLocks: [], // cadenas : propositions non consommées (cumulables)
     threatsEnabled: false, // R : aide « voir les menaces » activée
     mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
     influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur

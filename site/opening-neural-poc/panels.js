@@ -63,11 +63,7 @@ export function clampPanelWidths() {
     );
   }
   if (!state.collapsedPanels.right) {
-    right = clamp(
-      right,
-      rightMin,
-      Math.max(rightMin, rect.width - left - centerMin)
-    );
+    right = clamp(right, rightMin, Math.max(rightMin, rect.width - left - centerMin));
   }
   if (!state.collapsedPanels.left) {
     left = clamp(left, leftMin, Math.max(leftMin, rect.width - right - centerMin));
@@ -84,10 +80,7 @@ function updatePanelCollapseUi() {
   for (const button of elements.panelCollapseButtons) {
     const side = button.dataset.collapseSide;
     const collapsed = Boolean(state.collapsedPanels[side]);
-    button.textContent =
-      side === 'left'
-        ? collapsed ? '›' : '‹'
-        : collapsed ? '‹' : '›';
+    button.textContent = side === 'left' ? (collapsed ? '›' : '‹') : collapsed ? '‹' : '›';
     button.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
     button.setAttribute(
       'aria-label',
@@ -141,10 +134,16 @@ function setPanelWidthFromPointer(side, clientX) {
 
   if (side === 'left') {
     const maxLeft = Math.min(leftMax, rect.width - currentRight - centerMin);
-    setPanelWidthVar('--left-panel', clamp(clientX - rect.left, leftMin, Math.max(leftMin, maxLeft)));
+    setPanelWidthVar(
+      '--left-panel',
+      clamp(clientX - rect.left, leftMin, Math.max(leftMin, maxLeft))
+    );
   } else {
     const maxRight = Math.min(rightMax, rect.width - currentLeft - centerMin);
-    setPanelWidthVar('--right-panel', clamp(rect.right - clientX, rightMin, Math.max(rightMin, maxRight)));
+    setPanelWidthVar(
+      '--right-panel',
+      clamp(rect.right - clientX, rightMin, Math.max(rightMin, maxRight))
+    );
   }
 
   window.requestAnimationFrame(() => requestRender());

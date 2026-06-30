@@ -182,7 +182,11 @@ function updateBrainScrub(point) {
   const meta = document.querySelector('#brainScrubMeta');
   if (meta) {
     const colorTxt =
-      point.moveColor === 'w' ? '⬜ Coup blanc' : point.moveColor === 'b' ? '⬛ Coup noir' : 'Position de départ';
+      point.moveColor === 'w'
+        ? '⬜ Coup blanc'
+        : point.moveColor === 'b'
+          ? '⬛ Coup noir'
+          : 'Position de départ';
     const evalTxt = point.eval != null ? ` · Éval ${formatEval(point.eval)}` : '';
     meta.textContent = `${colorTxt}${evalTxt}`;
   }

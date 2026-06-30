@@ -127,12 +127,7 @@ import {
   isAdventureEdgeMastered,
   advAddXp
 } from './adventure-status.js';
-import {
-  advShuffle,
-  advQuizOptions,
-  advStarString,
-  advPickBookEdge
-} from './adventure-utils.js';
+import { advShuffle, advQuizOptions, advStarString, advPickBookEdge } from './adventure-utils.js';
 import {
   advGlobalLives,
   advLivesUnlocked,
@@ -166,10 +161,7 @@ import {
   advFormatGameOpponent
 } from './adventure-history.js';
 import { renderAdvGameHistory } from './adventure-history-ui.js';
-import {
-  advMoveVerdict,
-  buildMoveStatsRow
-} from './move-verdict.js';
+import { advMoveVerdict, buildMoveStatsRow } from './move-verdict.js';
 import {
   advChoiceByKey,
   advInfluenceableNodes,
@@ -203,11 +195,11 @@ const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 // Conversion automatique « cinématique » de la phase libre : dès que les Blancs
 // dépassent +2, on avance la partie seul (meilleurs coups blancs vs défense Stockfish)
 // jusqu'à voir un mat forcé, puis on rend la main au joueur pour conclure.
-const VICTORY_CINEMATIC_TRIGGER_CP = 200;  // +2.00 : seuil de déclenchement
-const VICTORY_CINEMATIC_KEEP_CP = 150;     // si l'avantage retombe sous +1.50, on rend la main
-const VICTORY_CINEMATIC_DEPTH = 10;        // profondeur d'analyse pendant la conversion
-const VICTORY_CINEMATIC_MAX_PLIES = 36;    // garde-fou : ~18 coups complets max
-const VICTORY_CINEMATIC_STEP_MS = 650;     // tempo entre deux coups
+const VICTORY_CINEMATIC_TRIGGER_CP = 200; // +2.00 : seuil de déclenchement
+const VICTORY_CINEMATIC_KEEP_CP = 150; // si l'avantage retombe sous +1.50, on rend la main
+const VICTORY_CINEMATIC_DEPTH = 10; // profondeur d'analyse pendant la conversion
+const VICTORY_CINEMATIC_MAX_PLIES = 36; // garde-fou : ~18 coups complets max
+const VICTORY_CINEMATIC_STEP_MS = 650; // tempo entre deux coups
 // Niveaux de difficulté Aventure : chaque niveau active un sous-ensemble d'aides.
 //  - moveChoices : coups suggérés (touches + indices dorés du bon coup)
 //  - legalDots   : points (cases légales) quand on sélectionne une pièce
@@ -391,7 +383,13 @@ function renderGraph() {
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
   const defs = createSvgElement('defs');
-  const glow = createSvgElement('filter', { id: 'nodeGlow', x: '-80%', y: '-80%', width: '260%', height: '260%' });
+  const glow = createSvgElement('filter', {
+    id: 'nodeGlow',
+    x: '-80%',
+    y: '-80%',
+    width: '260%',
+    height: '260%'
+  });
   glow.append(
     createSvgElement('feGaussianBlur', { stdDeviation: '4', result: 'blur' }),
     createSvgElement('feColorMatrix', {
@@ -401,11 +399,16 @@ function renderGraph() {
     }),
     createSvgElement('feMerge')
   );
-  glow.lastChild.append(createSvgElement('feMergeNode'), createSvgElement('feMergeNode', { in: 'SourceGraphic' }));
+  glow.lastChild.append(
+    createSvgElement('feMergeNode'),
+    createSvgElement('feMergeNode', { in: 'SourceGraphic' })
+  );
   defs.append(glow);
   svg.append(defs);
 
-  svg.append(createSvgElement('path', { class: 'brain-outline', d: brainOutlinePath(width, height) }));
+  svg.append(
+    createSvgElement('path', { class: 'brain-outline', d: brainOutlinePath(width, height) })
+  );
 
   const edgeLayer = createSvgElement('g', { class: 'edge-layer' });
   const rungLayer = createSvgElement('g', { class: 'rung-layer' });
@@ -418,16 +421,8 @@ function renderGraph() {
     const isHighlighted = state.highlightedEdges.has(edge.id);
     const sourceNode = view.nodesById.get(edge.from);
     const isForced = (sourceNode?.outgoing.length ?? 0) <= 1;
-    const strokeWidth = isHighlighted
-      ? 5.4
-      : isForced
-        ? 2.65
-        : 2.3 + edge.probability * 4.9;
-    const edgeOpacity = isHighlighted
-      ? 0.95
-      : isForced
-        ? 0.56
-        : 0.46 + edge.probability * 0.42;
+    const strokeWidth = isHighlighted ? 5.4 : isForced ? 2.65 : 2.3 + edge.probability * 4.9;
+    const edgeOpacity = isHighlighted ? 0.95 : isForced ? 0.56 : 0.46 + edge.probability * 0.42;
     const pathD = edgePath(edge);
     const casing = createSvgElement('path', {
       class: [
@@ -488,14 +483,18 @@ function renderGraph() {
               'edge-rung-group',
               rungColor === 'w' ? 'is-white-move' : 'is-black-move',
               isHighlighted ? 'is-highlighted' : ''
-            ].filter(Boolean).join(' ')
+            ]
+              .filter(Boolean)
+              .join(' ')
           });
           rungGroup.append(
             createSvgElement('line', { class: 'edge-rung-hit', ...coords }),
             createSvgElement('line', { class: 'edge-rung', ...coords })
           );
           const moveIndex = i;
-          rungGroup.addEventListener('mouseenter', (event) => showRungTooltip(edge, moveIndex, event));
+          rungGroup.addEventListener('mouseenter', (event) =>
+            showRungTooltip(edge, moveIndex, event)
+          );
           rungGroup.addEventListener('mouseleave', hideTooltip);
           rungLayer.append(rungGroup);
           // Point défilable au doigt : le coup intermédiaire (position reconstruite).
@@ -538,11 +537,16 @@ function renderGraph() {
       eval: node.evaluation?.cpWhite,
       nodeId: node.id
     });
-    const evalTone = clamp(((node.futureMeanCp ?? node.evaluation?.cpWhite ?? 0) + 250) / 500, 0, 1);
+    const evalTone = clamp(
+      ((node.futureMeanCp ?? node.evaluation?.cpWhite ?? 0) + 250) / 500,
+      0,
+      1
+    );
     const outgoing = viewNode.outgoing.length;
-    const radius = node.id === 'root'
-      ? 11
-      : clamp(6.5 + outgoing * 2 + viewNode.collapsedIncomingPlyCount * 0.75, 7.5, 18);
+    const radius =
+      node.id === 'root'
+        ? 11
+        : clamp(6.5 + outgoing * 2 + viewNode.collapsedIncomingPlyCount * 0.75, 7.5, 18);
     const matches = nodeMatchesFilter(node);
     const group = createSvgElement('g', {
       class: [
@@ -604,7 +608,9 @@ function renderGraph() {
   }
 
   // Zoom « dans les lignes » : on resserre le viewBox autour du nœud ciblé (téléphone).
-  const focusBox = state.brainFocus ? computeBrainFocusViewBox(state.brainFocus, width, height) : null;
+  const focusBox = state.brainFocus
+    ? computeBrainFocusViewBox(state.brainFocus, width, height)
+    : null;
   if (focusBox) {
     svg.setAttribute('viewBox', focusBox);
   }
@@ -653,7 +659,10 @@ function selectNode(nodeId, options = {}) {
   if (options.clearPath !== false && !incomingSegment) {
     state.highlightedEdges.clear();
     state.highlightedNodes = new Set([nodeId]);
-    elements.selectedPathLabel.textContent = nodeId === 'root' ? 'Départ sélectionné' : `Noeud sélectionné: ${getNode(nodeId)?.san ?? nodeId}`;
+    elements.selectedPathLabel.textContent =
+      nodeId === 'root'
+        ? 'Départ sélectionné'
+        : `Noeud sélectionné: ${getNode(nodeId)?.san ?? nodeId}`;
   }
   renderGraph();
 }
@@ -693,10 +702,10 @@ function renderDetails() {
   elements.nodeTurn.textContent = sideLabel(previewNode?.sideToMove);
   setInfoAnalysis(
     previewNode?.comments?.[0] ??
-    selectedSegment?.comments[0] ??
-    node.comments[0] ??
-    incomingEdge?.comments[0] ??
-    'Aucune note pour cette position.',
+      selectedSegment?.comments[0] ??
+      node.comments[0] ??
+      incomingEdge?.comments[0] ??
+      'Aucune note pour cette position.',
     formatSourceList(selectedSegment?.sources ?? node.sources)
   );
   state.currentPreviewNode = previewNode ?? node;
@@ -781,7 +790,9 @@ function renderChoices(node, selectedSegment = null) {
 
   if (!outgoing.length) {
     const empty = document.createElement('p');
-    empty.textContent = node.terminal ? 'Fin de ligne: aucune suite légale.' : 'Fin du livre PGN pour cette branche.';
+    empty.textContent = node.terminal
+      ? 'Fin de ligne: aucune suite légale.'
+      : 'Fin du livre PGN pour cette branche.';
     elements.choiceList.append(empty);
     return;
   }
@@ -790,7 +801,7 @@ function renderChoices(node, selectedSegment = null) {
     const child = getNode(edge.to);
     const detail = edge.isCompressed
       ? `${edge.collapsedPlyCount} coups: ${edge.sequenceLabel}`
-      : edge.comments[0] ?? child?.comments[0] ?? 'Suite sans commentaire';
+      : (edge.comments[0] ?? child?.comments[0] ?? 'Suite sans commentaire');
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'choice-row';
@@ -1008,8 +1019,7 @@ function maybeAnimateGameMove(container, node) {
   if (container !== elements.boardPreview) {
     return;
   }
-  const isGameNode =
-    node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
+  const isGameNode = node.id === 'game' || node.id === 'cinematic' || node.id === 'free-review';
   if (!isGameNode) {
     cancelBoardMoveAnim();
     delete container.dataset.lastMoveKey;
@@ -1292,11 +1302,11 @@ function appendSquare(container, rankIndex, fileIndex, piece, from, to, options 
 function isBoardInteractive(container) {
   return Boolean(
     container === elements.boardPreview &&
-      shouldRenderGameDetails() &&
-      state.game?.active &&
-      !state.game.locked &&
-      state.game.historyView == null &&
-      getPlayableBoardColor()
+    shouldRenderGameDetails() &&
+    state.game?.active &&
+    !state.game.locked &&
+    state.game.historyView == null &&
+    getPlayableBoardColor()
   );
 }
 
@@ -1334,8 +1344,8 @@ function getLegalTargetsFromSquare(square) {
 function isOpeningBookChoiceActive() {
   return Boolean(
     state.game?.phase === 'opening' &&
-      state.game.status === 'playing' &&
-      getExpectedWhiteBookEdges().length
+    state.game.status === 'playing' &&
+    getExpectedWhiteBookEdges().length
   );
 }
 
@@ -1366,9 +1376,7 @@ function getWonBookTargetsFromSquare(square) {
   }
   return new Set(
     getExpectedWhiteBookEdges()
-      .filter(
-        (edge) => edge.uci.slice(0, 2) === square && advNextSanLeadsToWonLine(edge.san)
-      )
+      .filter((edge) => edge.uci.slice(0, 2) === square && advNextSanLeadsToWonLine(edge.san))
       .map((edge) => edge.uci.slice(2, 4))
   );
 }
@@ -1453,12 +1461,12 @@ function isPremoveContext() {
   // simplement qu'on est bien dans une partie en cours, au tour des Noirs.
   return Boolean(
     game &&
-      game.status === 'playing' &&
-      !game.cinematic &&
-      !game.revision && // pas de prémouvement pendant une révision scriptée
-      game.historyView == null &&
-      !getActiveFreeReviewEntry() &&
-      game.chess.turn() === 'b'
+    game.status === 'playing' &&
+    !game.cinematic &&
+    !game.revision && // pas de prémouvement pendant une révision scriptée
+    game.historyView == null &&
+    !getActiveFreeReviewEntry() &&
+    game.chess.turn() === 'b'
   );
 }
 
@@ -1669,7 +1677,9 @@ function onBoardPointerUp(event) {
     suppressNextBoardClick = false;
   }, 60);
 
-  const targetEl = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.board-square');
+  const targetEl = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest?.('.board-square');
   const to = targetEl && elements.boardPreview.contains(targetEl) ? targetEl.dataset.square : null;
 
   if (to && to !== drag.from) {
@@ -1809,13 +1819,10 @@ function setViewMode(mode) {
   document.body.classList.toggle('is-human-view', state.viewMode === 'human');
   document.body.classList.toggle('is-brain-view', state.viewMode === 'brain');
   syncDetailInfoPlacement();
-  elements.viewModeButton.textContent =
-    state.viewMode === 'human' ? 'Vue cerveau' : 'Vue joueur';
+  elements.viewModeButton.textContent = state.viewMode === 'human' ? 'Vue cerveau' : 'Vue joueur';
   elements.viewModeButton.setAttribute(
     'aria-label',
-    state.viewMode === 'human'
-      ? 'Basculer vers la vue cerveau'
-      : 'Basculer vers la vue joueur'
+    state.viewMode === 'human' ? 'Basculer vers la vue cerveau' : 'Basculer vers la vue joueur'
   );
   window.requestAnimationFrame(() => renderGraph());
 }
@@ -1834,7 +1841,8 @@ function setAdvViewMode(mode) {
   const btn = document.querySelector('#advViewToggle');
   if (btn) {
     btn.textContent = state.advViewMode === 'board' ? '🧠 Vue cerveau' : '🎮 Vue joueur';
-    btn.setAttribute('aria-label',
+    btn.setAttribute(
+      'aria-label',
       state.advViewMode === 'board'
         ? 'Basculer vers la vue cerveau'
         : 'Basculer vers la vue échiquier'
@@ -1913,7 +1921,7 @@ function updateAdvBoardFeedback() {
     return;
   }
   const game = state.game;
-  const board   = document.querySelector('#boardPreview');
+  const board = document.querySelector('#boardPreview');
   const caption = document.querySelector('#advBoardCaption');
   if (!game || !board) {
     return;
@@ -1953,7 +1961,7 @@ function updateAdvBoardFeedback() {
   } else {
     // Phase libre : objectif visuel
     const isMate = isAdventureRun() && state.advRun?.kind === 'boss';
-    caption.textContent = isMate ? '⚔️ Trouve l\'échec et mat' : '⚡ Phase libre';
+    caption.textContent = isMate ? "⚔️ Trouve l'échec et mat" : '⚡ Phase libre';
   }
 }
 
@@ -2162,7 +2170,7 @@ function createInitialGameState(level = state.campaignLevel) {
     locked: false,
     selectedSquare: null,
     message: exploration
-      ? "Mode exploration: teste les lignes ou sors du livre sans perdre de vie."
+      ? 'Mode exploration: teste les lignes ou sors du livre sans perdre de vie.'
       : `Niveau ${level}: ${formatLevelObjective(level)} après l'ouverture.`,
     lastMove: null,
     moveLog: [],
@@ -2181,21 +2189,21 @@ function createInitialGameState(level = state.campaignLevel) {
     cinematicTimer: null,
     victoryCinematic: false, // conversion automatique vers le mat en cours
     victoryConverted: false, // déjà déclenchée une fois pour cette partie
-    takebackLocked: false,   // verrou après un retour arrière « dernière chance »
-    gameRecorded: false,     // M : partie déjà ajoutée à l'historique
-    replayWonLine: false,    // N : le joueur a choisi de rejouer une ligne gagnée
-    revealLegalDots: false,  // Q : cases légales révélées (Normal, après 5 s / erreur)
-    finalMateLives: 0,       // S : retours « dernière chance » en phase finale du mat
-    mateExpected: null,      // distance au mat attendue (mat en X) pendant la conversion
+    takebackLocked: false, // verrou après un retour arrière « dernière chance »
+    gameRecorded: false, // M : partie déjà ajoutée à l'historique
+    replayWonLine: false, // N : le joueur a choisi de rejouer une ligne gagnée
+    revealLegalDots: false, // Q : cases légales révélées (Normal, après 5 s / erreur)
+    finalMateLives: 0, // S : retours « dernière chance » en phase finale du mat
+    mateExpected: null, // distance au mat attendue (mat en X) pendant la conversion
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
-    premove: null,           // T : { from, to } armé pendant la réflexion adverse
-    premoveSelect: null,     // T : case source sélectionnée pour armer le prémouvement
-    revision: null,          // Révision : { phase: replay|question|feedback|done, step, answerUci }
-    influence: null,         // Influence : { selectedUci, lineSans?, lineIndex? } — revue ‹ › + choix
+    premove: null, // T : { from, to } armé pendant la réflexion adverse
+    premoveSelect: null, // T : case source sélectionnée pour armer le prémouvement
+    revision: null, // Révision : { phase: replay|question|feedback|done, step, answerUci }
+    influence: null, // Influence : { selectedUci, lineSans?, lineIndex? } — revue ‹ › + choix
     influencePending: false, // Influence : ouverture auto programmée (anti-flash du carton)
-    influenceDone: false,    // Influence : phase close → CTA finaux de défaite
+    influenceDone: false, // Influence : phase close → CTA finaux de défaite
     defeatCinematicPending: false, // Punition : suite en cours de construction/lecture
-    skipDefeatCinematic: false     // ⏩ demandé avant que la suite soit prête
+    skipDefeatCinematic: false // ⏩ demandé avant que la suite soit prête
   };
 }
 
@@ -2470,10 +2478,7 @@ function advWonBossLines() {
   return (state.adventure?.games || [])
     .filter(
       (g) =>
-        g.result === 'won' &&
-        g.kind === 'boss' &&
-        Array.isArray(g.lineSans) &&
-        g.lineSans.length
+        g.result === 'won' && g.kind === 'boss' && Array.isArray(g.lineSans) && g.lineSans.length
     )
     .map((g) => g.lineSans);
 }
@@ -2546,8 +2551,7 @@ function findMatchingBookEdge(rawInput) {
   const uci = moveToUci(move);
   const san = normalizeSanForCompare(move.san);
   const edge = expected.find(
-    (candidate) =>
-      candidate.uci === uci || normalizeSanForCompare(candidate.san) === san
+    (candidate) => candidate.uci === uci || normalizeSanForCompare(candidate.san) === san
   );
   return { legal: true, move, edge: edge ?? null };
 }
@@ -2582,9 +2586,7 @@ function buildOpeningMismatchMessage(move) {
     : '';
   const hint = getKnownWhiteBookMoveHint(move);
   if (hint) {
-    const sourceText = hint.sources.length
-      ? ` (${formatSourceList(hint.sources)})`
-      : '';
+    const sourceText = hint.sources.length ? ` (${formatSourceList(hint.sources)})` : '';
     return (
       `${move.san} existe dans une autre branche du livre${sourceText}, ` +
       `mais pas depuis cette position.${expectedText} Retour utilisé, rejoue un coup d'ouverture.`
@@ -2609,7 +2611,10 @@ function buildOpponentBookCandidates(bookEdges, ply = state.game?.chess.history(
   const branchFen = state.game?.chess.fen();
   return normalizeWeightedCandidates([
     ...bookEdges.map((edge) => {
-      const weighted = Math.max(0, edge.probability + advBlackChoiceWeight(branchFen, edge.uci) / 100);
+      const weighted = Math.max(
+        0,
+        edge.probability + advBlackChoiceWeight(branchFen, edge.uci) / 100
+      );
       return {
         id: `book:${edge.id}`,
         type: 'book',
@@ -2773,15 +2778,15 @@ function buildReviewMoveAnalysis(entry) {
     entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < state.survivalLimitCp
       ? ` Le coup passe sous le seuil ${formatEval(state.survivalLimitCp)}.`
       : '';
-  const statusText = entry.status === 'returned'
-    ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
-    : entry.status === 'losing'
-      ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
-      : entry.status === 'evaluating'
-        ? ' Évaluation détaillée en cours: le score affiché est provisoire.'
-      : '';
-  const pvText =
-    entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
+  const statusText =
+    entry.status === 'returned'
+      ? ' Retour consommé: cette tentative a été annulée sur l’échiquier de partie.'
+      : entry.status === 'losing'
+        ? ' Coup de défaite immédiate: le seuil de survie est franchi.'
+        : entry.status === 'evaluating'
+          ? ' Évaluation détaillée en cours: le score affiché est provisoire.'
+          : '';
+  const pvText = entry.phase !== 'opening' && entry.pv ? ` Ligne Stockfish: ${entry.pv}.` : '';
   const humanEval =
     entry.phase !== 'opening' && Math.abs(entry.afterEvalCp) >= 80
       ? buildHumanEval(entry.afterFen, {
@@ -2794,9 +2799,7 @@ function buildReviewMoveAnalysis(entry) {
     humanEval && (entry.status === 'losing' || entry.phase === 'engine-line')
       ? ` ${humanEval.advice}`
       : '';
-  const humanEvalText = humanEval
-    ? ` Lecture humaine: ${humanEval.sentence}${adviceText}`
-    : '';
+  const humanEvalText = humanEval ? ` Lecture humaine: ${humanEval.sentence}${adviceText}` : '';
   // L : préfixe catégoriel (Lichess) + meilleur coup disponible sur une faute.
   const moveVerdict = advMoveVerdict(entry);
   const verdictPrefix =
@@ -3064,9 +3067,7 @@ async function hydrateDefeatLineEvaluations(game, entries, initialCpWhite) {
 
 function hasPostGameFreeReview() {
   return Boolean(
-    state.game &&
-      state.game.status !== 'playing' &&
-      state.game.freeReviewMoves.length
+    state.game && state.game.status !== 'playing' && state.game.freeReviewMoves.length
   );
 }
 
@@ -3074,11 +3075,11 @@ function isPostGameReviewPlayable() {
   const game = state.game;
   return Boolean(
     game &&
-      game.status !== 'playing' &&
-      game.freeReview?.active &&
-      getActiveFreeReviewEntry() &&
-      !game.locked &&
-      !game.cinematic?.active
+    game.status !== 'playing' &&
+    game.freeReview?.active &&
+    getActiveFreeReviewEntry() &&
+    !game.locked &&
+    !game.cinematic?.active
   );
 }
 
@@ -3128,8 +3129,7 @@ async function launchPostGameFreeAnalysis() {
     .slice(0, originEntry.index + 1)
     .map((entry, index) => ({ ...entry, index }));
   const originNode =
-    state.nodesByFen.get(chess.fen()) ??
-    state.nodesByPositionKey.get(fenPositionKey(chess.fen()));
+    state.nodesByFen.get(chess.fen()) ?? state.nodesByPositionKey.get(fenPositionKey(chess.fen()));
 
   state.playMode = 'exploration';
   syncPlayModeButtons();
@@ -3257,10 +3257,7 @@ function finishCampaignByMate(message = null) {
   }
   game.finalVictory = true;
   game.nextLevel = null;
-  finishGame(
-    'won',
-    message ?? `Échec et mat: campagne terminée au niveau ${game.level}.`
-  );
+  finishGame('won', message ?? `Échec et mat: campagne terminée au niveau ${game.level}.`);
 }
 
 function finishSurvivalLevel() {
@@ -3440,7 +3437,10 @@ async function submitOpeningMove(input) {
   if (!result.edge) {
     if (isExplorationMode()) {
       state.game.expectedOpeningArrows = [];
-      await submitExplorationMove(input, "Sortie du livre explorée: l'adversaire passe au calcul libre.");
+      await submitExplorationMove(
+        input,
+        "Sortie du livre explorée: l'adversaire passe au calcul libre."
+      );
       return;
     }
     state.game.expectedOpeningArrows = getExpectedWhiteBookArrows();
@@ -3635,9 +3635,7 @@ async function advanceOpponentTurn() {
   if (game.phase === 'opening') {
     const blackBookEdges = getOpponentBookEdgesForRun();
     const decision = blackBookEdges.length
-      ? pickWeightedCandidate(
-          buildOpponentBookCandidates(blackBookEdges)
-        )
+      ? pickWeightedCandidate(buildOpponentBookCandidates(blackBookEdges))
       : null;
 
     if (decision?.type === 'book') {
@@ -3668,7 +3666,7 @@ async function advanceOpponentTurn() {
 
     enterFreePhase(
       decision?.type === 'free'
-        ? "Les Noirs cassent le livre et passent aux coups Stockfish."
+        ? 'Les Noirs cassent le livre et passent aux coups Stockfish.'
         : "La branche d'ouverture est terminée: les Noirs passent à Stockfish."
     );
   }
@@ -3759,12 +3757,12 @@ async function playStockfishBlackMove() {
   game.message = isExplorationMode()
     ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Exploration libre, seuil indicatif: ${formatEval(state.survivalLimitCp)}.`
     : replyCritical
-    ? `⚠️ Position critique après ${move.san} (éval ${formatEval(afterEvaluation.cpWhite)}). Joue : ton coup et sa réévaluation décideront du sort.`
-    : isAdventureRun()
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
-    : isMateObjective(game)
-    ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
-    : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
+      ? `⚠️ Position critique après ${move.san} (éval ${formatEval(afterEvaluation.cpWhite)}). Joue : ton coup et sa réévaluation décideront du sort.`
+      : isAdventureRun()
+        ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Cherche le mat sans passer sous ${formatEval(replyDeficitLimitCp)}.`
+        : isMateObjective(game)
+          ? `Réponse Stockfish ${stockfishLabel}: ${move.san}. Objectif final: trouve le mat sans passer sous ${formatEval(state.survivalLimitCp)}.`
+          : `Réponse Stockfish ${stockfishLabel}: ${move.san}. Il reste ${game.freeRemaining} coups complets à tenir.`;
 }
 
 function enterFreePhase(message) {
@@ -3794,7 +3792,12 @@ function consumeLife(message) {
   }
   game.lives = Math.max(0, game.lives - 1);
   if (game.lives <= 0) {
-    finishGame('lost', `${message} Plus aucun retour disponible.`, game.failureFen, game.failureEvaluation);
+    finishGame(
+      'lost',
+      `${message} Plus aucun retour disponible.`,
+      game.failureFen,
+      game.failureEvaluation
+    );
     return;
   }
   // Le nombre de vies restantes est porté par l'indicateur de cœurs.
@@ -4009,139 +4012,145 @@ async function runVictoryConversion() {
   let mateFound = null;
 
   try {
-  for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
-    if (state.game !== game || game.status !== 'playing') {
-      return; // partie changée ou terminée ailleurs
-    }
-
-    if (game.chess.turn() === 'w') {
-      // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
-      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+    for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
       if (state.game !== game || game.status !== 'playing') {
-        return;
+        return; // partie changée ou terminée ailleurs
       }
-      game.currentEvalCp = evalNow.cpWhite;
-      game.currentPv = evalNow.pv;
-      game.currentDepth = evalNow.depth;
-      if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
-        // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
-        // proche (≤ seuil) ; sinon la conversion continue automatiquement.
-        if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
-          mateFound = evalNow;
+
+      if (game.chess.turn() === 'w') {
+        // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
+        const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        game.currentEvalCp = evalNow.cpWhite;
+        game.currentPv = evalNow.pv;
+        game.currentDepth = evalNow.depth;
+        if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
+          // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
+          // proche (≤ seuil) ; sinon la conversion continue automatiquement.
+          if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
+            mateFound = evalNow;
+            break;
+          }
+        }
+        if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
+          break; // l'avantage s'est évaporé → on rend la main
+        }
+        if (!evalNow.bestMove) {
           break;
         }
-      }
-      if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
-        break; // l'avantage s'est évaporé → on rend la main
-      }
-      if (!evalNow.bestMove) {
-        break;
-      }
-      const wBeforeFen = game.chess.fen();
-      const wmove = playUciOnChess(game.chess, evalNow.bestMove);
-      if (!wmove) {
-        break;
-      }
-      applyFreeMove(wmove, 'Conversion auto');
-      recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
-      game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
-      renderGamePanel();
-      renderGameDetails();
-      if (game.chess.isCheckmate()) {
-        finishCampaignByMate('Mat ! La conversion automatique a conclu la partie.');
-        return;
-      }
-      if (game.chess.isDraw()) {
-        finishGameByStalemate(game.chess);
-        return;
-      }
-      await pause(VICTORY_CINEMATIC_STEP_MS);
-    } else {
-      // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
-      // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
-      // instantanément pendant la phase de mat (la position reste affichée
-      // pendant que Stockfish « réfléchit », puis le coup apparaît).
-      const bBeforeFen = game.chess.fen();
-      const bBeforeEvalCp = game.currentEvalCp;
-      game.message = `Stockfish ${formatStockfishLevel(profile)} cherche la défense…`;
-      setEngineThinking(true);
-      renderGamePanel();
-      renderGameDetails();
-      const thinkStart = performance.now();
-      const thinkTarget = randomThinkMs(900, 2600);
-      const search = await evaluator.pickMove(game.chess.fen(), profile);
-      if (state.game !== game || game.status !== 'playing') {
+        const wBeforeFen = game.chess.fen();
+        const wmove = playUciOnChess(game.chess, evalNow.bestMove);
+        if (!wmove) {
+          break;
+        }
+        applyFreeMove(wmove, 'Conversion auto');
+        recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
+        game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
+        renderGamePanel();
+        renderGameDetails();
+        if (game.chess.isCheckmate()) {
+          finishCampaignByMate('Mat ! La conversion automatique a conclu la partie.');
+          return;
+        }
+        if (game.chess.isDraw()) {
+          finishGameByStalemate(game.chess);
+          return;
+        }
+        await pause(VICTORY_CINEMATIC_STEP_MS);
+      } else {
+        // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
+        // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
+        // instantanément pendant la phase de mat (la position reste affichée
+        // pendant que Stockfish « réfléchit », puis le coup apparaît).
+        const bBeforeFen = game.chess.fen();
+        const bBeforeEvalCp = game.currentEvalCp;
+        game.message = `Stockfish ${formatStockfishLevel(profile)} cherche la défense…`;
+        setEngineThinking(true);
+        renderGamePanel();
+        renderGameDetails();
+        const thinkStart = performance.now();
+        const thinkTarget = randomThinkMs(900, 2600);
+        const search = await evaluator.pickMove(game.chess.fen(), profile);
+        if (state.game !== game || game.status !== 'playing') {
+          setEngineThinking(false);
+          return;
+        }
+        if (!search.bestMove) {
+          setEngineThinking(false);
+          break;
+        }
+        await pause(thinkTarget - (performance.now() - thinkStart));
         setEngineThinking(false);
-        return;
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        const bmove = playUciOnChess(game.chess, search.bestMove);
+        if (!bmove) {
+          break;
+        }
+        applyFreeMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`);
+        const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+        if (state.game !== game || game.status !== 'playing') {
+          return;
+        }
+        game.currentEvalCp = evalNow.cpWhite;
+        recordAutoMove(
+          bmove,
+          `Stockfish ${formatStockfishLevel(profile)}`,
+          bBeforeFen,
+          bBeforeEvalCp,
+          evalNow.cpWhite
+        );
+        game.currentPv = evalNow.pv;
+        game.currentDepth = evalNow.depth;
+        renderGamePanel();
+        renderGameDetails();
+        if (game.chess.isCheckmate()) {
+          // Les Noirs matent (très improbable depuis une position gagnante).
+          finishGame('lost', 'Échec et mat subi pendant la conversion.', game.chess.fen(), evalNow);
+          return;
+        }
+        if (game.chess.isDraw()) {
+          finishGameByStalemate(game.chess);
+          return;
+        }
+        // Plus de pause « flat » : la réflexion ci-dessus a déjà donné le tempo.
       }
-      if (!search.bestMove) {
-        setEngineThinking(false);
-        break;
-      }
-      await pause(thinkTarget - (performance.now() - thinkStart));
-      setEngineThinking(false);
-      if (state.game !== game || game.status !== 'playing') {
-        return;
-      }
-      const bmove = playUciOnChess(game.chess, search.bestMove);
-      if (!bmove) {
-        break;
-      }
-      applyFreeMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`);
-      const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
-      if (state.game !== game || game.status !== 'playing') {
-        return;
-      }
-      game.currentEvalCp = evalNow.cpWhite;
-      recordAutoMove(bmove, `Stockfish ${formatStockfishLevel(profile)}`, bBeforeFen, bBeforeEvalCp, evalNow.cpWhite);
-      game.currentPv = evalNow.pv;
-      game.currentDepth = evalNow.depth;
-      renderGamePanel();
-      renderGameDetails();
-      if (game.chess.isCheckmate()) {
-        // Les Noirs matent (très improbable depuis une position gagnante).
-        finishGame('lost', 'Échec et mat subi pendant la conversion.', game.chess.fen(), evalNow);
-        return;
-      }
-      if (game.chess.isDraw()) {
-        finishGameByStalemate(game.chess);
-        return;
-      }
-      // Plus de pause « flat » : la réflexion ci-dessus a déjà donné le tempo.
     }
-  }
 
-  // Fin de la conversion : on déverrouille et on rend la main — jamais au trait noir.
-  if (state.game !== game) {
-    return;
-  }
-  game.victoryCinematic = false;
-  setGameLocked(false);
-  game.freeRoundPending = false;
-  if (game.status !== 'playing') {
-    return;
-  }
+    // Fin de la conversion : on déverrouille et on rend la main — jamais au trait noir.
+    if (state.game !== game) {
+      return;
+    }
+    game.victoryCinematic = false;
+    setGameLocked(false);
+    game.freeRoundPending = false;
+    if (game.status !== 'playing') {
+      return;
+    }
 
-  // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
-  // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
-  // Blancs au lieu de laisser le joueur bloqué.
-  if (game.chess.turn() === 'b') {
-    game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
+    // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
+    // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
+    // Blancs au lieu de laisser le joueur bloqué.
+    if (game.chess.turn() === 'b') {
+      game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
+      renderGamePanel();
+      renderGameDetails();
+      await advanceOpponentTurn();
+      return;
+    }
+
+    if (mateFound) {
+      const x = mateMovesFromCp(mateFound.cpWhite);
+      game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
+      game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
+    } else {
+      game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
+    }
     renderGamePanel();
     renderGameDetails();
-    await advanceOpponentTurn();
-    return;
-  }
-
-  if (mateFound) {
-    const x = mateMovesFromCp(mateFound.cpWhite);
-    game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
-    game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
-  } else {
-    game.message = `Avantage décisif (${formatEval(game.currentEvalCp)}). À toi de porter l'estocade !`;
-  }
-  renderGamePanel();
-  renderGameDetails();
   } catch {
     // Sécurité : une erreur du moteur (timeout…) ne doit jamais bloquer le joueur.
     if (state.game === game) {
@@ -4236,7 +4245,7 @@ function syncGameGraphSelection(view) {
   const directNode = view.nodesById.get(currentId);
   const containingSegment = findCurrentViewSegment(view, currentId, rawPath);
   const currentNode = getNode(currentId);
-  const currentLabel = currentId === 'root' ? 'départ' : currentNode?.san ?? currentId;
+  const currentLabel = currentId === 'root' ? 'départ' : (currentNode?.san ?? currentId);
   // Nœud du graphe correspondant à la position en cours de la partie (« vous êtes ici »).
   state.gameViewNodeId = containingSegment ? containingSegment.to : directNode ? currentId : null;
   if (containingSegment) {
@@ -4368,11 +4377,11 @@ function getGameInfoAnalysis(game, currentNode = null) {
   }
 
   if (game.phase === 'opening') {
-    return "Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.";
+    return 'Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.';
   }
 
   if (isExplorationMode()) {
-    return "Position libre: teste une idée, Stockfish répondra sans pénalité.";
+    return 'Position libre: teste une idée, Stockfish répondra sans pénalité.';
   }
 
   return `Position de survie: garde l'évaluation à ${formatEval(state.survivalLimitCp)} ou mieux.`;
@@ -4389,10 +4398,9 @@ function renderGameDetails() {
   const reviewEntry = getActiveFreeReviewEntry();
   const currentNode = getGameNode();
   const phaseLabel = formatGamePhase(game);
-  elements.nodeTitle.textContent =
-    reviewEntry
-      ? 'Revue de partie'
-      : game.status === 'won'
+  elements.nodeTitle.textContent = reviewEntry
+    ? 'Revue de partie'
+    : game.status === 'won'
       ? game.finalVictory
         ? 'Campagne terminée'
         : 'Niveau réussi'
@@ -4401,21 +4409,21 @@ function renderGameDetails() {
         : game.chess.turn() === 'w'
           ? 'Aux Blancs'
           : 'Réponse noire';
-  elements.nodeSubtitle.textContent =
-    reviewEntry
-      ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
-      : game.phase === 'opening'
+  elements.nodeSubtitle.textContent = reviewEntry
+    ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
+    : game.phase === 'opening'
       ? "Reste dans les coups d'ouverture attendus."
       : isExplorationMode()
         ? 'Exploration libre: teste la position contre Stockfish.'
         : isMateObjective(game)
           ? `Objectif final: mater sans passer sous ${formatEval(state.survivalLimitCp)}.`
           : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
-  elements.nodeEval.textContent = reviewEntry ? formatEval(reviewEntry.afterEvalCp) : formatEval(game.currentEvalCp);
-  elements.nodeFuture.textContent =
-    reviewEntry
-      ? formatEvalDelta(reviewEntry.afterEvalCp - reviewEntry.beforeEvalCp)
-      : game.phase === 'free'
+  elements.nodeEval.textContent = reviewEntry
+    ? formatEval(reviewEntry.afterEvalCp)
+    : formatEval(game.currentEvalCp);
+  elements.nodeFuture.textContent = reviewEntry
+    ? formatEvalDelta(reviewEntry.afterEvalCp - reviewEntry.beforeEvalCp)
+    : game.phase === 'free'
       ? formatFreeRemaining(game)
       : formatEval(currentNode?.futureMeanCp);
   elements.nodeTurn.textContent = sideLabel(reviewEntry ? boardNode.sideToMove : game.chess.turn());
@@ -4480,19 +4488,17 @@ function renderGamePanel(phaseLabel = null) {
   elements.gamePhase.textContent = phase;
   elements.gameFreeRemaining.textContent = formatFreeRemaining(game);
   elements.gameEval.textContent = formatEval(reviewEntry?.afterEvalCp ?? game.currentEvalCp);
-  elements.gameTurn.textContent = sideLabel(reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn());
+  elements.gameTurn.textContent = sideLabel(
+    reviewEntry ? reviewEntry.afterFen.split(/\s+/)[1] : game.chess.turn()
+  );
   elements.gameMessage.textContent = formatGamePanelMessage(game, reviewEntry);
   const reviewPlayable = isPostGameReviewPlayable();
   elements.playMoveButton.disabled =
     game.locked || !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === 'w'));
   elements.moveInput.disabled = elements.playMoveButton.disabled;
-  const inputSide = reviewPlayable
-    ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1])
-    : 'Blancs';
+  const inputSide = reviewPlayable ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1]) : 'Blancs';
   elements.moveInputLabel.textContent = reviewPlayable ? `Coup des ${inputSide}` : 'Coup blanc';
-  elements.moveInput.placeholder = reviewPlayable
-    ? `${inputSide}: SAN ou UCI`
-    : 'ex. Nf3 ou g1f3';
+  elements.moveInput.placeholder = reviewPlayable ? `${inputSide}: SAN ou UCI` : 'ex. Nf3 ou g1f3';
   elements.newGameButton.textContent =
     game.status === 'playing'
       ? isExplorationMode()
@@ -4545,11 +4551,9 @@ function formatFreeRemaining(game) {
     return 'libre';
   }
   if (game.phase !== 'free') {
-    return isMateObjective(game) ? "objectif mat" : `objectif ${formatSurvivalTarget(game)}`;
+    return isMateObjective(game) ? 'objectif mat' : `objectif ${formatSurvivalTarget(game)}`;
   }
-  return isMateObjective(game)
-    ? "jusqu'au mat"
-    : `${game.freeRemaining}/${game.objective.target}`;
+  return isMateObjective(game) ? "jusqu'au mat" : `${game.freeRemaining}/${game.objective.target}`;
 }
 
 function renderExpectedMoveList() {
@@ -4694,7 +4698,7 @@ function renderMoveLog() {
           label: entry.branchLabel ? `${entry.label} · ${entry.branchLabel}` : entry.label,
           color: entry.color
         }))
-    : state.game?.moveLog ?? [];
+    : (state.game?.moveLog ?? []);
   for (const item of moves) {
     const row = document.createElement('li');
     row.innerHTML = `<strong>${escapeHtml(item.text)}</strong><span>${escapeHtml(item.label)}</span>`;
@@ -4756,8 +4760,7 @@ function renderFreeReviewPanel() {
   }
   // En aventure, on n'ouvre l'analyse rapide qu'après une vraie partie
   // (au-delà de la simple position de départ).
-  const reviewReady =
-    hasPostGameFreeReview() && (!inAdventure || game.freeReviewMoves.length > 1);
+  const reviewReady = hasPostGameFreeReview() && (!inAdventure || game.freeReviewMoves.length > 1);
   if (!reviewReady) {
     host.hidden = true;
     return;
@@ -4765,7 +4768,8 @@ function renderFreeReviewPanel() {
 
   host.hidden = false;
   ensureReviewTree(game);
-  const activeEntry = getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
+  const activeEntry =
+    getActiveFreeReviewEntry() ?? game.freeReviewMoves[game.freeReviewMoves.length - 1];
   const parentEntry = getReviewParent(activeEntry);
   const nextEntry = getPreferredReviewChild(activeEntry);
   const childEntries = getReviewChildren(activeEntry.index);
@@ -4934,7 +4938,8 @@ function renderGameChoices() {
   if (game.phase === 'opening' && expected.length) {
     if (isExplorationMode()) {
       const free = document.createElement('p');
-      free.textContent = 'Exploration: les coups du livre sont proposés, mais tu peux aussi jouer directement sur l’échiquier pour sortir de la ligne.';
+      free.textContent =
+        'Exploration: les coups du livre sont proposés, mais tu peux aussi jouer directement sur l’échiquier pour sortir de la ligne.';
       elements.choiceList.append(free);
     }
     for (const edge of expected) {
@@ -5277,7 +5282,13 @@ function setAdvDifficulty(id) {
 // pour rejouer la position. Disponible seulement à ton tour, hors verrou.
 function advTakeBack() {
   const game = state.game;
-  if (!game || !advAids().takeback || game.takebackLocked || game.status !== 'playing' || game.locked) {
+  if (
+    !game ||
+    !advAids().takeback ||
+    game.takebackLocked ||
+    game.status !== 'playing' ||
+    game.locked
+  ) {
     return;
   }
   if (game.chess.turn() !== 'w' || game.chess.history().length < 2) {
@@ -5612,7 +5623,12 @@ function advLivesState(game) {
     };
   }
   if (game.phase === 'opening') {
-    return { kind: 'opening', count: Math.max(0, game.lives), max: STARTING_LIVES, label: 'Ouverture' };
+    return {
+      kind: 'opening',
+      count: Math.max(0, game.lives),
+      max: STARTING_LIVES,
+      label: 'Ouverture'
+    };
   }
   return { kind: 'sudden', count: 1, max: 1, label: 'Mort subite' };
 }
@@ -5749,13 +5765,13 @@ function renderAdvTakeBack() {
   const game = state.game;
   const canUndo = Boolean(
     advAids().takeback &&
-      game &&
-      !game.takebackLocked &&
-      game.status === 'playing' &&
-      !game.locked &&
-      game.historyView == null &&
-      game.chess.turn() === 'w' &&
-      game.chess.history().length >= 2
+    game &&
+    !game.takebackLocked &&
+    game.status === 'playing' &&
+    !game.locked &&
+    game.historyView == null &&
+    game.chess.turn() === 'w' &&
+    game.chess.history().length >= 2
   );
   btn.disabled = !canUndo;
 }
@@ -5928,9 +5944,7 @@ const INFLUENCE_ARROW_COLORS = ['#5ad1ff', '#ffd45a', '#ff8a8a', '#9cff8a'];
 let advInfluenceFenIndex = null;
 function advInfluenceNodeByFen(fen) {
   if (!advInfluenceFenIndex) {
-    advInfluenceFenIndex = new Map(
-      advInfluenceableNodes().map((n) => [fenPositionKey(n.fen), n])
-    );
+    advInfluenceFenIndex = new Map(advInfluenceableNodes().map((n) => [fenPositionKey(n.fen), n]));
   }
   return advInfluenceFenIndex.get(fenPositionKey(fen)) || null;
 }
@@ -5996,7 +6010,12 @@ function openAdvInfluence() {
   if (advInfluenceMode() === 'random') {
     const nodes = advInfluenceableNodes();
     if (!nodes.length) {
-      showAdventureToast({ icon: '🎚️', title: 'Aucun choix', text: 'Le livre ne laisse pas de choix aux Noirs.', kind: null });
+      showAdventureToast({
+        icon: '🎚️',
+        title: 'Aucun choix',
+        text: 'Le livre ne laisse pas de choix aux Noirs.',
+        kind: null
+      });
       return;
     }
     const node = nodes[Math.floor(randomUnit() * nodes.length)];
@@ -6182,7 +6201,9 @@ function advBuildQuizSteps() {
     whiteIdx.push(idx);
   }
   // Tire jusqu'à 3 points de quiz au hasard, puis remet l'ordre chronologique.
-  const chosen = advShuffle(whiteIdx).slice(0, 3).sort((a, b) => a - b);
+  const chosen = advShuffle(whiteIdx)
+    .slice(0, 3)
+    .sort((a, b) => a - b);
   const steps = [];
   for (const idx of chosen) {
     const options = advQuizOptions(lineSans.slice(0, idx), lineUcis[idx]);
@@ -6266,7 +6287,12 @@ function launchRevision(mode) {
   } else {
     steps = advBuildQuizSteps();
     if (!steps.length) {
-      showAdventureToast({ icon: '⚡', title: 'Quiz indisponible', text: 'Le livre est trop court.', kind: null });
+      showAdventureToast({
+        icon: '⚡',
+        title: 'Quiz indisponible',
+        text: 'Le livre est trop court.',
+        kind: null
+      });
       return;
     }
   }
@@ -6412,7 +6438,9 @@ function advRevisionAnswer(uci) {
   if (mv) {
     game.lastMove = mv;
   }
-  game.message = correct ? `✅ Bravo : ${step.correctSan} !` : `❌ Le bon coup était ${step.correctSan}.`;
+  game.message = correct
+    ? `✅ Bravo : ${step.correctSan} !`
+    : `❌ Le bon coup était ${step.correctSan}.`;
   flashAdvBoard(correct ? 'good' : 'bad');
   renderGameDetails();
   renderGamePanel();
@@ -6514,7 +6542,12 @@ function adventureOnGameFinished(result) {
     const reward = advWinCoinReward(run);
     if (reward > 0) {
       advAwardCoins(reward);
-      showAdventureToast({ icon: '🪙', title: `+${reward} pièces`, text: 'À dépenser à la boutique.', kind: null });
+      showAdventureToast({
+        icon: '🪙',
+        title: `+${reward} pièces`,
+        text: 'À dépenser à la boutique.',
+        kind: null
+      });
     }
   }
   // Score d'apprentissage : enregistre le record du mode (une seule fois).
@@ -6586,16 +6619,16 @@ function adventureOnGameFinished(result) {
         title: drawn
           ? `${drawKindLabel(chess)} — pas de mat`
           : matedReally
-          ? 'Échec et mat subi'
-          : 'Position effondrée',
+            ? 'Échec et mat subi'
+            : 'Position effondrée',
         text:
           hadStreak > 0
             ? `Série interrompue : tu repars de 0. Tes ${advBossRecord(level)} étoile(s) acquises restent.`
             : drawn
-            ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
-            : matedReally
-            ? 'Le boss te mate. Relance l’assaut.'
-            : 'Ta position est tombée trop bas. Relance l’assaut.',
+              ? 'Tu n’as pas maté (partie nulle). Il faut refaire la partie.'
+              : matedReally
+                ? 'Le boss te mate. Relance l’assaut.'
+                : 'Ta position est tombée trop bas. Relance l’assaut.',
         kind: null
       });
     }
@@ -6934,7 +6967,10 @@ async function advSimulateBotMatch(whiteLevel, blackLevel) {
         break;
       }
       const evalNow = await evaluator.evaluate(chess.fen());
-      if (Number.isFinite(evalNow.cpWhite) && Math.abs(evalNow.cpWhite) >= TOURNAMENT_SIM_RESIGN_CP) {
+      if (
+        Number.isFinite(evalNow.cpWhite) &&
+        Math.abs(evalNow.cpWhite) >= TOURNAMENT_SIM_RESIGN_CP
+      ) {
         winner = evalNow.cpWhite > 0 ? 'w' : 'b';
         break;
       }
@@ -7354,7 +7390,11 @@ function renderAdvMovesStrip() {
         btn.disabled = used;
         const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
         const tag =
-          w > 0.01 ? `+${Math.round(w)}%` : w < -0.01 ? `${Math.round(w)}%` : `${Math.round(m.baseProb * 100)}%`;
+          w > 0.01
+            ? `+${Math.round(w)}%`
+            : w < -0.01
+              ? `${Math.round(w)}%`
+              : `${Math.round(m.baseProb * 100)}%`;
         btn.innerHTML =
           `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
           `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
@@ -7392,7 +7432,8 @@ function renderAdvMovesStrip() {
   const showChoices = advAids().moveChoices;
 
   // 1) Coups blancs jouables (selectionnables) pendant l'ouverture.
-  const whitePlayable = inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
+  const whitePlayable =
+    inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
   const whiteEdges = whitePlayable && showChoices ? getExpectedWhiteBookEdges() : [];
   for (const edge of whiteEdges) {
     const btn = document.createElement('button');
@@ -7408,7 +7449,13 @@ function renderAdvMovesStrip() {
   // 2) Reponses de Stockfish encore dans la theorie : touches "fantomes" non
   //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
   let ghosts = [];
-  if (showChoices && !whiteEdges.length && inPlay && game.chess.turn() === 'b' && game.phase === 'opening') {
+  if (
+    showChoices &&
+    !whiteEdges.length &&
+    inPlay &&
+    game.chess.turn() === 'b' &&
+    game.phase === 'opening'
+  ) {
     ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
   }
   for (const cand of ghosts) {
@@ -7440,12 +7487,12 @@ function renderAdvMovesStrip() {
     ph.textContent = yourTurnNoAid
       ? 'À toi de jouer sur l’échiquier'
       : game?.victoryCinematic
-      ? 'Conversion automatique en cours…'
-      : game?.status === 'playing' && game.chess.turn() === 'b'
-        ? 'Au tour de Stockfish…'
-        : game?.status === 'playing' && game.phase !== 'opening'
-          ? 'Hors du livre : joue ton coup sur l’échiquier'
-          : ' ';
+        ? 'Conversion automatique en cours…'
+        : game?.status === 'playing' && game.chess.turn() === 'b'
+          ? 'Au tour de Stockfish…'
+          : game?.status === 'playing' && game.phase !== 'opening'
+            ? 'Hors du livre : joue ton coup sur l’échiquier'
+            : ' ';
     host.append(ph);
   }
   host.classList.toggle('is-empty', !hasContent);
@@ -7548,7 +7595,11 @@ function renderAdvHistory() {
     if (label) {
       const san = cur > 0 ? infl.lineSans[cur - 1] : null;
       const moveNo = Math.ceil(cur / 2);
-      const moveLabel = san ? (cur % 2 === 1 ? `${moveNo}. ${san}` : `${moveNo}… ${san}`) : 'Départ';
+      const moveLabel = san
+        ? cur % 2 === 1
+          ? `${moveNo}. ${san}`
+          : `${moveNo}… ${san}`
+        : 'Départ';
       label.textContent = `${moveLabel} · ${cur}/${len}`;
     }
     if (prev) prev.disabled = cur <= 0;
@@ -7677,7 +7728,9 @@ function renderBossDefeatResult(el, game, run) {
           : '↶ Revenir en arrière';
       actions.append(advResultButton(label, () => advUndoDefeat(), true));
     }
-    actions.append(advResultButton('⏩ Avance rapide', () => advSkipDefeatCinematic(), !canComeback));
+    actions.append(
+      advResultButton('⏩ Avance rapide', () => advSkipDefeatCinematic(), !canComeback)
+    );
     el.append(heading, actions);
     return;
   }
@@ -7854,7 +7907,12 @@ function renderAdventureResult(el, game, run) {
 
   // « Analyser la partie » : ouvre la revue (sous-variantes : meilleure suite Stockfish
   // + exploration perso) pour comprendre l'effondrement coup par coup.
-  if (!win && game.recordRef && Array.isArray(game.recordRef.moves) && game.recordRef.moves.length) {
+  if (
+    !win &&
+    game.recordRef &&
+    Array.isArray(game.recordRef.moves) &&
+    game.recordRef.moves.length
+  ) {
     actions.append(
       advResultButton('🔍 Analyser la partie', () => {
         const record = game.recordRef;
@@ -7942,8 +8000,7 @@ function renderAdventureHud() {
           : 'Révision · Quiz';
     if (title)
       title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total} · ⚡ ${Math.round(run.scoreTotal || 0)}`;
-    if (objective)
-      objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
+    if (objective) objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
   } else if (run.kind === 'lesson') {
     if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
     if (title)

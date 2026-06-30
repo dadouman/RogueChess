@@ -114,7 +114,9 @@ function materialComment(fen) {
   const material = summarizeMaterial(fen);
   if (material.cpWhite < -70) {
     const missing = material.deficits.map(({ piece, count }) => formatPieceCount(piece, count));
-    const detail = missing.length ? ` Il manque notamment ${joinHumanList(missing)} côté blanc.` : '';
+    const detail = missing.length
+      ? ` Il manque notamment ${joinHumanList(missing)} côté blanc.`
+      : '';
     return `Matériellement, les Blancs accusent ${materialEquivalent(Math.abs(material.cpWhite))}.${detail}`;
   }
   if (material.cpWhite > 70) {
@@ -234,7 +236,10 @@ function hasKingDanger(fen, favoredColor, evaluation = {}) {
 }
 
 function hasTacticalThreat(evaluation = {}) {
-  const candidateMoves = String(evaluation.pv ?? '').split(/\s+/).slice(0, 3).join(' ');
+  const candidateMoves = String(evaluation.pv ?? '')
+    .split(/\s+/)
+    .slice(0, 3)
+    .join(' ');
   return /[x+#]/.test(candidateMoves);
 }
 
@@ -376,7 +381,8 @@ export function buildHumanEval(fen, evaluation = {}) {
       side: 'Inconnu',
       level: 'incertain',
       danger: 2,
-      sentence: 'Stockfish ne donne pas un score stable, mais la ligne indique un problème concret.',
+      sentence:
+        'Stockfish ne donne pas un score stable, mais la ligne indique un problème concret.',
       advice: 'Priorité: suivre la ligne critique et trouver la première menace adverse.'
     };
   }
