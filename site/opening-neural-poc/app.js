@@ -8544,7 +8544,7 @@ function bindEvents() {
 }
 
 async function init() {
-  const response = await fetch('./opening-graph.json');
+  const response = await fetch('/opening-graph.json');
   if (!response.ok) {
     throw new Error(`Impossible de charger opening-graph.json (${response.status})`);
   }
