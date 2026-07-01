@@ -63,3 +63,11 @@ export function randomUnit() {
   }
   return Math.random();
 }
+
+export function yieldToBrowser() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+export function cloneGraphData(data) {
+  return JSON.parse(JSON.stringify(data));
+}
