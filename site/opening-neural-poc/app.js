@@ -193,8 +193,13 @@ import {
 } from './engine.js';
 import { createSvgElement } from './svg.js';
 import { renderBoardArrows } from './board-arrows.js';
+import {
+  getLevelObjective,
+  isMateObjective,
+  formatLevelObjective,
+  formatSurvivalTarget
+} from './level-objective.js';
 
-const FREE_SURVIVAL_TARGETS = [5, 7, 10, 13, 15];
 const IMPORT_STOCKFISH_DEPTH = 5;
 const STARTING_LIVES = 3;
 const OPENING_FREE_BREAK_PLY = 14;
@@ -216,29 +221,6 @@ const VICTORY_CINEMATIC_STEP_MS = 650; // tempo entre deux coups
 // Normal mais révélées après 5 s de réflexion ou après une erreur (Q), et jamais
 // affichées en Difficile. Les niveaux se distinguent aussi par les autres aides.
 const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
-
-function getLevelObjective(level) {
-  const target = FREE_SURVIVAL_TARGETS[level - 1];
-  if (Number.isFinite(target)) {
-    return { type: 'survival', target };
-  }
-  return { type: 'mate', target: Number.POSITIVE_INFINITY };
-}
-
-function isMateObjective(game) {
-  return game?.objective?.type === 'mate';
-}
-
-function formatLevelObjective(level) {
-  const objective = getLevelObjective(level);
-  return objective.type === 'mate'
-    ? "mater l'adversaire"
-    : `tenir ${objective.target} coups complets libres`;
-}
-
-function formatSurvivalTarget(game) {
-  return isMateObjective(game) ? "jusqu'au mat" : `${game.objective.target}`;
-}
 
 function updateStockfishLevelUi() {
   const profile = state.game?.mateResolution?.active
