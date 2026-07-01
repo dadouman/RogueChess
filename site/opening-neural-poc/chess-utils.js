@@ -281,3 +281,14 @@ export function threatenedWhiteSquares(fen) {
   }
   return set;
 }
+
+export function fenPositionKey(fen) {
+  return fen.split(/\s+/).slice(0, 4).join(' ');
+}
+
+export function normalizeSanForCompare(san) {
+  return String(san ?? '')
+    .replace(/[!?]+$/g, '')
+    .replace(/[+#]+$/g, '')
+    .trim();
+}
