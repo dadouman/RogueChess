@@ -31,7 +31,9 @@ import {
   moveToUci,
   kingInCheckSquare,
   matedKingSquare,
-  threatenedWhiteSquares
+  threatenedWhiteSquares,
+  fenPositionKey,
+  normalizeSanForCompare
 } from './chess-utils.js';
 import {
   formatEval,
@@ -1834,10 +1836,6 @@ function syncPlayModeButtons() {
   elements.explorationModeButton.classList.toggle('is-active', state.playMode === 'exploration');
 }
 
-function fenPositionKey(fen) {
-  return fen.split(/\s+/).slice(0, 4).join(' ');
-}
-
 function createInitialReviewEntry(chess, evaluation) {
   const cpWhite = evaluation?.cpWhite ?? 0;
   return {
@@ -2194,13 +2192,6 @@ function getOpponentBookEdgesForRun() {
   }
   const fresh = edges.filter((edge) => !isAdventureEdgeMastered(edge));
   return fresh.length ? fresh : edges;
-}
-
-function normalizeSanForCompare(san) {
-  return String(san ?? '')
-    .replace(/[!?]+$/g, '')
-    .replace(/[+#]+$/g, '')
-    .trim();
 }
 
 // N — Lignes d'ouverture déjà gagnées contre un boss (suite complète de SAN).
