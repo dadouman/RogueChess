@@ -16,7 +16,9 @@ import {
   escapeHtml,
   pause,
   randomThinkMs,
-  randomUnit
+  randomUnit,
+  yieldToBrowser,
+  cloneGraphData
 } from './utils.js';
 import {
   playUciOnChess,
@@ -233,14 +235,6 @@ function updateStockfishLevelUi() {
 function updateSurvivalLimitUi() {
   elements.survivalLimitRange.value = String(state.survivalLimitCp);
   elements.survivalLimitValue.textContent = formatEval(state.survivalLimitCp);
-}
-
-function yieldToBrowser() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function cloneGraphData(data) {
-  return JSON.parse(JSON.stringify(data));
 }
 
 async function ensureStockfishReady(showMessage = true) {
