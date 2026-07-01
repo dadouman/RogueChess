@@ -12,7 +12,9 @@ import {
   ADV_MAX_GAMES,
   ADV_GLOBAL_LIVES_MAX,
   MATE_HANDOVER_OPTIONS,
-  DEFAULT_MATE_HANDOVER
+  DEFAULT_MATE_HANDOVER,
+  MATE_TOLERANCE_OPTIONS,
+  DEFAULT_MATE_TOLERANCE
 } from './adventure-config.js';
 
 export function createAdventureState() {
@@ -39,6 +41,7 @@ export function createAdventureState() {
     openingLocks: [], // cadenas : propositions non consommées (cumulables)
     threatsEnabled: false, // R : aide « voir les menaces » activée
     mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
+    mateTolerance: DEFAULT_MATE_TOLERANCE, // tolérance « mat qui s'éloigne »
     influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur
     influenceMode: 'random', // 'random' = nœud tiré au hasard ; 'game' = nœuds de la partie jouée
     // Vies globales : nombre de défaites possibles contre les bots. 0 au départ ;
@@ -87,6 +90,9 @@ export function loadAdventure() {
     base.mateHandover = MATE_HANDOVER_OPTIONS.some((o) => o.id === Number(data.mateHandover))
       ? Number(data.mateHandover)
       : DEFAULT_MATE_HANDOVER;
+    base.mateTolerance = MATE_TOLERANCE_OPTIONS.some((o) => o.id === Number(data.mateTolerance))
+      ? Number(data.mateTolerance)
+      : DEFAULT_MATE_TOLERANCE;
     base.influenceDisabled = Boolean(data.influenceDisabled);
     base.influenceMode = data.influenceMode === 'game' ? 'game' : 'random';
     base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
@@ -129,6 +135,7 @@ export function saveAdventure() {
         openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
         threatsEnabled: Boolean(state.adventure.threatsEnabled),
         mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
+        mateTolerance: state.adventure.mateTolerance ?? DEFAULT_MATE_TOLERANCE,
         influenceDisabled: Boolean(state.adventure.influenceDisabled),
         influenceMode: state.adventure.influenceMode === 'game' ? 'game' : 'random',
         globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
