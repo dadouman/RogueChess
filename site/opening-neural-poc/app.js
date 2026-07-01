@@ -24,6 +24,7 @@ import {
   terminalEvaluation,
   isMateScore,
   mateMovesFromCp,
+  mirrorFen,
   STANDARD_START_FEN,
   scoreForSide,
   moveToUci
@@ -55,6 +56,8 @@ import {
   ADV_GLOBAL_LIVES_MAX,
   MATE_HANDOVER_OPTIONS,
   DEFAULT_MATE_HANDOVER,
+  MATE_TOLERANCE_OPTIONS,
+  DEFAULT_MATE_TOLERANCE,
   ADV_ACT2_UNLOCK
 } from './adventure-config.js';
 import { createAdventureState, loadAdventure, saveAdventure } from './adventure-state.js';
@@ -242,7 +245,9 @@ function formatSurvivalTarget(game) {
 }
 
 function updateStockfishLevelUi() {
-  const profile = getStockfishLevelProfile();
+  const profile = state.game?.mateResolution?.active
+    ? { ...getStockfishLevelProfile(10), depth: 12, movetime: 800 }
+    : getStockfishLevelProfile();
   elements.stockfishLevelRange.value = String(profile.level);
   elements.stockfishLevelValue.textContent = formatStockfishLevel(profile);
 }
@@ -2195,6 +2200,10 @@ function createInitialGameState(level = state.campaignLevel) {
     revealLegalDots: false, // Q : cases légales révélées (Normal, après 5 s / erreur)
     finalMateLives: 0, // S : retours « dernière chance » en phase finale du mat
     mateExpected: null, // distance au mat attendue (mat en X) pendant la conversion
+    mateTolerance: DEFAULT_MATE_TOLERANCE, // tolérance « mat qui s'éloigne »
+    mateResolved: false, // résolution du mat de défaite réussie
+    mateResolutionFailed: false, // résolution du mat de défaite échouée
+    mateResolution: null, // sous-phase de résolution du mat de défaite
     clock: makeInitialClock(), // U : pendule des deux camps (null si sans horloge)
     premove: null, // T : { from, to } armé pendant la réflexion adverse
     premoveSelect: null, // T : case source sélectionnée pour armer le prémouvement
@@ -3556,16 +3565,39 @@ async function submitFreeMove(input) {
         : null;
     if (Number.isFinite(state.game.mateExpected)) {
       const expectedAfter = Math.max(1, state.game.mateExpected - 1);
-      const blewIt = newMate === null || newMate > expectedAfter + 2;
+      const blewIt = newMate === null || newMate > expectedAfter + advMateTolerance();
       if (blewIt) {
         if ((state.game.finalMateLives || 0) > 0) {
           state.game.finalMateLives -= 1;
           revertLastPlayerMove();
           const gotTxt = newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`;
-          // Les vies restantes sont affichées par l'indicateur de cœurs.
-          state.game.message = `❌ ${gotTxt} (attendu : mat en ${expectedAfter}). Réessaie !`;
-          renderGamePanel();
-          renderGameDetails();
+          if (state.game.finalMateLives > 0) {
+            // Les vies restantes sont affichées par l'indicateur de cœurs.
+            state.game.message = `❌ ${gotTxt} (attendu : mat en ${expectedAfter}). Réessaie !`;
+            renderGamePanel();
+            renderGameDetails();
+            return;
+          }
+          if (state.game.mateResolution?.active && state.game.mateResolution.originalSnapshot) {
+            finishMateResolution(state.game, {
+              success: false,
+              message: `Fin critique : ${gotTxt} (attendu : mat en ${expectedAfter}).`
+            });
+            return;
+          }
+          finishGame(
+            'lost',
+            `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
+              newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+            }`
+          );
+          return;
+        }
+        if (state.game.mateResolution?.active && state.game.mateResolution.originalSnapshot) {
+          finishMateResolution(state.game, {
+            success: false,
+            message: `Fin critique : ${newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`}.`
+          });
           return;
         }
         finishGame(
@@ -3592,6 +3624,14 @@ async function submitFreeMove(input) {
     beforeEvalCp,
     evaluation
   });
+
+  if (state.game.mateResolution?.active && state.game.chess.isCheckmate()) {
+    finishMateResolution(state.game, {
+      success: true,
+      message: 'Mat résolu : la suite se débloque.'
+    });
+    return;
+  }
 
   if (!isExplorationMode() && state.game.chess.isCheckmate()) {
     finishCampaignByMate(`Échec et mat: campagne terminée au niveau ${state.game.level}.`);
@@ -3680,7 +3720,9 @@ async function playStockfishBlackMove() {
     return;
   }
 
-  const profile = getStockfishLevelProfile();
+  const profile = game.mateResolution?.active
+    ? { ...getStockfishLevelProfile(10), depth: 12, movetime: 800 }
+    : getStockfishLevelProfile();
   const stockfishLabel = formatStockfishLevel(profile);
   game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
   setEngineThinking(true);
@@ -3846,30 +3888,84 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
 // Défaite : on déroule la punition jusqu'au MAT RÉEL (les deux camps jouent au
 // mieux), pour vraiment « faire constater » la défaite (K). Plafond de sécurité
 // élevé pour éviter une séquence interminable si le mat n'arrive pas.
-const DEFEAT_LINE_MAX_PLIES = 30;
-
 // Construit la suite de défaite en UCI : on consomme d'abord la PV Stockfish
 // (sans coût moteur), puis on prolonge avec les meilleurs coups jusqu'à l'échec
 // et mat (ou le plafond). On ne s'arrête jamais avant la fin réelle de la ligne.
-async function buildDefeatLineUci(fen, evaluation) {
+async function buildDefeatLineUci(fen, evaluation, stopAtMateX = null) {
   const chess = new Chess(fen);
   const line = [];
+  const wantsHandover = Number.isFinite(stopAtMateX);
+  const mateSearchDepth = Math.min(12, VICTORY_CINEMATIC_DEPTH);
+
+  const checkHandover = async () => {
+    if (!wantsHandover || chess.turn() !== 'b' || chess.isGameOver()) {
+      return null;
+    }
+    const handoverEval = await ensureStockfishReady(false).then((evaluator) =>
+      evaluator.evaluate(chess.fen(), mateSearchDepth)
+    );
+    if (
+      chess.turn() === 'b' &&
+      isMateScore(handoverEval.cpWhite) &&
+      handoverEval.cpWhite < 0 &&
+      mateMovesFromCp(handoverEval.cpWhite) <= stopAtMateX
+    ) {
+      return handoverEval;
+    }
+    return null;
+  };
+
+  const initialHandover = await checkHandover();
+  if (initialHandover) {
+    return {
+      line,
+      handoverReached: true,
+      handoverFen: chess.fen(),
+      handoverEvaluation: initialHandover
+    };
+  }
+
   for (const uci of evaluation.pvUci || []) {
     if (line.length >= DEFEAT_LINE_MAX_PLIES) {
-      return line;
+      return {
+        line,
+        handoverReached: false,
+        handoverFen: null,
+        handoverEvaluation: null
+      };
     }
     if (!playUciOnChess(chess, uci)) {
       break;
     }
     line.push(uci);
     if (chess.isGameOver()) {
-      return line; // la PV mène déjà au mat / à la nulle
+      return {
+        line,
+        handoverReached: false,
+        handoverFen: null,
+        handoverEvaluation: null
+      };
+    }
+    const handoverEval = await checkHandover();
+    if (handoverEval) {
+      return {
+        line,
+        handoverReached: true,
+        handoverFen: chess.fen(),
+        handoverEvaluation: handoverEval
+      };
     }
   }
+
   if (line.length >= DEFEAT_LINE_MAX_PLIES || chess.isGameOver()) {
-    return line;
+    return {
+      line,
+      handoverReached: false,
+      handoverFen: null,
+      handoverEvaluation: null
+    };
   }
-  // La PV ne va pas jusqu'au bout : on prolonge avec Stockfish jusqu'au mat réel
+  // La PV ne va pas jusqu'au bout : on prolonge avec Stockfish jusqu'au mat rée
   // (ou au plafond), des deux côtés, pour montrer la défaite consommée.
   try {
     const evaluator = await ensureStockfishReady(false);
@@ -3880,11 +3976,171 @@ async function buildDefeatLineUci(fen, evaluation) {
         break;
       }
       line.push(best);
+      const handoverEval = await checkHandover();
+      if (handoverEval) {
+        return {
+          line,
+          handoverReached: true,
+          handoverFen: chess.fen(),
+          handoverEvaluation: handoverEval
+        };
+      }
     }
   } catch {
     /* Moteur indisponible : on garde la PV récupérée. */
   }
-  return line;
+  return {
+    line,
+    handoverReached: false,
+    handoverFen: null,
+    handoverEvaluation: null
+  };
+}
+
+const DEFEAT_LINE_MAX_PLIES = 30;
+
+function cloneMateResolutionData(value) {
+  if (value == null) {
+    return value;
+  }
+  return globalThis.structuredClone
+    ? globalThis.structuredClone(value)
+    : JSON.parse(JSON.stringify(value));
+}
+
+function captureMateResolutionSnapshot(game) {
+  return {
+    chess: game.chess,
+    currentNodeId: game.currentNodeId,
+    currentPathNodeIds: [...(game.currentPathNodeIds || [])],
+    currentPathEdgeIds: [...(game.currentPathEdgeIds || [])],
+    currentEvalCp: game.currentEvalCp,
+    currentPv: game.currentPv,
+    currentDepth: game.currentDepth,
+    lastMove: cloneMateResolutionData(game.lastMove),
+    moveLog: cloneMateResolutionData(game.moveLog),
+    freeReviewMoves: cloneMateResolutionData(game.freeReviewMoves),
+    freeReview: cloneMateResolutionData(game.freeReview),
+    failureFen: game.failureFen,
+    failureEvaluation: cloneMateResolutionData(game.failureEvaluation),
+    defeatComment: game.defeatComment,
+    expectedOpeningArrows: [...(game.expectedOpeningArrows || [])],
+    defeatLineRecorded: game.defeatLineRecorded,
+    phase: game.phase,
+    status: game.status,
+    message: game.message,
+    locked: game.locked,
+    historyView: game.historyView,
+    selectedSquare: game.selectedSquare,
+    premove: cloneMateResolutionData(game.premove),
+    premoveSelect: game.premoveSelect,
+    revealLegalDots: game.revealLegalDots,
+    freeRoundPending: game.freeRoundPending,
+    victoryCinematic: game.victoryCinematic,
+    victoryConverted: game.victoryConverted,
+    takebackLocked: game.takebackLocked,
+    influence: cloneMateResolutionData(game.influence),
+    influencePending: game.influencePending,
+    influenceDone: game.influenceDone,
+    defeatCinematicPending: game.defeatCinematicPending,
+    skipDefeatCinematic: game.skipDefeatCinematic,
+    mateExpected: game.mateExpected,
+    finalMateLives: game.finalMateLives
+  };
+}
+
+function restoreMateResolutionSnapshot(
+  game,
+  snapshot,
+  { finalMateLives = 0, message = snapshot.message } = {}
+) {
+  game.chess = snapshot.chess;
+  game.currentNodeId = snapshot.currentNodeId;
+  game.currentPathNodeIds = [...snapshot.currentPathNodeIds];
+  game.currentPathEdgeIds = [...snapshot.currentPathEdgeIds];
+  game.currentEvalCp = snapshot.currentEvalCp;
+  game.currentPv = snapshot.currentPv;
+  game.currentDepth = snapshot.currentDepth;
+  game.lastMove = cloneMateResolutionData(snapshot.lastMove);
+  game.moveLog = cloneMateResolutionData(snapshot.moveLog);
+  game.freeReviewMoves = cloneMateResolutionData(snapshot.freeReviewMoves);
+  game.freeReview = cloneMateResolutionData(snapshot.freeReview);
+  game.failureFen = snapshot.failureFen;
+  game.failureEvaluation = cloneMateResolutionData(snapshot.failureEvaluation);
+  game.defeatComment = snapshot.defeatComment;
+  game.expectedOpeningArrows = [...snapshot.expectedOpeningArrows];
+  game.defeatLineRecorded = snapshot.defeatLineRecorded;
+  game.phase = snapshot.phase;
+  game.status = 'lost';
+  game.message = message;
+  game.locked = false;
+  game.historyView = snapshot.historyView;
+  game.selectedSquare = snapshot.selectedSquare;
+  game.premove = cloneMateResolutionData(snapshot.premove);
+  game.premoveSelect = snapshot.premoveSelect;
+  game.revealLegalDots = snapshot.revealLegalDots;
+  game.freeRoundPending = snapshot.freeRoundPending;
+  game.victoryCinematic = false;
+  game.victoryConverted = snapshot.victoryConverted;
+  game.takebackLocked = snapshot.takebackLocked;
+  game.influence = cloneMateResolutionData(snapshot.influence);
+  game.influencePending = snapshot.influencePending;
+  game.influenceDone = snapshot.influenceDone;
+  game.defeatCinematicPending = false;
+  game.skipDefeatCinematic = false;
+  game.mateExpected = snapshot.mateExpected;
+  game.finalMateLives = finalMateLives;
+}
+
+function beginMateResolution(game, handoverFen, handoverEvaluation, expectedX, originalSnapshot) {
+  clearGameCinematic();
+  game.defeatCinematicPending = false;
+  game.skipDefeatCinematic = false;
+  game.mateResolution = {
+    active: true,
+    expectedX,
+    originalSnapshot,
+    handoverFen,
+    handoverEvaluation: cloneMateResolutionData(handoverEvaluation)
+  };
+  game.mateResolved = false;
+  game.mateResolutionFailed = false;
+  game.status = 'playing';
+  game.phase = 'free';
+  game.locked = false;
+  game.chess = new Chess(mirrorFen(handoverFen));
+  game.currentEvalCp = Number.isFinite(handoverEvaluation?.cpWhite)
+    ? -handoverEvaluation.cpWhite
+    : game.currentEvalCp;
+  game.currentPv = '';
+  game.currentDepth = 0;
+  game.finalMateLives = 3;
+  game.mateExpected = expectedX;
+  game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
+  setEngineThinking(false);
+  document.body.classList.remove('is-game-lost', 'is-game-over');
+  renderGameDetails();
+  renderGamePanel();
+}
+
+function finishMateResolution(game, { success, message }) {
+  const resolution = game.mateResolution;
+  if (!resolution?.originalSnapshot) {
+    return;
+  }
+  const snapshot = resolution.originalSnapshot;
+  restoreMateResolutionSnapshot(game, snapshot, { finalMateLives: 0, message });
+  game.mateResolution = {
+    ...resolution,
+    active: false
+  };
+  game.mateResolved = success;
+  game.mateResolutionFailed = !success;
+  document.body.classList.toggle('is-game-lost', true);
+  document.body.classList.toggle('is-game-over', true);
+  setEngineThinking(false);
+  renderGameDetails();
+  renderGamePanel();
 }
 
 async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
@@ -3893,17 +4149,31 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
   if (!game) {
     return;
   }
-  const line = await buildDefeatLineUci(fen, evaluation);
+  const wantsHandover =
+    state.advRun?.kind === 'boss' && !state.advRun?.tournament && advInfluenceEnabled();
+  const stopAtMateX = wantsHandover ? advMateHandover() : null;
+  const result = await buildDefeatLineUci(fen, evaluation, stopAtMateX);
   if (state.game !== game) {
     return; // partie changée pendant le calcul de la prolongation
   }
   // B : on enregistre toute la suite dans l'historique (rejeu au ralenti) et on
   // réintègre ces coups auto dans la partie sauvegardée (revue d'historique).
-  if (line.length) {
-    appendDefeatLineReview(fen, evaluation, line);
+  if (result.line.length) {
+    appendDefeatLineReview(fen, evaluation, result.line);
     advRefreshRecordedMoves(game);
   }
-  if (!line.length) {
+  if (!result.line.length) {
+    if (result.handoverReached && wantsHandover && result.handoverFen) {
+      const snapshot = captureMateResolutionSnapshot(game);
+      beginMateResolution(
+        game,
+        result.handoverFen,
+        result.handoverEvaluation,
+        stopAtMateX,
+        snapshot
+      );
+      return;
+    }
     // Pas de suite jouable : on rend simplement la main à la revue.
     game.defeatCinematicPending = false;
     if (game.freeReviewMoves.length) {
@@ -3918,9 +4188,18 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
   game.cinematic = {
     active: true,
     chess,
-    moves: line,
+    moves: result.line,
     index: 0,
-    lastMove: null
+    lastMove: null,
+    mateResolution:
+      result.handoverReached && wantsHandover && result.handoverFen
+        ? {
+            expectedX: stopAtMateX,
+            handoverFen: result.handoverFen,
+            handoverEvaluation: cloneMateResolutionData(result.handoverEvaluation),
+            originalSnapshot: captureMateResolutionSnapshot(game)
+          }
+        : null
   };
   // ⏩ demandé pendant la construction de la suite : on saute directement à la fin.
   if (game.skipDefeatCinematic) {
@@ -3935,9 +4214,21 @@ async function startDeficitCinematic(fen, evaluation, defeatComment = '') {
   game.cinematicTimer = setInterval(() => {
     const cinematic = state.game?.cinematic;
     if (!cinematic || cinematic.index >= cinematic.moves.length) {
+      const mateResolution = cinematic?.mateResolution;
+      const handoverFen = cinematic?.chess?.fen();
       clearGameCinematic();
       if (state.game) {
         state.game.defeatCinematicPending = false; // punition terminée → phase suivante
+      }
+      if (mateResolution?.originalSnapshot && handoverFen) {
+        beginMateResolution(
+          game,
+          handoverFen,
+          mateResolution.handoverEvaluation,
+          mateResolution.expectedX,
+          mateResolution.originalSnapshot
+        );
+        return;
       }
       if (state.game?.freeReviewMoves.length) {
         state.game.freeReview.active = true;
@@ -5707,6 +5998,45 @@ function setAdvMateHandover(id) {
   state.adventure.mateHandover = id;
   saveAdventure();
   renderAdvMateHandover();
+}
+
+function advMateTolerance() {
+  const v = Number(state.adventure?.mateTolerance);
+  return MATE_TOLERANCE_OPTIONS.some((o) => o.id === v) ? v : DEFAULT_MATE_TOLERANCE;
+}
+
+function renderAdvMateTolerance() {
+  const host = document.querySelector('#advMateToleranceButtons');
+  if (!host) {
+    return;
+  }
+  const current = advMateTolerance();
+  host.replaceChildren();
+  for (const opt of MATE_TOLERANCE_OPTIONS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `adv-diff-btn${opt.id === current ? ' is-active' : ''}`;
+    btn.setAttribute('aria-pressed', opt.id === current ? 'true' : 'false');
+    btn.innerHTML = `<span class="adv-diff-label">${escapeHtml(opt.label)}</span>`;
+    btn.addEventListener('click', () => setAdvMateTolerance(opt.id));
+    host.append(btn);
+  }
+  const desc = document.querySelector('#advMateToleranceDesc');
+  if (desc) {
+    desc.textContent =
+      current === 0
+        ? 'Le mat doit rester exact : aucune dérive tolérée.'
+        : `Le mat peut dériver de +${current} coup${current > 1 ? 's' : ''} avant de perdre une vie.`;
+  }
+}
+
+function setAdvMateTolerance(id) {
+  if (!state.adventure || !MATE_TOLERANCE_OPTIONS.some((o) => o.id === id)) {
+    return;
+  }
+  state.adventure.mateTolerance = id;
+  saveAdventure();
+  renderAdvMateTolerance();
 }
 
 // === Boutique (rendu + achats) ===
@@ -7677,8 +8007,20 @@ function advSkipDefeatCinematic() {
     cin.lastMove = playUciOnChess(cin.chess, cin.moves[cin.index]) || cin.lastMove;
     cin.index += 1;
   }
+  const mateResolution = cin.mateResolution;
+  const handoverFen = cin.chess.fen();
   clearGameCinematic();
   game.defeatCinematicPending = false;
+  if (mateResolution?.originalSnapshot && handoverFen) {
+    beginMateResolution(
+      game,
+      handoverFen,
+      mateResolution.handoverEvaluation,
+      mateResolution.expectedX,
+      mateResolution.originalSnapshot
+    );
+    return;
+  }
   if (game.freeReviewMoves.length) {
     game.freeReview.active = true;
     game.freeReview.index = game.freeReviewMoves.length - 1;
@@ -7713,6 +8055,25 @@ function renderBossDefeatResult(el, game, run) {
   actions.className = 'adv-result-actions';
   const level = run.bossLevel;
 
+  if (game.mateResolution?.active) {
+    el.hidden = false;
+    heading.textContent = 'Résolution du mat…';
+    const note = document.createElement('p');
+    note.textContent = `À toi de mater en ${game.mateResolution.expectedX}+${advMateTolerance()} — Stockfish défend.`;
+    el.append(heading, note, actions);
+    return;
+  }
+
+  if (game.mateResolutionFailed) {
+    el.hidden = false;
+    heading.textContent = "⚠️ Fin critique : vous n'avez pas réussi, rejouez.";
+    const note = document.createElement('p');
+    note.textContent = 'Le boss reste invaincu. Repars au combat.';
+    actions.append(advResultButton(`🔁 Rejouer le boss N${level}`, () => launchBoss(level), true));
+    el.append(heading, note, actions);
+    return;
+  }
+
   // --- Phase A : la punition se déroule (ou se prépare encore côté moteur).
   if (game.cinematic || game.defeatCinematicPending) {
     el.hidden = false;
@@ -7736,28 +8097,17 @@ function renderBossDefeatResult(el, game, run) {
   }
 
   // --- Phase B : choix d'influence (carton masqué, la touche « Terminer » clôt).
-  const influenceLoss = advInfluenceEnabled() && !game.influenceDone;
-  if (influenceLoss && !game.influence && !run.influenceAutoShown) {
-    run.influenceAutoShown = true;
-    game.influencePending = true;
-    setTimeout(() => {
-      if (state.game !== game) {
-        return;
-      }
-      game.influencePending = false;
-      if (state.advRun === run && game.status === 'lost') {
-        openAdvInfluence();
-        if (!game.influence) {
-          game.influenceDone = true; // rien à influencer → CTA finaux
-        }
-      }
-      renderGameDetails();
-      renderGamePanel();
-    }, 350);
-    el.hidden = true;
+  const influenceLoss = advInfluenceEnabled() && game.mateResolved && !game.influenceDone;
+  if (influenceLoss && !game.influence) {
+    el.hidden = false;
+    heading.textContent = 'Mat résolu !';
+    const note = document.createElement('p');
+    note.textContent = 'Passe à l’influence des ouvertures.';
+    actions.append(advResultButton('Continuer ▸', () => openAdvInfluence(), true));
+    el.append(heading, note, actions);
     return;
   }
-  if (influenceLoss && (game.influence || game.influencePending)) {
+  if (influenceLoss && game.influence) {
     el.hidden = true;
     return;
   }
@@ -7782,7 +8132,11 @@ function renderBossDefeatResult(el, game, run) {
 
 function renderAdventureResult(el, game, run) {
   // Défaite de boss (hors tournoi) : flux dédié en 3 phases (voir ci-dessus).
-  if (run.kind === 'boss' && !run.tournament && game.status === 'lost') {
+  if (
+    run.kind === 'boss' &&
+    !run.tournament &&
+    (game.status === 'lost' || game.mateResolution?.active)
+  ) {
     renderBossDefeatResult(el, game, run);
     return;
   }
@@ -8051,7 +8405,7 @@ function renderAdventureHud() {
   }
 
   if (result) {
-    if (game.status === 'won' || game.status === 'lost') {
+    if (game.status === 'won' || game.status === 'lost' || game.mateResolution?.active) {
       renderAdventureResult(result, game, run);
     } else {
       result.hidden = true;
@@ -8210,6 +8564,7 @@ function renderAdventureMap() {
   renderAdvDifficulty();
   renderAdvTimeControl();
   renderAdvMateHandover();
+  renderAdvMateTolerance();
   renderAdvInfluenceSetting();
   renderAdvShop();
   renderAdvGameHistory();

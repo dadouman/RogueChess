@@ -2,7 +2,7 @@
 // parsing de la sortie moteur, encodage/décodage du score de mat, évaluation
 // terminale. Partagés par app.js et engine.js. Dépendent seulement de chess.js
 // et d'une constante.
-import { Chess } from './vendor/chess.js';
+import { Chess, validateFen } from './vendor/chess.js';
 import { MATE_SCORE_CP } from './constants.js';
 
 // FEN de la position initiale standard, calculée une fois via chess.js.
@@ -115,4 +115,104 @@ export function terminalEvaluation(fen) {
   }
 
   return null;
+}
+
+export function mirrorFen(fen) {
+  const parts = String(fen).trim().split(/\s+/);
+  if (parts.length < 4) {
+    throw new Error('FEN invalide à mirroring');
+  }
+
+  const [placement, turn, castling, enPassant, halfmove = '0', fullmove = '1'] = parts;
+  const board = placement.split('/').map((rank) => {
+    const squares = [];
+    for (const token of rank) {
+      if (/\d/.test(token)) {
+        squares.push(...Array(Number(token)).fill(null));
+      } else {
+        squares.push(token);
+      }
+    }
+    if (squares.length !== 8) {
+      throw new Error('FEN invalide à mirroring');
+    }
+    return squares;
+  });
+
+  const mirroredPlacement = board
+    .reverse()
+    .map((rank) =>
+      [...rank].reverse().map((piece) => {
+        if (!piece) {
+          return null;
+        }
+        return piece === piece.toLowerCase() ? piece.toUpperCase() : piece.toLowerCase();
+      })
+    )
+    .map((rank) => {
+      let out = '';
+      let empty = 0;
+      for (const piece of rank) {
+        if (!piece) {
+          empty += 1;
+          continue;
+        }
+        if (empty > 0) {
+          out += String(empty);
+          empty = 0;
+        }
+        out += piece;
+      }
+      if (empty > 0) {
+        out += String(empty);
+      }
+      return out;
+    })
+    .join('/');
+
+  const mirroredCastling =
+    castling === '-'
+      ? '-'
+      : [...castling]
+          .map((flag) => {
+            switch (flag) {
+              case 'K':
+                return 'q';
+              case 'Q':
+                return 'k';
+              case 'k':
+                return 'Q';
+              case 'q':
+                return 'K';
+              default:
+                return '';
+            }
+          })
+          .filter(Boolean)
+          .join('') || '-';
+
+  const mirroredEnPassant =
+    enPassant === '-'
+      ? '-'
+      : (() => {
+          const file = 9 - (enPassant.charCodeAt(0) - 96);
+          const rank = 9 - Number(enPassant[1]);
+          return String.fromCharCode(96 + file) + String(rank);
+        })();
+
+  const mirroredFen = [
+    mirroredPlacement,
+    turn === 'w' ? 'b' : 'w',
+    mirroredCastling,
+    mirroredEnPassant,
+    halfmove,
+    fullmove
+  ].join(' ');
+
+  const validation = validateFen(mirroredFen);
+  if (!validation.ok) {
+    throw new Error(`FEN miroir invalide: ${validation.error}`);
+  }
+
+  return mirroredFen;
 }

@@ -65,4 +65,14 @@ export const MATE_HANDOVER_OPTIONS = [
 
 export const DEFAULT_MATE_HANDOVER = 3;
 
+export const MATE_TOLERANCE_OPTIONS = [
+  { id: 0, label: 'Mat exact' },
+  { id: 1, label: '+1' },
+  { id: 2, label: '+2' },
+  { id: 3, label: '+3' },
+  { id: 5, label: '+5' }
+];
+
+export const DEFAULT_MATE_TOLERANCE = 2;
+
 export const ADV_MAX_REVIEW_MOVES = 160;
