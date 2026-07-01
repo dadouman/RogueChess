@@ -216,3 +216,68 @@ export function mirrorFen(fen) {
 
   return mirroredFen;
 }
+
+// Case du roi en échec (le camp au trait), ou null. Marche pour les deux couleurs.
+export function kingInCheckSquare(fen) {
+  try {
+    const probe = new Chess(fen);
+    if (!probe.isCheck()) {
+      return null;
+    }
+    const turn = probe.turn();
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.type === 'k' && cell.color === turn) {
+          return cell.square;
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas de surbrillance d'échec */
+  }
+  return null;
+}
+
+// Case du roi maté (uniquement si la position est un échec et mat), pour l'animation
+// de fin de partie : le roi vaincu se renverse. Renvoie null si pas de mat.
+export function matedKingSquare(fen) {
+  try {
+    const probe = new Chess(fen);
+    if (!probe.isCheckmate()) {
+      return null;
+    }
+    const turn = probe.turn(); // le camp maté est celui au trait
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.type === 'k' && cell.color === turn) {
+          return cell.square;
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas d'animation de mat */
+  }
+  return null;
+}
+
+// R (boutique) — Cases des pièces blanches attaquées par les Noirs (menaces),
+// affichées seulement quand c'est au joueur de jouer.
+export function threatenedWhiteSquares(fen) {
+  const set = new Set();
+  try {
+    const probe = new Chess(fen);
+    if (probe.turn() !== 'w') {
+      return set;
+    }
+    for (const row of probe.board()) {
+      for (const cell of row) {
+        if (cell && cell.color === 'w' && probe.isAttacked(cell.square, 'b')) {
+          set.add(cell.square);
+        }
+      }
+    }
+  } catch {
+    /* FEN invalide : pas de menaces */
+  }
+  return set;
+}
