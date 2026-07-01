@@ -5,8 +5,7 @@ import {
   FIRST_LEVEL_NUMBER,
   DISPLAY_DEFAULT_FLOOR_MASS,
   MATE_SCORE_CP,
-  PROBABILITY_TEMPERATURE_CP,
-  PROBABILITY_FLOOR_MASS
+  PROBABILITY_TEMPERATURE_CP
 } from './constants.js';
 import {
   clamp,
@@ -94,10 +93,11 @@ import {
   nodeMatchesFilter,
   edgeMatchesFilter,
   getBranchValue,
-  isMateNode,
   branchEventuallyEndsInMate,
   applyMinimumProbabilities,
   normalizeScoredProbabilities,
+  computeGraphFutureMeans,
+  assignGraphProbabilities,
   recomputeViewProbabilities,
   createCompressedView
 } from './graph-view-model.js';
@@ -233,94 +233,6 @@ function updateStockfishLevelUi() {
 function updateSurvivalLimitUi() {
   elements.survivalLimitRange.value = String(state.survivalLimitCp);
   elements.survivalLimitValue.textContent = formatEval(state.survivalLimitCp);
-}
-
-function computeGraphFutureMeans(graph) {
-  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
-  const memo = new Map();
-
-  function visit(nodeId, stack = new Set()) {
-    if (memo.has(nodeId)) {
-      return memo.get(nodeId);
-    }
-    if (stack.has(nodeId)) {
-      const node = nodesById.get(nodeId);
-      return node?.evaluation?.cpWhite ?? 0;
-    }
-
-    const node = nodesById.get(nodeId);
-    if (!node) {
-      return 0;
-    }
-
-    stack.add(nodeId);
-    const childMeans = node.outgoing
-      .map((edgeId) => edgesById.get(edgeId))
-      .filter(Boolean)
-      .map((edge) => visit(edge.to, stack));
-    stack.delete(nodeId);
-
-    const ownCp = node.evaluation?.cpWhite ?? 0;
-    const mean = childMeans.length
-      ? (ownCp + childMeans.reduce((sum, value) => sum + value, 0)) / (childMeans.length + 1)
-      : ownCp;
-
-    node.futureMeanCp = Math.round(mean);
-    memo.set(nodeId, node.futureMeanCp);
-    return node.futureMeanCp;
-  }
-
-  for (const node of graph.nodes) {
-    visit(node.id);
-  }
-}
-
-function assignGraphProbabilities(graph) {
-  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
-
-  for (const node of graph.nodes) {
-    const outgoing = node.outgoing.map((edgeId) => edgesById.get(edgeId)).filter(Boolean);
-    if (!outgoing.length) {
-      continue;
-    }
-    if (outgoing.length === 1) {
-      outgoing[0].probability = 1;
-      outgoing[0].deltaCp = 0;
-      outgoing[0].pathMeanCp = nodesById.get(outgoing[0].to)?.futureMeanCp ?? null;
-      outgoing[0].isBest = true;
-      continue;
-    }
-
-    const scored = outgoing.map((edge) => {
-      const child = nodesById.get(edge.to);
-      const pathMeanCp = child?.futureMeanCp ?? child?.evaluation?.cpWhite ?? 0;
-      return {
-        edge,
-        pathMeanCp,
-        score: scoreForSide(pathMeanCp, node.sideToMove)
-      };
-    });
-    const average = scored.reduce((sum, item) => sum + item.score, 0) / scored.length;
-    const bestScore = Math.max(...scored.map((item) => item.score));
-    const rawWeights = scored.map((item) =>
-      Math.exp(clamp(item.score - average, -800, 800) / PROBABILITY_TEMPERATURE_CP)
-    );
-    const rawTotal = rawWeights.reduce((sum, value) => sum + value, 0);
-
-    scored.forEach((item, index) => {
-      const softmax = rawWeights[index] / rawTotal;
-      item.edge.probability =
-        PROBABILITY_FLOOR_MASS / scored.length + (1 - PROBABILITY_FLOOR_MASS) * softmax;
-      item.edge.deltaCp = Math.round(item.score - average);
-      item.edge.pathMeanCp = Math.round(item.pathMeanCp);
-      item.edge.isBest = Math.abs(item.score - bestScore) < 0.001;
-      item.edge.endsInMate = isMateNode(nodesById.get(item.edge.to));
-    });
-    applyMinimumProbabilities(scored);
-    normalizeScoredProbabilities(scored);
-  }
 }
 
 function yieldToBrowser() {
