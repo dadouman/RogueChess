@@ -201,6 +201,7 @@ import {
   formatLevelObjective,
   formatSurvivalTarget
 } from './level-objective.js';
+import { updateStockfishLevelUi, updateSurvivalLimitUi } from './ui-settings.js';
 
 const IMPORT_STOCKFISH_DEPTH = 5;
 const STARTING_LIVES = 3;
@@ -223,19 +224,6 @@ const VICTORY_CINEMATIC_STEP_MS = 650; // tempo entre deux coups
 // Normal mais révélées après 5 s de réflexion ou après une erreur (Q), et jamais
 // affichées en Difficile. Les niveaux se distinguent aussi par les autres aides.
 const FULL_AIDS = { moveChoices: true, legalDots: true, evaluation: true, takeback: false };
-
-function updateStockfishLevelUi() {
-  const profile = state.game?.mateResolution?.active
-    ? { ...getStockfishLevelProfile(10), depth: 12, movetime: 800 }
-    : getStockfishLevelProfile();
-  elements.stockfishLevelRange.value = String(profile.level);
-  elements.stockfishLevelValue.textContent = formatStockfishLevel(profile);
-}
-
-function updateSurvivalLimitUi() {
-  elements.survivalLimitRange.value = String(state.survivalLimitCp);
-  elements.survivalLimitValue.textContent = formatEval(state.survivalLimitCp);
-}
 
 async function ensureStockfishReady(showMessage = true) {
   if (!state.stockfish) {
