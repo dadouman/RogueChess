@@ -33,10 +33,12 @@ import {
   matedKingSquare,
   threatenedWhiteSquares,
   fenPositionKey,
-  normalizeSanForCompare
+  normalizeSanForCompare,
+  getMoveText
 } from './chess-utils.js';
 import {
   formatEval,
+  formatEvalDelta,
   joinHumanList,
   buildHumanEval,
   buildDefeatComment
@@ -2430,20 +2432,6 @@ function appendGameMove(move, label) {
     color: move.color
   });
   state.game.moveLog = state.game.moveLog.slice(0, 8);
-}
-
-function getMoveText(move) {
-  const parsedMoveNumber = Number(move.before?.split(/\s+/)[5] ?? 1);
-  const moveNumber = Number.isFinite(parsedMoveNumber) ? parsedMoveNumber : 1;
-  const prefix = move.color === 'w' ? `${moveNumber}.` : `${moveNumber}...`;
-  return `${prefix} ${move.san}`;
-}
-
-function formatEvalDelta(deltaCp) {
-  if (!Number.isFinite(deltaCp)) {
-    return '-';
-  }
-  return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
 }
 
 // Meilleur coup qui était disponible avant ce coup (1er coup de la PV du parent).

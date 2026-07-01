@@ -34,6 +34,13 @@ export function formatEval(cpWhite) {
   return `${cpWhite >= 0 ? '+' : ''}${(cpWhite / 100).toFixed(2)}`;
 }
 
+export function formatEvalDelta(deltaCp) {
+  if (!Number.isFinite(deltaCp)) {
+    return '-';
+  }
+  return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
+}
+
 function formatPieceCount(piece, count) {
   const [singular, plural] = PIECE_LABELS[piece] ?? ['pièce', 'pièces'];
   if (count === 1) {
