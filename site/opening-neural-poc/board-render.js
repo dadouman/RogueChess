@@ -64,3 +64,10 @@ export function fillOpeningBoard(container, frame) {
     }
   }
 }
+
+export function getBoardSquareLabel(squareName, piece, isTarget) {
+  const pieceLabel = piece
+    ? `${piece === piece.toUpperCase() ? 'pièce blanche' : 'pièce noire'} ${piece.toUpperCase()}`
+    : 'case vide';
+  return isTarget ? `${squareName}, destination légale` : `${squareName}, ${pieceLabel}`;
+}
