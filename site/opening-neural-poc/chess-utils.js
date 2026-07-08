@@ -292,3 +292,10 @@ export function normalizeSanForCompare(san) {
     .replace(/[+#]+$/g, '')
     .trim();
 }
+
+export function getMoveText(move) {
+  const parsedMoveNumber = Number(move.before?.split(/\s+/)[5] ?? 1);
+  const moveNumber = Number.isFinite(parsedMoveNumber) ? parsedMoveNumber : 1;
+  const prefix = move.color === 'w' ? `${moveNumber}.` : `${moveNumber}...`;
+  return `${prefix} ${move.san}`;
+}
