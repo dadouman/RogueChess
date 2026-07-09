@@ -5535,7 +5535,6 @@ function renderAdvLives() {
   if (!show) {
     return;
   }
-  advCurrentMateInX(game);
   const st = advLivesState(game);
   el.dataset.kind = st.kind;
   el.replaceChildren();
