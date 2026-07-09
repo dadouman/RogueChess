@@ -105,7 +105,9 @@ import {
   computeGraphFutureMeans,
   assignGraphProbabilities,
   recomputeViewProbabilities,
-  createCompressedView
+  createCompressedView,
+  projectRawPathToView,
+  findCurrentViewSegment
 } from './graph-view-model.js';
 import {
   initBrainScrub,
@@ -4164,42 +4166,6 @@ function getGameRawPathToCurrentNode() {
   }
 
   return buildRawPathToNode(currentId);
-}
-
-function projectRawPathToView(view, rawPath) {
-  const rawEdgeIds = new Set(rawPath.edgeIds);
-  const rawNodeIds = new Set(rawPath.nodeIds);
-  const highlightedEdges = [];
-  const highlightedNodes = new Set(['root']);
-
-  for (const edge of view.edges) {
-    if (!edge.pathEdgeIds.some((edgeId) => rawEdgeIds.has(edgeId))) {
-      continue;
-    }
-    highlightedEdges.push(edge.id);
-    highlightedNodes.add(edge.from);
-    highlightedNodes.add(edge.to);
-  }
-
-  for (const nodeId of rawNodeIds) {
-    if (view.nodesById.has(nodeId)) {
-      highlightedNodes.add(nodeId);
-    }
-  }
-
-  return {
-    edgeIds: highlightedEdges,
-    nodeIds: [...highlightedNodes]
-  };
-}
-
-function findCurrentViewSegment(view, currentId, rawPath) {
-  const lastRawEdgeId = rawPath.edgeIds[rawPath.edgeIds.length - 1];
-  return (
-    view.edges.find((edge) => edge.pathEdgeIds.includes(lastRawEdgeId)) ??
-    view.edges.find((edge) => edge.pathNodeIds.includes(currentId)) ??
-    null
-  );
 }
 
 function syncGameGraphSelection(view) {
