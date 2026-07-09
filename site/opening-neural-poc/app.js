@@ -2968,7 +2968,6 @@ function finishSurvivalLevel() {
   );
 }
 
-// Libellé court du type de nulle (pat, répétition, matériel insuffisant…) pour les messages.
 // Nulle (le plus souvent un pat) : aucun camp n'est maté. L'objectif est de mater,
 // donc une nulle n'est PAS une victoire — on termine en demandant de refaire la partie.
 function finishGameByStalemate(chess) {
