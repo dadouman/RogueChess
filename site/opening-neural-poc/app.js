@@ -26,6 +26,7 @@ import {
   isMateScore,
   mateMovesFromCp,
   mirrorFen,
+  uciToBoardVec,
   STANDARD_START_FEN,
   scoreForSide,
   moveToUci,
@@ -39,6 +40,7 @@ import {
 import {
   formatEval,
   formatEvalDelta,
+  evalToBarPct,
   joinHumanList,
   buildHumanEval,
   buildDefeatComment
@@ -141,7 +143,6 @@ import {
   isAdventureEdgeMastered,
   advAddXp,
   STARTING_LIVES,
-  advCurrentMateInX,
   advLivesState,
   advDefeatEvalLine
 } from './adventure-status.js';
@@ -4632,12 +4633,6 @@ function renderMoveLog() {
 
 // --- Vue joueur aventure : barre d'éval + journal compact du rail ---
 
-/** Convertit une éval (centipions, côté blanc) en pourcentage [0..100] pour la barre. */
-function evalToBarPct(cpWhite) {
-  const v = Math.max(-1200, Math.min(1200, Number(cpWhite) || 0));
-  return Math.round((Math.tanh(v / 400) + 1) * 50);
-}
-
 /** Met à jour la largeur de la barre d'évaluation du rail (part des Blancs). */
 function updateLiveEvalBar(cpWhite) {
   const fill = elements.liveEvalBarFill;
@@ -5993,18 +5988,6 @@ function advInfluenceSelect(uci) {
   }
   game.influence.selectedUci = uci;
   renderGameDetails();
-}
-
-// Coordonnées centre→centre d'un coup UCI dans un repère 8×8 (vue des Blancs).
-function uciToBoardVec(uci) {
-  const file = (c) => c.charCodeAt(0) - 97;
-  const rank = (c) => parseInt(c, 10);
-  return {
-    fromX: file(uci[0]) + 0.5,
-    fromY: 8.5 - rank(uci[1]),
-    toX: file(uci[2]) + 0.5,
-    toY: 8.5 - rank(uci[3])
-  };
 }
 
 function advInfluenceArrows(moves, selectedUci) {

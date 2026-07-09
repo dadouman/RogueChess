@@ -18,6 +18,18 @@ export function moveToUci(move) {
   return `${move.from}${move.to}${move.promotion ?? ''}`;
 }
 
+// Coordonnées centre→centre d'un coup UCI dans un repère 8×8 (vue des Blancs).
+export function uciToBoardVec(uci) {
+  const file = (c) => c.charCodeAt(0) - 97;
+  const rank = (c) => parseInt(c, 10);
+  return {
+    fromX: file(uci[0]) + 0.5,
+    fromY: 8.5 - rank(uci[1]),
+    toX: file(uci[2]) + 0.5,
+    toY: 8.5 - rank(uci[3])
+  };
+}
+
 export function parseWhiteCentipawn(line, fen) {
   const match = line.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
   if (!match) {
