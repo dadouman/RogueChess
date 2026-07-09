@@ -41,6 +41,12 @@ export function formatEvalDelta(deltaCp) {
   return `${deltaCp >= 0 ? '+' : ''}${(deltaCp / 100).toFixed(2)}`;
 }
 
+/** Convertit une éval (centipions, côté blanc) en pourcentage [0..100] pour la barre. */
+export function evalToBarPct(cpWhite) {
+  const v = Math.max(-1200, Math.min(1200, Number(cpWhite) || 0));
+  return Math.round((Math.tanh(v / 400) + 1) * 50);
+}
+
 function formatPieceCount(piece, count) {
   const [singular, plural] = PIECE_LABELS[piece] ?? ['pièce', 'pièces'];
   if (count === 1) {
