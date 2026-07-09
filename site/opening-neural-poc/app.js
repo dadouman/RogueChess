@@ -45,6 +45,7 @@ import {
   buildHumanEval,
   buildDefeatComment
 } from './eval-commentary.js';
+import { makeHistoryBoardNode, formatHistoryMoveLabel } from './game-history-view.js';
 import {
   splitPgnGames,
   parsePgnGame,
@@ -4270,25 +4271,6 @@ function makeGameBoardNode() {
   };
 }
 
-// Reconstruit la position après `game.historyView` demi-coups (rejoués depuis le départ).
-function makeHistoryBoardNode(game) {
-  const history = game.chess.history({ verbose: true });
-  const idx = clamp(game.historyView, 0, history.length);
-  const probe = new Chess();
-  let last = null;
-  for (let i = 0; i < idx; i += 1) {
-    last = probe.move(history[i]);
-  }
-  return {
-    id: 'history',
-    san: last?.san ?? 'Départ',
-    fen: probe.fen(),
-    from: last?.from ?? '',
-    to: last?.to ?? '',
-    sideToMove: probe.turn()
-  };
-}
-
 function formatGamePanelMessage(game, reviewEntry = null) {
   if (reviewEntry) {
     return isPostGameReviewPlayable()
@@ -7470,16 +7452,6 @@ function toggleAdvHistory() {
   if (hidden && state.game?.historyView != null) {
     advHistoryGoto(null);
   }
-}
-
-// Libellé « N. san » / « N… san » du coup amenant à la position `idx`.
-function formatHistoryMoveLabel(game, idx) {
-  const move = game.chess.history({ verbose: true })[idx - 1];
-  if (!move) {
-    return 'Départ';
-  }
-  const moveNumber = Math.ceil(idx / 2);
-  return move.color === 'w' ? `${moveNumber}. ${move.san}` : `${moveNumber}… ${move.san}`;
 }
 
 function renderAdvHistory() {
