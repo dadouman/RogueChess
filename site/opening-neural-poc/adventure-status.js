@@ -7,6 +7,10 @@ import { clamp } from './utils.js';
 import { showAdventureToast } from './toast.js';
 import { advBrainProgress } from './adventure-progress.js';
 import { ADV_ACT2_UNLOCK } from './adventure-config.js';
+import { isMateScore, mateMovesFromCp } from './chess-utils.js';
+import { formatEval } from './eval-commentary.js';
+
+export const STARTING_LIVES = 3;
 
 function advTotalSynapseNodes() {
   return state.data ? state.data.nodes.filter((node) => node.id !== 'root').length : 0;
@@ -149,6 +153,62 @@ function advAddXp(amount) {
   }
 }
 
+// === Vies + « mat en X » ========================================================
+// Indicateur de vies unifié (cœurs) + réglage du moment où la cinématique de
+// victoire rend la main au joueur pour conclure le mat.
+function advCurrentMateInX(game) {
+  if (!game) {
+    return null;
+  }
+  if (Number.isFinite(game.mateExpected)) {
+    return game.mateExpected;
+  }
+  if (isMateScore(game.currentEvalCp) && game.currentEvalCp > 0) {
+    return mateMovesFromCp(game.currentEvalCp);
+  }
+  return null;
+}
+
+// État de l'indicateur de vies : ouverture (game.lives), phase de mat
+// (game.finalMateLives), ou mort subite (phase libre sans mat).
+function advLivesState(game) {
+  const mateX = advCurrentMateInX(game);
+  const inMate = mateX != null || game.victoryCinematic || (game.finalMateLives || 0) > 0;
+  if (inMate) {
+    return {
+      kind: 'mate',
+      count: Math.max(0, game.finalMateLives || 0),
+      max: 3,
+      label: mateX != null ? `Mat en ${mateX}` : 'Conversion'
+    };
+  }
+  if (game.phase === 'opening') {
+    return {
+      kind: 'opening',
+      count: Math.max(0, game.lives),
+      max: STARTING_LIVES,
+      label: 'Ouverture'
+    };
+  }
+  return { kind: 'sudden', count: 1, max: 1, label: 'Mort subite' };
+}
+
+// Phrase d'évaluation de la position effondrée : rend la défaite explicite
+// (« tu n'avais plus aucune chance ») en chiffrant l'écart pour le joueur (Blancs).
+function advDefeatEvalLine(game) {
+  if (game?.chess?.isCheckmate?.()) {
+    return 'Échec et mat sur l’échiquier — plus aucune ressource.';
+  }
+  const cp = game?.failureEvaluation?.cpWhite;
+  if (!Number.isFinite(cp)) {
+    return '';
+  }
+  const mag = Math.abs(cp);
+  const qual =
+    mag >= 600 ? 'totalement perdante' : mag >= 300 ? 'largement perdante' : 'très compromise';
+  return `Position ${qual} : Stockfish évalue à ${formatEval(cp)} pour toi — tu n’avais plus aucune chance de la sauver.`;
+}
+
 export {
   ADV_BOSS_STARS,
   advTotalSynapseNodes,
@@ -169,5 +229,8 @@ export {
   isAdventureMastered,
   isAdventureLesson,
   isAdventureEdgeMastered,
-  advAddXp
+  advAddXp,
+  advCurrentMateInX,
+  advLivesState,
+  advDefeatEvalLine
 };
