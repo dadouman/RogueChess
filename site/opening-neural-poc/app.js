@@ -139,7 +139,11 @@ import {
   isAdventureMastered,
   isAdventureLesson,
   isAdventureEdgeMastered,
-  advAddXp
+  advAddXp,
+  STARTING_LIVES,
+  advCurrentMateInX,
+  advLivesState,
+  advDefeatEvalLine
 } from './adventure-status.js';
 import { advShuffle, advQuizOptions, advStarString, advPickBookEdge } from './adventure-utils.js';
 import {
@@ -212,7 +216,6 @@ import { getLevelObjective, isMateObjective, formatLevelObjective } from './leve
 import { updateStockfishLevelUi, updateSurvivalLimitUi } from './ui-settings.js';
 
 const IMPORT_STOCKFISH_DEPTH = 5;
-const STARTING_LIVES = 3;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 // Conversion automatique « cinématique » de la phase libre : dès que les Blancs
@@ -5515,45 +5518,6 @@ function advMateHandover() {
   return Number.isFinite(v) && v > 0 ? v : DEFAULT_MATE_HANDOVER;
 }
 
-// Distance au mat affichée : l'attente fixée (phase joueur) ou le score moteur
-// pendant la conversion automatique.
-function advCurrentMateInX(game) {
-  if (!game) {
-    return null;
-  }
-  if (Number.isFinite(game.mateExpected)) {
-    return game.mateExpected;
-  }
-  if (isMateScore(game.currentEvalCp) && game.currentEvalCp > 0) {
-    return mateMovesFromCp(game.currentEvalCp);
-  }
-  return null;
-}
-
-// État de l'indicateur de vies : ouverture (game.lives), phase de mat
-// (game.finalMateLives), ou mort subite (phase libre sans mat).
-function advLivesState(game) {
-  const mateX = advCurrentMateInX(game);
-  const inMate = mateX != null || game.victoryCinematic || (game.finalMateLives || 0) > 0;
-  if (inMate) {
-    return {
-      kind: 'mate',
-      count: Math.max(0, game.finalMateLives || 0),
-      max: 3,
-      label: mateX != null ? `Mat en ${mateX}` : 'Conversion'
-    };
-  }
-  if (game.phase === 'opening') {
-    return {
-      kind: 'opening',
-      count: Math.max(0, game.lives),
-      max: STARTING_LIVES,
-      label: 'Ouverture'
-    };
-  }
-  return { kind: 'sudden', count: 1, max: 1, label: 'Mort subite' };
-}
-
 function renderAdvLives() {
   const el = document.querySelector('#advLives');
   if (!el) {
@@ -5571,6 +5535,7 @@ function renderAdvLives() {
   if (!show) {
     return;
   }
+  advCurrentMateInX(game);
   const st = advLivesState(game);
   el.dataset.kind = st.kind;
   el.replaceChildren();
@@ -7602,22 +7567,6 @@ function advResultButton(label, handler, primary = false) {
   button.textContent = label;
   button.addEventListener('click', handler);
   return button;
-}
-
-// Phrase d'évaluation de la position effondrée : rend la défaite explicite
-// (« tu n'avais plus aucune chance ») en chiffrant l'écart pour le joueur (Blancs).
-function advDefeatEvalLine(game) {
-  if (game?.chess?.isCheckmate?.()) {
-    return 'Échec et mat sur l’échiquier — plus aucune ressource.';
-  }
-  const cp = game?.failureEvaluation?.cpWhite;
-  if (!Number.isFinite(cp)) {
-    return '';
-  }
-  const mag = Math.abs(cp);
-  const qual =
-    mag >= 600 ? 'totalement perdante' : mag >= 300 ? 'largement perdante' : 'très compromise';
-  return `Position ${qual} : Stockfish évalue à ${formatEval(cp)} pour toi — tu n’avais plus aucune chance de la sauver.`;
 }
 
 // ⏩ Avance rapide : déroule d'un coup la fin de la cinématique de punition.
