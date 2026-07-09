@@ -201,11 +201,12 @@ import { createSvgElement } from './svg.js';
 import { renderBoardArrows } from './board-arrows.js';
 import { getBoardSquareLabel } from './board-render.js';
 import {
-  getLevelObjective,
-  isMateObjective,
-  formatLevelObjective,
-  formatSurvivalTarget
-} from './level-objective.js';
+  formatSourceList,
+  drawKindLabel,
+  formatGamePhase,
+  formatFreeRemaining
+} from './game-format.js';
+import { getLevelObjective, isMateObjective, formatLevelObjective } from './level-objective.js';
 import { updateStockfishLevelUi, updateSurvivalLimitUi } from './ui-settings.js';
 
 const IMPORT_STOCKFISH_DEPTH = 5;
@@ -643,16 +644,6 @@ function renderSegmentExplorer(segment) {
     });
     elements.segmentStepList.append(stepButton);
   });
-}
-
-function formatSourceList(sources) {
-  if (!sources.length) {
-    return '-';
-  }
-  if (sources.length <= 4) {
-    return sources.join(' · ');
-  }
-  return `${sources.slice(0, 3).join(' · ')} · +${sources.length - 3} lignes`;
 }
 
 function renderChoices(node, selectedSegment = null) {
@@ -2978,10 +2969,6 @@ function finishSurvivalLevel() {
 }
 
 // Libellé court du type de nulle (pat, répétition, matériel insuffisant…) pour les messages.
-function drawKindLabel(chess) {
-  return chess?.isStalemate?.() ? 'Pat' : 'Partie nulle';
-}
-
 // Nulle (le plus souvent un pat) : aucun camp n'est maté. L'objectif est de mater,
 // donc une nulle n'est PAS une victoire — on termine en demandant de refaire la partie.
 function finishGameByStalemate(chess) {
@@ -4523,23 +4510,6 @@ function renderGamePanel(phaseLabel = null) {
   if (state.screen === 'adventure') {
     renderAdventureHud();
   }
-}
-
-function formatGamePhase(game) {
-  if (game.mode === 'exploration') {
-    return game.phase === 'opening' ? 'Exploration livre' : 'Exploration libre';
-  }
-  return game.phase === 'opening' ? 'Ouverture' : 'Survie libre';
-}
-
-function formatFreeRemaining(game) {
-  if (game.mode === 'exploration') {
-    return 'libre';
-  }
-  if (game.phase !== 'free') {
-    return isMateObjective(game) ? 'objectif mat' : `objectif ${formatSurvivalTarget(game)}`;
-  }
-  return isMateObjective(game) ? "jusqu'au mat" : `${game.freeRemaining}/${game.objective.target}`;
 }
 
 function renderExpectedMoveList() {
