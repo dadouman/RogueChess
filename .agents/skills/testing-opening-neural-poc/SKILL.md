@@ -39,8 +39,18 @@ From repo root:
   `[Event "t"]\n\n1. e4 e5 2. Nf3 Nc6 *` into the Importer PGN textarea, click **Construire**
   (graph drops to ~5 nodes / 4 arcs), then click **Livre italien** → must restore to
   **165 nodes / 165 arcs**. A broken `cloneGraphData` import would throw and NOT restore.
+- **Game-panel render** (for game-panel-render.js moves): on the Mode Créatif board play
+  `e4` (click e2 then e4, or type `e4` in the "Coup blanc" field + Jouer). PASS: the
+  `<ol aria-label="Coups joués">` move log shows `1. e4` / `1... e5`, Éval + Plan adverse
+  update. A broken `renderGamePanel`/`renderMoveLog` import would freeze the log.
 - **Console must be clean**: check `browser_console` for `ReferenceError`/`is not defined`.
   This is the single most important check for import-move refactors.
+- **Headless console/network capture** (when `browser_console` isn't handy): Chrome CDP is at
+  `http://localhost:29229`. `pip install websocket-client`, connect to the page's
+  `webSocketDebuggerUrl` with `suppress_origin=True` (plain connect gives `403` — CDP rejects
+  the `Origin` header), enable `Log`/`Runtime`/`Network`, `Page.reload`, and collect
+  `Log.entryAdded`/`Runtime.exceptionThrown`/`Network.responseReceived`(status>=400). Note:
+  a `404 /favicon.ico` is expected/cosmetic — ignore it.
 
 ## Notes
 - The `computer` tool returns an annotated DOM alongside the screenshot; the home overlay
