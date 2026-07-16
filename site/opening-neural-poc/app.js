@@ -16,7 +16,6 @@ import {
   pause,
   randomThinkMs,
   randomUnit,
-  yieldToBrowser,
   cloneGraphData
 } from './utils.js';
 import {
@@ -36,13 +35,6 @@ import {
 import { formatEval, joinHumanList, buildDefeatComment } from './eval-commentary.js';
 import { makeHistoryBoardNode, formatHistoryMoveLabel } from './game-history-view.js';
 import {
-  splitPgnGames,
-  parsePgnGame,
-  makeLineEventsUnique,
-  buildGraphFromPgnLines,
-  summarizeImportedGraph
-} from './pgn-import.js';
-import {
   getNode,
   getEdge,
   getRawOutgoingEdges,
@@ -59,8 +51,6 @@ import {
   branchEventuallyEndsInMate,
   applyMinimumProbabilities,
   normalizeScoredProbabilities,
-  computeGraphFutureMeans,
-  assignGraphProbabilities,
   recomputeViewProbabilities,
   createCompressedView,
   projectRawPathToView,
@@ -69,6 +59,12 @@ import {
 import { initBrainScrub, bindBrainScrubEvents, showBrainScrub } from './brain-scrub.js';
 import { initGraphRenderer, renderGraph } from './graph-render.js';
 import { initGamePanelRender, renderGameDetails, renderGamePanel } from './game-panel-render.js';
+import {
+  initPgnGraphIo,
+  importPgnFromInput,
+  restoreDefaultGraph,
+  setGraphData
+} from './pgn-graph-io.js';
 import { advBrainProgress, advPlayerLevel, advCurrentDifficulty } from './adventure-progress.js';
 import {
   initAdventureProgressHud,
@@ -196,7 +192,6 @@ import { formatSourceList, drawKindLabel } from './game-format.js';
 import { getLevelObjective, isMateObjective, formatLevelObjective } from './level-objective.js';
 import { updateStockfishLevelUi, updateSurvivalLimitUi } from './ui-settings.js';
 
-const IMPORT_STOCKFISH_DEPTH = 5;
 const OPENING_FREE_BREAK_PLY = 14;
 const OPENING_FREE_BREAK_PROBABILITY = 0.25;
 // Conversion automatique « cinématique » de la phase libre : dès que les Blancs
@@ -1385,6 +1380,10 @@ function isWhiteMateBookNode(node) {
 }
 
 let trapReachCache = null;
+
+function resetTrapReachCache() {
+  trapReachCache = null; // le cache « mène à un mat » dépend du livre courant
+}
 
 // Le sous-arbre issu de ce nœud mène-t-il à un mat des Blancs ? (mémoïsé par livre)
 function bookNodeReachesMate(nodeId) {
@@ -2797,142 +2796,6 @@ function resetHighlight() {
   state.segmentExpanded = false;
   elements.selectedPathLabel.textContent = 'Aucun chemin sélectionné';
   renderGraph();
-}
-
-function setGraphData(data, selectedPathLabel = 'Aucun chemin sélectionné') {
-  state.data = data;
-  trapReachCache = null; // le cache « mène à un mat » dépend du livre courant
-  state.nodesById = new Map(state.data.nodes.map((node) => [node.id, node]));
-  state.edgesById = new Map(state.data.edges.map((edge) => [edge.id, edge]));
-  state.nodesByFen = new Map(state.data.nodes.map((node) => [node.fen, node]));
-  state.nodesByPositionKey = new Map(
-    state.data.nodes.map((node) => [fenPositionKey(node.fen), node])
-  );
-  state.lineFilter = 'all';
-  state.highlightedEdges.clear();
-  state.highlightedNodes = new Set(['root']);
-  state.selectedNodeId = 'root';
-  state.selectedSegment = null;
-  state.segmentStepIndex = 0;
-  state.segmentExpanded = false;
-  elements.selectedPathLabel.textContent = selectedPathLabel;
-  populateControls();
-  startNewGame(FIRST_LEVEL_NUMBER);
-  elements.selectedPathLabel.textContent = selectedPathLabel;
-}
-
-function setImportBusy(isBusy, statusText = '') {
-  state.isImportingPgn = isBusy;
-  elements.buildPgnButton.disabled = isBusy;
-  elements.defaultPgnButton.disabled = isBusy || !state.defaultData;
-  elements.pgnFileInput.disabled = isBusy;
-  elements.pgnTextInput.disabled = isBusy;
-  if (statusText) {
-    elements.pgnImportStatus.textContent = statusText;
-  }
-}
-
-async function buildGraphDataFromPgn(pgn, sourceName = 'PGN importé') {
-  const blocks = splitPgnGames(pgn);
-  const lines = makeLineEventsUnique(blocks.flatMap(parsePgnGame)).filter(
-    (line) => line.moves.length
-  );
-  if (!lines.length) {
-    throw new Error('Aucune ligne PGN jouable trouvée.');
-  }
-
-  const graph = buildGraphFromPgnLines(lines);
-  if (graph.nodes.length <= 1 || !graph.edges.length) {
-    throw new Error('Le PGN ne contient pas de coups légaux exploitables.');
-  }
-
-  const evaluator = await ensureStockfishReady(false);
-  for (const [index, node] of graph.nodes.entries()) {
-    elements.pgnImportStatus.textContent = `Éval ${index + 1}/${graph.nodes.length}`;
-    node.evaluation = await evaluator.evaluate(node.fen, IMPORT_STOCKFISH_DEPTH);
-    if (index % 4 === 0) {
-      await yieldToBrowser();
-    }
-  }
-
-  computeGraphFutureMeans(graph);
-  assignGraphProbabilities(graph);
-
-  return {
-    summary: summarizeImportedGraph(graph, lines, IMPORT_STOCKFISH_DEPTH, sourceName),
-    lines: lines.map(({ moves, ...line }) => ({
-      ...line,
-      plies: moves.length
-    })),
-    nodes: graph.nodes,
-    edges: graph.edges,
-    warnings: graph.warnings
-  };
-}
-
-async function importPgnFromInput() {
-  const pgn = elements.pgnTextInput.value.trim();
-  if (!pgn) {
-    elements.pgnImportStatus.textContent = 'PGN vide';
-    return;
-  }
-
-  setImportBusy(true, 'Lecture PGN');
-  try {
-    const data = await buildGraphDataFromPgn(pgn, 'PGN importé');
-    setGraphData(data, 'PGN importé: graphe prêt');
-    state.activeBook = 'custom';
-    elements.pgnImportStatus.textContent = `Prêt d${IMPORT_STOCKFISH_DEPTH}`;
-  } catch (error) {
-    elements.pgnImportStatus.textContent = 'Erreur PGN';
-    elements.summaryText.textContent = error.message;
-  } finally {
-    setImportBusy(false);
-  }
-}
-
-async function restoreDefaultGraph() {
-  if (!state.defaultData) {
-    return;
-  }
-  setImportBusy(true, 'Livre italien');
-  setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
-  state.activeBook = 'default';
-  elements.pgnImportStatus.textContent = 'Livre actif';
-  setImportBusy(false);
-}
-
-function populateControls() {
-  const summary = state.data.summary;
-  const model = summary.probabilityModel ?? {};
-  state.temperatureCp = model.temperatureCp ?? PROBABILITY_TEMPERATURE_CP;
-  state.floorMass = DISPLAY_DEFAULT_FLOOR_MASS;
-
-  elements.temperatureRange.value = String(state.temperatureCp);
-  elements.floorRange.value = String(Math.round(state.floorMass * 100));
-  elements.temperatureValue.textContent = `${state.temperatureCp} cp`;
-  elements.floorValue.textContent = `${Math.round(state.floorMass * 100)}%`;
-
-  elements.lineFilter.replaceChildren();
-  const all = document.createElement('option');
-  all.value = 'all';
-  all.textContent = 'Toutes les lignes';
-  elements.lineFilter.append(all);
-  for (const line of state.data.lines) {
-    const option = document.createElement('option');
-    option.value = line.event;
-    option.textContent = `${line.id.replace('line_', '#')} · ${line.event}`;
-    elements.lineFilter.append(option);
-  }
-
-  const warningText = state.data.warnings.length
-    ? ` ${state.data.warnings.length} anomalie PGN signalée.`
-    : '';
-  elements.summaryText.textContent = `${summary.sourceLines} lignes PGN fusionnées en ${summary.nodes} positions évaluées.${warningText}`;
-  elements.nodesCount.textContent = String(summary.nodes);
-  elements.edgesCount.textContent = String(summary.edges);
-  elements.branchingCount.textContent = String(summary.branchingNodes);
-  elements.engineDepth.textContent = `d${summary.stockfish.depth}`;
 }
 
 /* =====================================================================
@@ -4657,6 +4520,11 @@ function bindEvents() {
     getOpponentBookEdgesForRun,
     buildOpponentBookCandidates,
     submitHumanMove
+  });
+  initPgnGraphIo({
+    ensureStockfishReady,
+    startNewGame,
+    resetTrapReachCache
   });
   initAdventureHistory({ getReviewParent }); // injection : parent d'un coup dans l'arbre de revue
   initAdventureProgressHud({
