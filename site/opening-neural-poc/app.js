@@ -11,7 +11,6 @@ import {
   clamp,
   formatPercent,
   sideLabel,
-  sanPieceLetter,
   escapeHtml,
   pause,
   randomThinkMs,
@@ -33,7 +32,7 @@ import {
   normalizeSanForCompare
 } from './chess-utils.js';
 import { formatEval, joinHumanList, buildDefeatComment } from './eval-commentary.js';
-import { makeHistoryBoardNode, formatHistoryMoveLabel } from './game-history-view.js';
+import { makeHistoryBoardNode } from './game-history-view.js';
 import {
   getNode,
   getEdge,
@@ -60,16 +59,31 @@ import { initBrainScrub, bindBrainScrubEvents, showBrainScrub } from './brain-sc
 import { initGraphRenderer, renderGraph } from './graph-render.js';
 import { initGamePanelRender, renderGameDetails, renderGamePanel } from './game-panel-render.js';
 import {
+  initAdventureAnalyseView,
+  openAdvAnalyseSheet,
+  closeAdvAnalyseSheet,
+  openAdvQuickMenu,
+  closeAdvQuickMenu,
+  updateAdvMobileBar,
+  advHistoryGoto,
+  advHistoryStep,
+  toggleAdvHistory
+} from './adventure-analyse-view.js';
+import {
+  initAdventureRevision,
+  launchRevision,
+  advRevisionAnswer,
+  advRevisionAnswerInput
+} from './adventure-revision.js';
+import {
   initPgnGraphIo,
   importPgnFromInput,
   restoreDefaultGraph,
   setGraphData
 } from './pgn-graph-io.js';
-import { advBrainProgress, advPlayerLevel, advCurrentDifficulty } from './adventure-progress.js';
+import { advBrainProgress, advPlayerLevel } from './adventure-progress.js';
 import {
   initAdventureProgressHud,
-  renderAdvTakeBack,
-  renderAdvPlayerBadge,
   triggerBrainSurge,
   adventureLightEdge
 } from './adventure-progress-hud.js';
@@ -106,7 +120,6 @@ import {
   advAddXp,
   STARTING_LIVES
 } from './adventure-status.js';
-import { advShuffle, advQuizOptions, advPickBookEdge } from './adventure-utils.js';
 import {
   advCanFightBots,
   advSyncGlobalLives,
@@ -121,13 +134,12 @@ import {
   advScoreKey
 } from './adventure-scoring.js';
 import { advWinCoinReward, advAwardCoins, advThreatsActive } from './adventure-shop.js';
-import { initAdventureHistory, advRecordGame, advFormatGameOpponent } from './adventure-history.js';
+import { initAdventureHistory, advRecordGame } from './adventure-history.js';
 import {
   advInfluenceableNodes,
   advOverweightMove,
   advInfluenceEnabled,
   advBlackChoiceWeight,
-  advOpeningWeightOf,
   advResetOpeningInfluence
 } from './opening-weight.js';
 import { initOpeningViewer } from './opening-viewer.js';
@@ -3238,333 +3250,6 @@ function applyAdvInfluenceArrows() {
   board.append(advInfluenceArrows(node.moves, game.influence.selectedUci));
 }
 
-// === Révision : quiz « trouve le coup » + refaire un mat passé =================
-// Rejeu accéléré d'une ligne (livre) ou d'une partie gagnée, puis on interroge le
-// joueur sur les coups blancs. Réussir une révision recharge les vies globales.
-
-// Quiz « trouve le coup » : ligne principale du livre, interrogation des coups blancs.
-function advBuildQuizSteps() {
-  const lineSans = [];
-  const lineUcis = [];
-  let nodeId = 'root';
-  const visited = new Set();
-  for (let i = 0; i < 16; i += 1) {
-    if (visited.has(nodeId)) break;
-    visited.add(nodeId);
-    const outs = getRawOutgoingEdges(nodeId);
-    if (!outs.length) break;
-    // Blancs : on suit la ligne principale (le coup du répertoire à réviser).
-    // Noirs : tirage pondéré par les probabilités → la ligne varie à chaque
-    // lancement (le quiz n'est plus toujours le même).
-    const blackToMove = outs[0].color === 'b';
-    const edge = blackToMove
-      ? advPickBookEdge(outs)
-      : outs.slice().sort((a, b) => (b.probability || 0) - (a.probability || 0))[0];
-    if (!edge) break;
-    lineSans.push(edge.san);
-    lineUcis.push(edge.uci);
-    nodeId = edge.to;
-  }
-  // Coups blancs interrogeables = indices pairs ≥ 2 (on saute le 1er coup trivial).
-  const whiteIdx = [];
-  for (let idx = 2; idx < lineSans.length; idx += 2) {
-    whiteIdx.push(idx);
-  }
-  // Tire jusqu'à 3 points de quiz au hasard, puis remet l'ordre chronologique.
-  const chosen = advShuffle(whiteIdx)
-    .slice(0, 3)
-    .sort((a, b) => a - b);
-  const steps = [];
-  for (const idx of chosen) {
-    const options = advQuizOptions(lineSans.slice(0, idx), lineUcis[idx]);
-    if (options.length >= 2) {
-      steps.push({
-        lead: lineSans.slice(0, idx),
-        correctUci: lineUcis[idx],
-        correctSan: lineSans[idx],
-        options
-      });
-    }
-  }
-  return steps;
-}
-
-// Refaire un mat : reprend la partie gagnée la plus récente, interroge les 2 derniers
-// coups blancs (la mise à mort).
-function advBuildMateSteps() {
-  const games = (state.adventure?.games || []).filter(
-    (g) => g.result === 'won' && Array.isArray(g.moves) && g.moves.length >= 6
-  );
-  if (!games.length) {
-    return { steps: [], label: null };
-  }
-  const game = games[0];
-  const sans = game.moves.map((m) => m.san || m.move?.san).filter((s) => typeof s === 'string');
-  let chess;
-  try {
-    chess = new Chess();
-  } catch {
-    return { steps: [], label: null };
-  }
-  const ucis = [];
-  const playedSans = [];
-  for (const s of sans) {
-    let mv = null;
-    try {
-      mv = chess.move(s);
-    } catch {
-      mv = null;
-    }
-    if (!mv) break;
-    ucis.push(mv.from + mv.to + (mv.promotion || ''));
-    playedSans.push(mv.san);
-  }
-  const n = Math.min(playedSans.length, ucis.length);
-  const steps = [];
-  for (let idx = n - 1; idx >= 0 && steps.length < 2; idx -= 1) {
-    if (idx % 2 !== 0) continue; // coups blancs = indices pairs
-    const options = advQuizOptions(playedSans.slice(0, idx), ucis[idx]);
-    if (options.length >= 2) {
-      steps.unshift({
-        lead: playedSans.slice(0, idx),
-        correctUci: ucis[idx],
-        correctSan: playedSans[idx],
-        options
-      });
-    }
-  }
-  return { steps, label: advFormatGameOpponent(game) };
-}
-
-// La révision se joue DANS la vue de partie standard : le rejeu accéléré anime
-// l'échiquier de jeu, et le QCM réutilise le bandeau « choix du coup » du bas.
-function launchRevision(mode) {
-  let steps = [];
-  let label = null;
-  if (mode === 'mate') {
-    const built = advBuildMateSteps();
-    steps = built.steps;
-    label = built.label;
-    if (!steps.length) {
-      showAdventureToast({
-        icon: '🏆',
-        title: 'Pas encore de mat à rejouer',
-        text: 'Gagne d’abord une partie d’arène par mat, puis reviens la rejouer.',
-        kind: null
-      });
-      return;
-    }
-  } else {
-    steps = advBuildQuizSteps();
-    if (!steps.length) {
-      showAdventureToast({
-        icon: '⚡',
-        title: 'Quiz indisponible',
-        text: 'Le livre est trop court.',
-        kind: null
-      });
-      return;
-    }
-  }
-  // Run de type « lesson » (recharge des vies, hors historique) avec un mode de
-  // révision qui pilote le rejeu scripté + QCM.
-  state.advRun = {
-    kind: 'lesson',
-    revisionMode: mode,
-    revisionLabel: label,
-    steps,
-    stepIndex: 0,
-    correctCount: 0,
-    streak: 0,
-    wrongMoves: 0,
-    bookMoves: 0,
-    completed: false
-  };
-  advScoreInit(state.advRun, steps.length); // score comparable : nb de questions fixe
-  state.playMode = 'challenge';
-  closeAdventureMap();
-  setViewMode('brain');
-  setAdvViewMode('board');
-  startNewGame(FIRST_LEVEL_NUMBER);
-  if (state.game) {
-    state.game.clock = null; // pas de pendule en révision
-    state.game.revision = { phase: 'replay', step: null, answerUci: null };
-    setGameLocked(true); // on répond via les touches du bandeau, pas sur l'échiquier
-  }
-  renderAdventureHud();
-  advRevisionPlayStep();
-}
-
-// Les touches QCM suivent la difficulté (mêmes règles que les aides en partie) :
-// faciles → visibles d'emblée ; Normal → seulement après une erreur ; Difficile →
-// jamais (on joue le coup directement sur l'échiquier).
-function advRevisionKeysRevealableOnError() {
-  return Boolean(advCurrentDifficulty().legalDotsRevealable); // Normal uniquement
-}
-
-// Rejoue (accéléré) les coups de la ligne sur l'échiquier de jeu jusqu'à la
-// position de la question, puis pose la question (QCM ou coup à jouer).
-function advRevisionPlayStep() {
-  const run = state.advRun;
-  const game = state.game;
-  if (!run?.revisionMode || !game) {
-    return;
-  }
-  const step = run.steps[run.stepIndex];
-  if (!step) {
-    advRevisionFinish();
-    return;
-  }
-  setGameLocked(true); // verrouillé pendant le rejeu
-  game.revision = {
-    phase: 'replay',
-    step,
-    answerUci: null,
-    keysRevealed: advAids().moveChoices, // faciles : propositions immédiates
-    attempted: false
-  };
-  game.message = 'Rejeu accéléré de la ligne…';
-  renderGameDetails();
-  renderGamePanel();
-  const timer = setInterval(() => {
-    if (state.game !== game || state.advRun !== run || game.status !== 'playing') {
-      clearInterval(timer);
-      return;
-    }
-    const played = game.chess.history().length;
-    if (played >= step.lead.length) {
-      clearInterval(timer);
-      game.revision.phase = 'question';
-      game.message = game.revision.keysRevealed
-        ? 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.'
-        : 'Joue le bon coup des Blancs directement sur l’échiquier.';
-      run.scoreMoveStart = Date.now(); // score : le chrono démarre à la question
-      run.scoreMoveErrors = 0;
-      setGameLocked(false); // question : l'échiquier devient jouable
-      renderGameDetails();
-      renderGamePanel();
-      return;
-    }
-    let mv = null;
-    try {
-      mv = game.chess.move(step.lead[played]);
-    } catch {
-      mv = null;
-    }
-    if (!mv) {
-      clearInterval(timer);
-      advRevisionFinish();
-      return;
-    }
-    game.lastMove = mv;
-    renderGameDetails();
-  }, 420);
-}
-
-// Réponse à la question — par touche QCM ou coup joué sur l'échiquier.
-function advRevisionAnswer(uci) {
-  const run = state.advRun;
-  const game = state.game;
-  const rev = game?.revision;
-  if (!run?.revisionMode || !rev || rev.phase !== 'question') {
-    return;
-  }
-  const step = rev.step;
-  const correct = uci === step.correctUci;
-  // Seul le PREMIER essai compte pour le score (et fige le temps de réflexion).
-  if (!rev.attempted) {
-    rev.attempted = true;
-    run.scoreElapsedMs = run.scoreMoveStart ? Date.now() - run.scoreMoveStart : null;
-    if (correct) {
-      run.correctCount += 1;
-    }
-  }
-  if (!correct) {
-    run.scoreMoveErrors = (run.scoreMoveErrors || 0) + 1; // −50 par mauvaise réponse
-  }
-  // Normal : une erreur révèle les propositions et laisse réessayer.
-  if (!correct && !rev.keysRevealed && advRevisionKeysRevealableOnError()) {
-    rev.keysRevealed = true;
-    rev.errorHint = true; // légende : signale l'erreur au moment de la révélation
-    game.selectedSquare = null;
-    game.message = '❌ Pas celui-là. Les propositions apparaissent : choisis le bon coup.';
-    flashAdvBoard('bad');
-    renderGameDetails();
-    renderGamePanel();
-    return;
-  }
-  rev.phase = 'feedback';
-  rev.answerUci = uci;
-  advScoreRegisterMove(run, run.scoreElapsedMs); // score de la question résolue
-  game.selectedSquare = null;
-  setGameLocked(true); // plus d'entrée pendant le feedback
-  // Le bon coup s'exécute sur l'échiquier (on le voit, même après une erreur).
-  let mv = null;
-  try {
-    mv = game.chess.move(step.correctSan);
-  } catch {
-    mv = null;
-  }
-  if (mv) {
-    game.lastMove = mv;
-  }
-  game.message = correct
-    ? `✅ Bravo : ${step.correctSan} !`
-    : `❌ Le bon coup était ${step.correctSan}.`;
-  flashAdvBoard(correct ? 'good' : 'bad');
-  renderGameDetails();
-  renderGamePanel();
-  setTimeout(() => {
-    if (state.game !== game || state.advRun !== run) {
-      return;
-    }
-    run.stepIndex += 1;
-    if (run.stepIndex >= run.steps.length) {
-      advRevisionFinish();
-    } else {
-      advRevisionPlayStep();
-    }
-  }, 1500);
-}
-
-// Normalise une entrée (SAN ou UCI, échiquier ou champ texte) vers l'UCI de la
-// position de la question, puis répond.
-function advRevisionAnswerInput(input) {
-  const game = state.game;
-  const step = game?.revision?.step;
-  if (!step) {
-    return;
-  }
-  let probe;
-  try {
-    probe = new Chess(game.chess.fen());
-  } catch {
-    return;
-  }
-  const mv = tryMoveInput(probe, input);
-  if (!mv) {
-    game.message = 'Coup illégal ou illisible.';
-    renderGamePanel();
-    return;
-  }
-  advRevisionAnswer(`${mv.from}${mv.to}${mv.promotion ?? ''}`);
-}
-
-function advRevisionFinish() {
-  const run = state.advRun;
-  const game = state.game;
-  if (!run?.revisionMode || !game || run.completed) {
-    return;
-  }
-  run.completed = true;
-  game.revision = { phase: 'done', step: null, answerUci: null };
-  advAddXp(ADV_XP_BOOK_MOVE * Math.max(1, run.correctCount));
-  // finishGame → adventureOnGameFinished (won + lesson) → recharge des vies.
-  finishGame('won', `Révision terminée : ${run.correctCount}/${run.steps.length}.`);
-  renderGameDetails();
-  renderGamePanel(); // affiche l'écran de résultat (score + rejouer)
-}
-
 function adventureOnGameFinished(result) {
   const run = state.advRun;
   if (!state.adventure || !run) {
@@ -3836,384 +3521,6 @@ function submitAdventureMove() {
   const value = input.value;
   input.value = '';
   submitHumanMove(value);
-}
-
-// --- Version portable : feuille d'analyse + barreau de coups en 1er niveau ---
-
-function openAdvAnalyseSheet() {
-  renderAdvAnalyseSheet();
-  const sheet = document.querySelector('#advAnalyseSheet');
-  if (sheet) {
-    sheet.classList.add('is-open');
-    sheet.setAttribute('aria-hidden', 'false');
-  }
-}
-
-function closeAdvAnalyseSheet() {
-  const sheet = document.querySelector('#advAnalyseSheet');
-  if (sheet) {
-    sheet.classList.remove('is-open');
-    sheet.setAttribute('aria-hidden', 'true');
-  }
-}
-
-// Volet d'options rapides, ouvert par la bulle « niveau joueur » (haut à droite).
-// Hub de navigation pendant la partie : carte/niveaux, réglages, accueil.
-function openAdvQuickMenu() {
-  closeAdvAnalyseSheet();
-  renderAdvPlayerBadge(); // synchronise niveau + XP dans l'en-tête du volet
-  const menu = document.querySelector('#advQuickMenu');
-  if (menu) {
-    menu.classList.add('is-open');
-    menu.setAttribute('aria-hidden', 'false');
-  }
-}
-
-function closeAdvQuickMenu() {
-  const menu = document.querySelector('#advQuickMenu');
-  if (menu) {
-    menu.classList.remove('is-open');
-    menu.setAttribute('aria-hidden', 'true');
-  }
-}
-
-// Reprend l'éval détaillée + le commentaire déjà calculés (éléments du rail) dans la feuille.
-function renderAdvAnalyseSheet() {
-  const game = state.game;
-  // Message d'évaluation / feedback en cours (ce qui apparaissait avant sur l'échiquier) —
-  // c'est la première info utile : « Coup accepté (+0.38)… », combos, raison de défaite, etc.
-  const message = document.querySelector('#advSheetMessage');
-  if (message) {
-    const text = game?.message ?? '';
-    message.textContent = text;
-    message.hidden = !text;
-    message.classList.toggle('is-defeat', game?.status === 'lost');
-  }
-  const evalDl = document.querySelector('#advSheetEval');
-  if (evalDl) {
-    // Quand un mat forcé est en vue, on remplace « Moyenne future » par le nombre
-    // de coups avant le mat (info clé après la conversion automatique).
-    const cp = game?.currentEvalCp;
-    const mateMoves = isMateScore(cp) ? mateMovesFromCp(cp) : null;
-    const secondRow = mateMoves
-      ? ['Mat en', `${mateMoves} coup${mateMoves > 1 ? 's' : ''}`]
-      : ['Moyenne future', document.querySelector('#nodeFuture')?.textContent ?? '-'];
-    const rows = [
-      ['Évaluation', document.querySelector('#nodeEval')?.textContent ?? '-'],
-      secondRow,
-      ['Trait', document.querySelector('#nodeTurn')?.textContent ?? '-']
-    ];
-    evalDl.replaceChildren();
-    for (const [key, value] of rows) {
-      const div = document.createElement('div');
-      div.innerHTML = `<dt>${key}</dt><dd>${escapeHtml(value)}</dd>`;
-      evalDl.append(div);
-    }
-  }
-  // Commentaire de position (note du livre) : secondaire, masqué s'il double le message.
-  const comment = document.querySelector('#advSheetComment');
-  if (comment) {
-    const txt = document.querySelector('#nodeComment')?.textContent ?? '';
-    comment.textContent = txt;
-    comment.hidden = !txt || txt === (game?.message ?? '');
-    comment.classList.remove('is-defeat');
-  }
-  const sources = document.querySelector('#advSheetSources');
-  if (sources) {
-    const txt = document.querySelector('#nodeSources')?.textContent ?? '';
-    sources.textContent = txt;
-    sources.hidden = !txt || txt === '-';
-  }
-}
-
-// Coups jouables (livre) affichés en 1er niveau : pièce + notation, sans texte autour.
-function renderAdvMovesStrip() {
-  const host = document.querySelector('#advMovesStrip');
-  if (!host) {
-    return;
-  }
-  host.replaceChildren();
-  const game = state.game;
-  // Révision : le bandeau devient le QCM — mêmes touches que le choix du coup.
-  // Les propositions suivent la difficulté (faciles : d'emblée ; Normal : après
-  // une erreur ; Difficile : jamais — on joue sur l'échiquier).
-  const rev = state.advRun?.revisionMode ? game?.revision : null;
-  if (rev && game?.status === 'playing') {
-    const showKeys =
-      (rev.phase === 'question' || rev.phase === 'feedback') && rev.step && rev.keysRevealed;
-    if (showKeys) {
-      for (const opt of rev.step.options) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'adv-move-key';
-        btn.dataset.revUci = opt.uci;
-        btn.innerHTML =
-          `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
-          `<span class="adv-move-key-san">${escapeHtml(opt.san)}</span>`;
-        if (rev.phase === 'feedback') {
-          btn.disabled = true;
-          if (opt.uci === rev.step.correctUci) {
-            btn.classList.add('is-correct');
-          } else if (opt.uci === rev.answerUci) {
-            btn.classList.add('is-wrong');
-          }
-        }
-        host.append(btn);
-      }
-    } else {
-      const ph = document.createElement('span');
-      ph.className = 'adv-moves-placeholder';
-      ph.textContent =
-        rev.phase === 'question'
-          ? '🧠 Joue le bon coup sur l’échiquier'
-          : rev.phase === 'feedback'
-            ? rev.answerUci === rev.step?.correctUci
-              ? `✅ ${rev.step?.correctSan} !`
-              : `❌ Le bon coup : ${rev.step?.correctSan}`
-            : '⏩ Rejeu accéléré…';
-      host.append(ph);
-    }
-    return;
-  }
-  // Influence (après défaite de boss) : aux positions d'embranchement des Noirs,
-  // le bandeau propose les candidats à surpondérer — mêmes touches qu'en partie.
-  if (game?.influence) {
-    const node = advInfluenceViewedNode();
-    if (node) {
-      const used = Boolean(state.advRun?.overweightUsed);
-      node.moves.forEach((m, i) => {
-        const color = INFLUENCE_ARROW_COLORS[i % INFLUENCE_ARROW_COLORS.length];
-        const sel = m.uci === game.influence.selectedUci;
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = `adv-move-key is-influence${sel ? ' is-influence-selected' : ''}`;
-        btn.style.setProperty('--key-color', color);
-        btn.dataset.inflUci = m.uci;
-        btn.disabled = used;
-        const w = advOpeningWeightOf(`${node.fen}|${m.uci}`);
-        const tag =
-          w > 0.01
-            ? `+${Math.round(w)}%`
-            : w < -0.01
-              ? `${Math.round(w)}%`
-              : `${Math.round(m.baseProb * 100)}%`;
-        btn.innerHTML =
-          `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(m.san)}.svg" alt="" aria-hidden="true">` +
-          `<span class="adv-move-key-san">${escapeHtml(m.san)}</span>` +
-          `<span class="adv-move-key-prob">${escapeHtml(tag)}</span>`;
-        host.append(btn);
-      });
-      const selMove = !used && node.moves.find((m) => m.uci === game.influence.selectedUci);
-      if (selMove) {
-        const ok = document.createElement('button');
-        ok.type = 'button';
-        ok.className = 'adv-move-key is-influence-validate';
-        ok.dataset.inflValidate = '1';
-        ok.innerHTML = `<span class="adv-move-key-san">✓ ${escapeHtml(selMove.san)} +5%</span>`;
-        host.append(ok);
-      }
-    } else {
-      const ph = document.createElement('span');
-      ph.className = 'adv-moves-placeholder';
-      ph.textContent = '‹ › Navigue jusqu’à un choix des Noirs pour influencer';
-      host.append(ph);
-    }
-    // « Terminer » clôt la phase d'influence → CTA finaux (rejouer / suivant / analyser).
-    const done = document.createElement('button');
-    done.type = 'button';
-    done.className = 'adv-move-key is-influence-done';
-    done.dataset.inflDone = '1';
-    done.innerHTML = '<span class="adv-move-key-san">Terminer ›</span>';
-    host.append(done);
-    return;
-  }
-  const reviewing = Boolean(game && game.historyView != null);
-  const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
-  // « choix du coup » : aide désactivée aux niveaux Normal/Difficile → le joueur
-  // joue de lui-même sur l'échiquier (les touches et fantômes disparaissent).
-  const showChoices = advAids().moveChoices;
-
-  // 1) Coups blancs jouables (selectionnables) pendant l'ouverture.
-  const whitePlayable =
-    inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
-  const whiteEdges = whitePlayable && showChoices ? getExpectedWhiteBookEdges() : [];
-  for (const edge of whiteEdges) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'adv-move-key';
-    btn.dataset.uci = edge.uci;
-    btn.innerHTML =
-      `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
-      `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
-    host.append(btn);
-  }
-
-  // 2) Reponses de Stockfish encore dans la theorie : touches "fantomes" non
-  //    cliquables, avec la proba en discret (on voit le coup sans pouvoir le jouer).
-  let ghosts = [];
-  if (
-    showChoices &&
-    !whiteEdges.length &&
-    inPlay &&
-    game.chess.turn() === 'b' &&
-    game.phase === 'opening'
-  ) {
-    ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
-  }
-  for (const cand of ghosts) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'adv-move-key is-ghost';
-    btn.disabled = true;
-    btn.setAttribute('aria-disabled', 'true');
-    const prob = `<span class="adv-move-key-prob">${escapeHtml(formatPercent(cand.probability))}</span>`;
-    if (cand.type === 'free') {
-      btn.classList.add('is-ghost-free');
-      btn.innerHTML = `<span class="adv-move-key-san">Imprevu</span>${prob}`;
-    } else {
-      const san = cand.edge.san;
-      btn.innerHTML =
-        `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
-        `<span class="adv-move-key-san">${escapeHtml(san)}</span>${prob}`;
-    }
-    host.append(btn);
-  }
-  // Zone réservée en permanence : quand aucun coup de livre n'est dispo (au tour de
-  // Stockfish, ou hors livre), on garde la place avec un libellé — l'échiquier ne bouge plus.
-  const hasContent = whiteEdges.length || ghosts.length;
-  if (!hasContent) {
-    const ph = document.createElement('span');
-    ph.className = 'adv-moves-placeholder';
-    const yourTurnNoAid =
-      !showChoices && game?.status === 'playing' && game.chess.turn() === 'w' && !game.locked;
-    ph.textContent = yourTurnNoAid
-      ? 'À toi de jouer sur l’échiquier'
-      : game?.victoryCinematic
-        ? 'Conversion automatique en cours…'
-        : game?.status === 'playing' && game.chess.turn() === 'b'
-          ? 'Au tour de Stockfish…'
-          : game?.status === 'playing' && game.phase !== 'opening'
-            ? 'Hors du livre : joue ton coup sur l’échiquier'
-            : ' ';
-    host.append(ph);
-  }
-  host.classList.toggle('is-empty', !hasContent);
-}
-
-// Rafraîchit la barre portable (libellé de vue + barreau de coups + feuille d'analyse ouverte).
-function updateAdvMobileBar() {
-  const label = document.querySelector('#advBarViewLabel');
-  if (label) {
-    label.textContent = state.advViewMode === 'board' ? 'Cerveau' : 'Échiquier';
-  }
-  const ico = document.querySelector('#advBarView .adv-bar-ico');
-  if (ico) {
-    ico.textContent = state.advViewMode === 'board' ? '🧠' : '🎮';
-  }
-  renderAdvMovesStrip();
-  renderAdvHistory();
-  renderAdvTakeBack();
-  renderAdvPlayerBadge();
-  if (document.querySelector('#advAnalyseSheet')?.classList.contains('is-open')) {
-    renderAdvAnalyseSheet();
-  }
-}
-
-// --- Historique : navigation ‹/› + prévisualisation des positions passées ---
-
-function advHistoryLength() {
-  const game = state.game;
-  return game?.chess ? game.chess.history().length : 0;
-}
-
-// Place la revue à un index de demi-coups (null/au-delà du total = position en cours).
-function advHistoryGoto(index) {
-  const game = state.game;
-  if (!game) {
-    return;
-  }
-  const total = advHistoryLength();
-  game.historyView = index == null || index >= total ? null : clamp(index, 0, total);
-  game.selectedSquare = null;
-  // Revoir la partie via ‹/› doit fonctionner même après la fin : on désactive la
-  // revue libre (qui sinon impose sa position à l'échiquier) tant qu'on navigue.
-  if (game.historyView != null && game.freeReview?.active) {
-    game.freeReview.active = false;
-  }
-  renderGameDetails();
-}
-
-function advHistoryStep(delta) {
-  const game = state.game;
-  if (!game) {
-    return;
-  }
-  // Influence « nœud aléatoire » : ‹ › parcourent la ligne du livre tirée.
-  if (game.influence?.lineSans) {
-    const len = game.influence.lineSans.length;
-    game.influence.lineIndex = clamp((game.influence.lineIndex ?? len) + delta, 0, len);
-    renderGameDetails();
-    return;
-  }
-  const current = game.historyView ?? advHistoryLength(); // position en cours = total demi-coups
-  advHistoryGoto(current + delta);
-}
-
-// Affiche/masque la bande d'historique ; en la masquant on revient à la position en cours.
-function toggleAdvHistory() {
-  const hidden = document.body.classList.toggle('is-history-hidden');
-  if (hidden && state.game?.historyView != null) {
-    advHistoryGoto(null);
-  }
-}
-
-function renderAdvHistory() {
-  const host = document.querySelector('#advHistory');
-  if (!host) {
-    return;
-  }
-  const game = state.game;
-  const total = advHistoryLength();
-  const prev = document.querySelector('#advHistPrev');
-  const next = document.querySelector('#advHistNext');
-  const label = document.querySelector('#advHistLabel');
-  // Influence « nœud aléatoire » : la bande ‹ › navigue la ligne du livre tirée.
-  const infl = game?.influence?.lineSans ? game.influence : null;
-  if (infl) {
-    const len = infl.lineSans.length;
-    const cur = clamp(infl.lineIndex ?? len, 0, len);
-    document.body.classList.toggle('is-reviewing-history', cur < len);
-    host.classList.toggle('is-reviewing', true);
-    if (label) {
-      const san = cur > 0 ? infl.lineSans[cur - 1] : null;
-      const moveNo = Math.ceil(cur / 2);
-      const moveLabel = san
-        ? cur % 2 === 1
-          ? `${moveNo}. ${san}`
-          : `${moveNo}… ${san}`
-        : 'Départ';
-      label.textContent = `${moveLabel} · ${cur}/${len}`;
-    }
-    if (prev) prev.disabled = cur <= 0;
-    if (next) next.disabled = cur >= len;
-    return;
-  }
-  const reviewing = Boolean(game && game.historyView != null);
-  document.body.classList.toggle('is-reviewing-history', reviewing);
-  host.classList.toggle('is-reviewing', reviewing);
-
-  if (!game || total === 0) {
-    if (label) label.textContent = 'Aucun coup';
-    if (prev) prev.disabled = true;
-    if (next) next.disabled = true;
-    return;
-  }
-  const current = game.historyView ?? total;
-  if (label) {
-    label.textContent = `${formatHistoryMoveLabel(game, current)} · ${current}/${total}`;
-  }
-  if (prev) prev.disabled = current <= 0;
-  if (next) next.disabled = !reviewing; // déjà à la position en cours
 }
 
 function updateHomeProgress() {
@@ -4525,6 +3832,27 @@ function bindEvents() {
     ensureStockfishReady,
     startNewGame,
     resetTrapReachCache
+  });
+  initAdventureAnalyseView({
+    renderGameDetails,
+    advInfluenceViewedNode,
+    getExpectedWhiteBookEdges,
+    buildOpponentBookCandidates,
+    getOpponentBookEdgesForRun,
+    influenceArrowColors: INFLUENCE_ARROW_COLORS
+  });
+  initAdventureRevision({
+    advXpBookMove: ADV_XP_BOOK_MOVE,
+    setViewMode,
+    setAdvViewMode,
+    startNewGame,
+    setGameLocked,
+    renderAdventureHud,
+    renderGameDetails,
+    renderGamePanel,
+    flashAdvBoard,
+    tryMoveInput,
+    finishGame
   });
   initAdventureHistory({ getReviewParent }); // injection : parent d'un coup dans l'arbre de revue
   initAdventureProgressHud({
