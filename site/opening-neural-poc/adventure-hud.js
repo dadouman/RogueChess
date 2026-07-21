@@ -310,10 +310,18 @@ export function renderAdventureHud() {
   const message = document.querySelector('#advMessage');
   const expected = document.querySelector('#advExpected');
   const result = document.querySelector('#advResult');
+  const moveInputLabel = document.querySelector('#advMoveInputLabel');
   const moveInput = document.querySelector('#advMoveInput');
   const moveButton = document.querySelector('#advMoveButton');
 
   updateAdvMobileBar();
+  if (moveInputLabel) {
+    const playerColor = game?.mateResolution?.playerColor ?? 'w';
+    moveInputLabel.textContent =
+      game?.mateResolution?.active && playerColor === 'b'
+        ? 'Ton coup (Noirs)'
+        : 'Ton coup (Blancs)';
+  }
 
   if (starsEl) {
     starsEl.textContent = '';

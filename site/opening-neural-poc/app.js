@@ -483,8 +483,9 @@ function renderBoard(node, container = elements.boardPreview) {
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
   // L'échiquier qui affiche un mat porte la classe pour le flash de fin de partie.
   container.classList.toggle('is-checkmate-board', Boolean(matedSquare));
-  container.classList.toggle('is-mate-win', matedSide === 'b');
-  container.classList.toggle('is-mate-loss', matedSide === 'w');
+  const boardPlayerColor = humanPlayerColor();
+  container.classList.toggle('is-mate-win', Boolean(matedSide) && matedSide !== boardPlayerColor);
+  container.classList.toggle('is-mate-loss', Boolean(matedSide) && matedSide === boardPlayerColor);
 
   const squareOptions = {
     interactive,
@@ -502,21 +503,30 @@ function renderBoard(node, container = elements.boardPreview) {
     threatSquares,
     aids: advAids()
   };
+  const cells = [];
   rows.forEach((row, rankIndex) => {
     let fileIndex = 0;
     for (const char of row) {
       if (/\d/.test(char)) {
         const empty = Number(char);
         for (let index = 0; index < empty; index += 1) {
-          appendSquare(container, rankIndex, fileIndex, null, from, to, squareOptions);
+          cells.push({ rankIndex, fileIndex, piece: null });
           fileIndex += 1;
         }
       } else {
-        appendSquare(container, rankIndex, fileIndex, char, from, to, squareOptions);
+        cells.push({ rankIndex, fileIndex, piece: char });
         fileIndex += 1;
       }
     }
   });
+  const orientation =
+    container === elements.boardPreview && state.game?.mateResolution?.active
+      ? humanPlayerColor()
+      : 'w';
+  const ordered = orientation === 'b' ? cells.slice().reverse() : cells;
+  for (const c of ordered) {
+    appendSquare(container, c.rankIndex, c.fileIndex, c.piece, from, to, squareOptions);
+  }
 
   renderBoardArrows(container, openingArrows);
 
@@ -774,10 +784,19 @@ function getPlayableBoardColor() {
   if (isPostGameReviewPlayable() && reviewEntry) {
     return reviewEntry.afterFen.split(/\s+/)[1] ?? 'w';
   }
-  if (game.status === 'playing' && !game.locked && game.chess.turn() === 'w') {
-    return 'w';
+  const pc = humanPlayerColor();
+  if (game.status === 'playing' && !game.locked && game.chess.turn() === pc) {
+    return pc;
   }
   return null;
+}
+
+function humanPlayerColor() {
+  return state.game?.mateResolution?.active ? (state.game.mateResolution.playerColor ?? 'w') : 'w';
+}
+
+function opponentTurnColor() {
+  return humanPlayerColor() === 'w' ? 'b' : 'w';
 }
 
 function getLegalTargetsFromSquare(square) {
@@ -1868,8 +1887,9 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
     return;
   }
 
-  if (game.chess.turn() !== 'w') {
-    game.message = 'Attends la réponse noire.';
+  const pc = humanPlayerColor();
+  if (game.chess.turn() !== pc) {
+    game.message = 'Attends la réponse de l’adversaire.';
     renderGamePanel();
     return;
   }
@@ -2015,7 +2035,11 @@ async function submitFreeMove(input) {
   state.game.currentDepth = evaluation.depth;
 
   const deficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
-  if (!isExplorationMode() && evaluation.cpWhite < deficitLimitCp) {
+  if (
+    !isExplorationMode() &&
+    !state.game.mateResolution?.active &&
+    evaluation.cpWhite < deficitLimitCp
+  ) {
     recordFreeReviewMove({
       move,
       label: 'Survie blanche',
@@ -2041,18 +2065,22 @@ async function submitFreeMove(input) {
   // ne doit pas faire grimper la distance au mat de plus de 2 par rapport à l'attendu
   // (X-1). Sinon : échec de la position → réessai en perdant une vie (jusqu'à 3).
   if (isAdventureRun() && !state.game.chess.isCheckmate() && !state.game.chess.isDraw()) {
-    const newMate =
-      isMateScore(evaluation.cpWhite) && evaluation.cpWhite > 0
+    const pc = humanPlayerColor();
+    const playerMateScore =
+      isMateScore(evaluation.cpWhite) &&
+      ((pc === 'w' && evaluation.cpWhite > 0) || (pc === 'b' && evaluation.cpWhite < 0))
         ? mateMovesFromCp(evaluation.cpWhite)
         : null;
     if (Number.isFinite(state.game.mateExpected)) {
       const expectedAfter = Math.max(1, state.game.mateExpected - 1);
-      const blewIt = newMate === null || newMate > expectedAfter + advMateTolerance();
+      const blewIt =
+        playerMateScore === null || playerMateScore > expectedAfter + advMateTolerance();
       if (blewIt) {
         if ((state.game.finalMateLives || 0) > 0) {
           state.game.finalMateLives -= 1;
           revertLastPlayerMove();
-          const gotTxt = newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`;
+          const gotTxt =
+            playerMateScore === null ? 'le mat forcé s’échappe' : `mat en ${playerMateScore}`;
           if (state.game.finalMateLives > 0) {
             // Les vies restantes sont affichées par l'indicateur de cœurs.
             state.game.message = `❌ ${gotTxt} (attendu : mat en ${expectedAfter}). Réessaie !`;
@@ -2070,7 +2098,9 @@ async function submitFreeMove(input) {
           finishGame(
             'lost',
             `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
-              newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+              playerMateScore === null
+                ? 'Tu as perdu le mat forcé.'
+                : `Dernier essai : mat en ${playerMateScore}.`
             }`
           );
           return;
@@ -2078,21 +2108,25 @@ async function submitFreeMove(input) {
         if (state.game.mateResolution?.active && state.game.mateResolution.originalSnapshot) {
           finishMateResolution(state.game, {
             success: false,
-            message: `Fin critique : ${newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`}.`
+            message: `Fin critique: ${
+              playerMateScore === null ? 'le mat forcé s’échappe' : `mat en ${playerMateScore}`
+            }.`
           });
           return;
         }
         finishGame(
           'lost',
           `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
-            newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+            playerMateScore === null
+              ? 'Tu as perdu le mat forcé.'
+              : `Dernier essai : mat en ${playerMateScore}.`
           }`
         );
         return;
       }
-      state.game.mateExpected = newMate; // coup correct : on met à jour l'attente
-    } else if (newMate !== null) {
-      state.game.mateExpected = newMate; // entrée en phase mat (référence)
+      state.game.mateExpected = playerMateScore; // coup correct : on met à jour l'attente
+    } else if (playerMateScore !== null) {
+      state.game.mateExpected = playerMateScore; // entrée en phase mat (référence)
       if (!state.game.finalMateLives) {
         state.game.finalMateLives = 3; // 3 vies pour la conversion
       }
@@ -2150,7 +2184,7 @@ async function submitFreeMove(input) {
 
 async function advanceOpponentTurn() {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (!game || game.status !== 'playing' || game.chess.turn() !== opponentTurnColor()) {
     return;
   }
 
@@ -2198,7 +2232,7 @@ async function advanceOpponentTurn() {
 
 async function playStockfishBlackMove() {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (!game || game.status !== 'playing' || game.chess.turn() !== opponentTurnColor()) {
     return;
   }
 
@@ -2206,7 +2240,7 @@ async function playStockfishBlackMove() {
     ? { ...getStockfishLevelProfile(10), depth: 12, movetime: 800 }
     : getStockfishLevelProfile();
   const stockfishLabel = formatStockfishLevel(profile);
-  game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
+  game.message = `Stockfish ${stockfishLabel} calcule la réponse adverse...`;
   setEngineThinking(true);
   renderGamePanel();
   renderGameDetails();
@@ -2226,7 +2260,11 @@ async function playStockfishBlackMove() {
   // Complète le temps de calcul réel pour que la réponse arrive après la durée de réflexion.
   await pause(thinkTarget - (performance.now() - thinkStart));
   setEngineThinking(false);
-  if (state.game !== game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (
+    state.game !== game ||
+    game.status !== 'playing' ||
+    game.chess.turn() !== opponentTurnColor()
+  ) {
     return;
   }
 
@@ -2816,6 +2854,9 @@ function resetHighlight() {
 const ADV_XP_BOOK_MOVE = 4;
 function advTakeBack() {
   const game = state.game;
+  if (game?.mateResolution?.active) {
+    return;
+  }
   if (
     !game ||
     !advAids().takeback ||
@@ -2895,6 +2936,9 @@ function revertLastPlayerMove() {
 
 function advUndoDefeat() {
   const game = state.game;
+  if (game?.mateResolution?.active) {
+    return;
+  }
   if (!game || game.status === 'won') {
     return;
   }

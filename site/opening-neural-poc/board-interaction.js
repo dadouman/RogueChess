@@ -102,6 +102,7 @@ function isPremoveContext() {
     !game.revision && // pas de prémouvement pendant une révision scriptée
     game.historyView == null &&
     !getActiveFreeReviewEntry() &&
+    !game.mateResolution?.active &&
     game.chess.turn() === 'b'
   );
 }
