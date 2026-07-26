@@ -9,9 +9,13 @@ import { advSetText } from './dom.js';
 
 // Fin de partie (au temps), injectée par app.js (cf. initClocks).
 let finishGame = () => {};
+let humanPlayerColor = () => 'w';
+let opponentTurnColor = () => 'b';
 
 export function initClocks(deps) {
   finishGame = deps.finishGame ?? finishGame;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+  opponentTurnColor = deps.opponentTurnColor ?? opponentTurnColor;
 }
 
 export function makeInitialClock() {
@@ -44,15 +48,19 @@ function tickClock() {
     return;
   }
   const playerToMove =
-    game.chess.turn() === 'w' && !game.locked && !game.cinematic && game.historyView == null;
+    game.chess.turn() === humanPlayerColor() &&
+    !game.locked &&
+    !game.cinematic &&
+    game.historyView == null;
   if (playerToMove) {
     const now = performance.now();
     if (game.clock.lastTickTs != null) {
-      game.clock.w = Math.max(0, game.clock.w - (now - game.clock.lastTickTs));
+      const color = humanPlayerColor();
+      game.clock[color] = Math.max(0, game.clock[color] - (now - game.clock.lastTickTs));
     }
     game.clock.lastTickTs = now;
-    if (game.clock.w <= 0) {
-      game.clock.w = 0;
+    if (game.clock[humanPlayerColor()] <= 0) {
+      game.clock[humanPlayerColor()] = 0;
       renderClocks();
       finishGame('lost', '⏰ Temps écoulé : tu perds au temps.');
       return;
@@ -70,9 +78,10 @@ export function deductStockfishClock(game) {
     return false;
   }
   const tc = getTimeControlConfig(game.clock.control);
-  game.clock.b = Math.max(0, game.clock.b - sampleStockfishMoveTime(tc));
-  if (game.clock.b <= 0) {
-    game.clock.b = 0;
+  const opponentColor = opponentTurnColor();
+  game.clock[opponentColor] = Math.max(0, game.clock[opponentColor] - sampleStockfishMoveTime(tc));
+  if (game.clock[opponentColor] <= 0) {
+    game.clock[opponentColor] = 0;
     renderClocks();
     finishGame('won', '⏰ Stockfish tombe au temps — tu gagnes !');
     return true;

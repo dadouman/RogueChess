@@ -28,6 +28,8 @@ let renderGraph = () => {};
 let setGameLocked = () => {};
 let advanceOpponentTurn = async () => {};
 let tryMoveInput = () => null;
+let humanPlayerColor = () => 'w';
+let opponentTurnColor = () => 'b';
 
 export function initFreeReview(deps) {
   ensureStockfishReady = deps.ensureStockfishReady ?? ensureStockfishReady;
@@ -40,6 +42,8 @@ export function initFreeReview(deps) {
   setGameLocked = deps.setGameLocked ?? setGameLocked;
   advanceOpponentTurn = deps.advanceOpponentTurn ?? advanceOpponentTurn;
   tryMoveInput = deps.tryMoveInput ?? tryMoveInput;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+  opponentTurnColor = deps.opponentTurnColor ?? opponentTurnColor;
 }
 
 function createInitialReviewEntry(chess, evaluation) {
@@ -82,20 +86,23 @@ function buildReviewMoveAnalysis(entry) {
     return entry.analysis;
   }
 
-  const delta = entry.afterEvalCp - entry.beforeEvalCp;
+  const perspective = humanPlayerColor() === 'w' ? 1 : -1;
+  const delta = (entry.afterEvalCp - entry.beforeEvalCp) * perspective;
   const evalText = `Éval ${formatEval(entry.beforeEvalCp)} → ${formatEval(entry.afterEvalCp)} (${formatEvalDelta(delta)}).`;
+  const playerSide = humanPlayerColor() === 'w' ? 'blanc' : 'noir';
+  const opponentSide = humanPlayerColor() === 'w' ? 'noir' : 'blanc';
   let verdict;
   if (entry.phase === 'opening') {
     verdict =
-      entry.color === 'w'
-        ? "Coup du livre blanc: la partie reste dans l'arbre d'ouverture attendu."
+      entry.color === humanPlayerColor()
+        ? `Coup du livre ${playerSide}: la partie reste dans l'arbre d'ouverture attendu.`
         : "Réponse du livre adverse: l'adversaire suit encore une branche préparée.";
   } else if (entry.phase === 'engine-line') {
     verdict =
-      entry.color === 'w'
-        ? 'Suite Stockfish côté blanc: la ligne forcée montre pourquoi la position reste difficile à sauver.'
-        : 'Suite Stockfish côté noir: la punition se précise dans la variante calculée.';
-  } else if (entry.color === 'w') {
+      entry.color === humanPlayerColor()
+        ? `Suite Stockfish côté ${playerSide}: la ligne forcée montre pourquoi la position reste difficile à sauver.`
+        : `Suite Stockfish côté ${opponentSide}: la punition se précise dans la variante calculée.`;
+  } else if (entry.color === humanPlayerColor()) {
     if (delta >= 45) {
       verdict = 'Très bon coup libre: tu améliores nettement la position.';
     } else if (delta >= 12) {
@@ -105,20 +112,22 @@ function buildReviewMoveAnalysis(entry) {
     } else if (delta > -55) {
       verdict = 'Petite concession: la position baisse, mais reste encore jouable.';
     } else {
-      verdict = 'Coup coûteux: Stockfish voit une chute claire de la position blanche.';
+      verdict = `Coup coûteux: Stockfish voit une chute claire de la position ${playerSide}.`;
     }
   } else if (delta <= -45) {
-    verdict = 'Réponse noire forte: Stockfish creuse le déficit côté blanc.';
+    verdict = `Réponse ${opponentSide} forte: Stockfish creuse le déficit côté ${playerSide}.`;
   } else if (delta <= -12) {
-    verdict = 'Réponse noire utile: la pression augmente contre les Blancs.';
+    verdict = `Réponse ${opponentSide} utile: la pression augmente contre les ${playerSide === 'blanc' ? 'Blancs' : 'Noirs'}.`;
   } else if (delta < 15) {
-    verdict = 'Réponse noire neutre: l’équilibre d’évaluation bouge peu.';
+    verdict = `Réponse ${opponentSide} neutre: l’équilibre d’évaluation bouge peu.`;
   } else {
-    verdict = 'Stockfish relâche un peu: l’évaluation remonte pour les Blancs.';
+    verdict = `Stockfish relâche un peu: l’évaluation remonte pour les ${playerSide === 'blanc' ? 'Blancs' : 'Noirs'}.`;
   }
 
   const thresholdText =
-    entry.phase === 'free' && entry.color === 'w' && entry.afterEvalCp < state.survivalLimitCp
+    entry.phase === 'free' &&
+    entry.color === humanPlayerColor() &&
+    entry.afterEvalCp < state.survivalLimitCp
       ? ` Le coup passe sous le seuil ${formatEval(state.survivalLimitCp)}.`
       : '';
   const statusText =
@@ -275,11 +284,12 @@ function recordFreeReviewMove({
   // leur qualité. On exclut la suite de défaite (engine-line) et l'exploration
   // post-partie (analysis), qui ne sont pas des coups joués par l'humain.
   if (
-    move.color === 'w' &&
+    move.color === humanPlayerColor() &&
     Number.isFinite(evaluation.cpWhite) &&
     (phase === 'free' || phase === 'opening')
   ) {
-    advAwardPlayerXp(evaluation.cpWhite - beforeEvalCp);
+    const perspective = humanPlayerColor() === 'w' ? 1 : -1;
+    advAwardPlayerXp((evaluation.cpWhite - beforeEvalCp) * perspective);
   }
 
   ensureReviewTree(game);
@@ -522,7 +532,7 @@ async function launchPostGameFreeAnalysis() {
   renderGraph();
   renderGameDetails();
 
-  if (game.chess.turn() === 'b') {
+  if (game.chess.turn() === opponentTurnColor()) {
     setGameLocked(true);
     try {
       await advanceOpponentTurn();

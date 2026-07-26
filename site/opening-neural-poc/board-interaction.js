@@ -12,6 +12,8 @@ let submitHumanMove = () => {};
 let renderGameDetails = () => {};
 let isBoardInteractive = () => false;
 let getActiveFreeReviewEntry = () => null;
+let humanPlayerColor = () => 'w';
+let opponentTurnColor = () => 'b';
 
 export function initBoardInteraction(deps) {
   getInteractiveChess = deps.getInteractiveChess ?? getInteractiveChess;
@@ -22,6 +24,8 @@ export function initBoardInteraction(deps) {
   renderGameDetails = deps.renderGameDetails ?? renderGameDetails;
   isBoardInteractive = deps.isBoardInteractive ?? isBoardInteractive;
   getActiveFreeReviewEntry = deps.getActiveFreeReviewEntry ?? getActiveFreeReviewEntry;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+  opponentTurnColor = deps.opponentTurnColor ?? opponentTurnColor;
 }
 
 // Joue le coup from→to s'il est légal (auto-promotion en dame). Renvoie true si joué.
@@ -103,7 +107,7 @@ function isPremoveContext() {
     game.historyView == null &&
     !getActiveFreeReviewEntry() &&
     !game.mateResolution?.active &&
-    game.chess.turn() === 'b'
+    game.chess.turn() === opponentTurnColor()
   );
 }
 
@@ -128,7 +132,7 @@ function handlePremoveClick(squareName) {
   const piece = game.chess.get(squareName); // position courante (avant coup adverse)
   const sel = game.premoveSelect;
   if (!sel) {
-    if (piece && piece.color === 'w') {
+    if (piece && piece.color === humanPlayerColor()) {
       game.premoveSelect = squareName;
       game.premove = null;
       game.message = `⚡ Prémouvement : choisis la destination de ${squareName}.`;
@@ -143,7 +147,7 @@ function handlePremoveClick(squareName) {
     renderGameDetails();
     return;
   }
-  if (piece && piece.color === 'w') {
+  if (piece && piece.color === humanPlayerColor()) {
     // on change de pièce source
     game.premoveSelect = squareName;
     game.premove = null;
@@ -162,7 +166,12 @@ function handlePremoveClick(squareName) {
 // devenu illégal dans la nouvelle position.
 function tryExecutePremove() {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
+  if (
+    !game ||
+    game.status !== 'playing' ||
+    game.locked ||
+    game.chess.turn() !== humanPlayerColor()
+  ) {
     return;
   }
   const premove = game.premove;

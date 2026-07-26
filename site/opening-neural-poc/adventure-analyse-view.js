@@ -11,6 +11,8 @@ let advInfluenceViewedNode = () => null;
 let getExpectedWhiteBookEdges = () => [];
 let buildOpponentBookCandidates = () => [];
 let getOpponentBookEdgesForRun = () => [];
+let humanPlayerColor = () => 'w';
+let opponentTurnColor = () => 'b';
 let influenceArrowColors = [];
 
 export function initAdventureAnalyseView(deps = {}) {
@@ -19,6 +21,8 @@ export function initAdventureAnalyseView(deps = {}) {
   getExpectedWhiteBookEdges = deps.getExpectedWhiteBookEdges ?? getExpectedWhiteBookEdges;
   buildOpponentBookCandidates = deps.buildOpponentBookCandidates ?? buildOpponentBookCandidates;
   getOpponentBookEdgesForRun = deps.getOpponentBookEdgesForRun ?? getOpponentBookEdgesForRun;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+  opponentTurnColor = deps.opponentTurnColor ?? opponentTurnColor;
   influenceArrowColors = deps.influenceArrowColors ?? influenceArrowColors;
 }
 
@@ -184,7 +188,9 @@ export function renderAdvMovesStrip() {
     } else {
       const ph = document.createElement('span');
       ph.className = 'adv-moves-placeholder';
-      ph.textContent = '‹ › Navigue jusqu’à un choix des Noirs pour influencer';
+      ph.textContent = `‹ › Navigue jusqu’à un choix des ${
+        opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'
+      } pour influencer`;
       host.append(ph);
     }
     const done = document.createElement('button');
@@ -197,13 +203,15 @@ export function renderAdvMovesStrip() {
   }
   const reviewing = Boolean(game && game.historyView != null);
   const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
-  const playerColor = game?.mateResolution?.active ? (game.mateResolution.playerColor ?? 'w') : 'w';
-  const opponentColor = playerColor === 'w' ? 'b' : 'w';
+  const playerColor = game?.mateResolution?.active
+    ? (game.mateResolution.playerColor ?? 'w')
+    : humanPlayerColor();
+  const opponentColor = opponentTurnColor();
   const showChoices = advAids().moveChoices;
-  const whitePlayable =
-    inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
-  const whiteEdges = whitePlayable && showChoices ? getExpectedWhiteBookEdges() : [];
-  for (const edge of whiteEdges) {
+  const playerPlayable =
+    inPlay && game.chess.turn() === playerColor && !game.locked && game.phase === 'opening';
+  const playerEdges = playerPlayable && showChoices ? getExpectedWhiteBookEdges() : [];
+  for (const edge of playerEdges) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'adv-move-key';
@@ -216,9 +224,9 @@ export function renderAdvMovesStrip() {
   let ghosts = [];
   if (
     showChoices &&
-    !whiteEdges.length &&
+    !playerEdges.length &&
     inPlay &&
-    game.chess.turn() === 'b' &&
+    game.chess.turn() === opponentColor &&
     game.phase === 'opening'
   ) {
     ghosts = buildOpponentBookCandidates(getOpponentBookEdgesForRun());
@@ -241,7 +249,7 @@ export function renderAdvMovesStrip() {
     }
     host.append(btn);
   }
-  const hasContent = whiteEdges.length || ghosts.length;
+  const hasContent = playerEdges.length || ghosts.length;
   if (!hasContent) {
     const ph = document.createElement('span');
     ph.className = 'adv-moves-placeholder';

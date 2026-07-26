@@ -8,6 +8,11 @@ import { advScoreTimePoints } from './adventure-utils.js';
 
 const ADV_SCORE_MOVE_COUNT = 10; // leçon libre / piège
 const ADV_SCORE_ERROR_PENALTY = 50;
+let humanPlayerColor = () => 'w';
+
+export function initAdventureScoring(deps = {}) {
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+}
 
 function advScoreInit(run, target) {
   run.scoreTarget = target;
@@ -36,7 +41,7 @@ function advScoreArmTimer() {
   if (!run || run.scoreTarget == null || run.revisionMode || !game) {
     return;
   }
-  if (game.status !== 'playing' || game.locked || game.chess.turn() !== 'w') {
+  if (game.status !== 'playing' || game.locked || game.chess.turn() !== humanPlayerColor()) {
     return;
   }
   if (run.scoreMoveStart == null) {

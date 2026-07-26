@@ -26,7 +26,7 @@ export function createAdventureState() {
     bossStreaks: {}, // série de victoires en cours par boss (0-3), remise à 0 à la défaite
     highestBoss: 0,
     act2Announced: false,
-    movesPlayed: 0, // temps de jeu : coups BLANCS joués (toutes parties)
+    movesPlayed: 0, // temps de jeu : coups du joueur joués (toutes parties)
     playerXp: 0, // XP joueur pondérée par la qualité des coups → niveau joueur
     games: [], // historique des parties terminées (M) : résultat, adversaire, ouverture
     difficulty: DEFAULT_ADV_DIFFICULTY,

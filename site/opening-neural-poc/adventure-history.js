@@ -23,9 +23,11 @@ export function advFormatGameOpponent(g) {
 
 // Résolution du parent d'un coup dans l'arbre de revue, injectée par app.js.
 let getReviewParent = () => null;
+let humanPlayerColor = () => 'w';
 
 export function initAdventureHistory(deps) {
   getReviewParent = deps.getReviewParent ?? getReviewParent;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
 }
 
 // M — Signature de l'ouverture jouée : libellé PGN compact (« 1.e4 e5 2.Nf3 »)
@@ -42,10 +44,10 @@ function advOpeningSignature(game) {
   const sans = [];
   for (const entry of openingEntries) {
     sans.push(entry.san);
-    if (entry.color === 'w') {
+    if (entry.color === humanPlayerColor()) {
       moveNo += 1;
       whiteSans.push(entry.san);
-      label += `${label ? ' ' : ''}${moveNo}.${entry.san}`;
+      label += `${label ? ' ' : ''}${moveNo}${humanPlayerColor() === 'w' ? '.' : '...'}${entry.san}`;
     } else {
       label += ` ${entry.san}`;
     }
@@ -64,7 +66,7 @@ function buildGameReviewMoves(game) {
   const entries = (game?.freeReviewMoves || []).filter((e) => e.phase && e.phase !== 'start');
   return entries.slice(0, ADV_MAX_REVIEW_MOVES).map((entry) => {
     const best =
-      entry.color === 'w' && (entry.phase === 'free' || entry.phase === 'opening')
+      entry.color === humanPlayerColor() && (entry.phase === 'free' || entry.phase === 'opening')
         ? String(getReviewParent(entry)?.pv || '')
             .trim()
             .split(/\s+/)[0] || ''

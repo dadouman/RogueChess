@@ -22,6 +22,7 @@ let renderGamePanel = () => {};
 let flashAdvBoard = () => {};
 let tryMoveInput = () => null;
 let finishGame = () => {};
+let humanPlayerColor = () => 'w';
 
 export function initAdventureRevision(deps = {}) {
   advXpBookMove = deps.advXpBookMove ?? advXpBookMove;
@@ -35,11 +36,13 @@ export function initAdventureRevision(deps = {}) {
   flashAdvBoard = deps.flashAdvBoard ?? flashAdvBoard;
   tryMoveInput = deps.tryMoveInput ?? tryMoveInput;
   finishGame = deps.finishGame ?? finishGame;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
 }
 
 export function advBuildQuizSteps() {
   const lineSans = [];
   const lineUcis = [];
+  const lineColors = [];
   let nodeId = 'root';
   const visited = new Set();
   for (let i = 0; i < 16; i += 1) {
@@ -54,13 +57,16 @@ export function advBuildQuizSteps() {
     if (!edge) break;
     lineSans.push(edge.san);
     lineUcis.push(edge.uci);
+    lineColors.push(edge.color);
     nodeId = edge.to;
   }
-  const whiteIdx = [];
-  for (let idx = 2; idx < lineSans.length; idx += 2) {
-    whiteIdx.push(idx);
+  const playerIdx = [];
+  for (let idx = 0; idx < lineSans.length; idx += 1) {
+    if (lineColors[idx] === humanPlayerColor() && (humanPlayerColor() === 'b' || idx >= 2)) {
+      playerIdx.push(idx);
+    }
   }
-  const chosen = advShuffle(whiteIdx)
+  const chosen = advShuffle(playerIdx)
     .slice(0, 3)
     .sort((a, b) => a - b);
   const steps = [];
@@ -89,6 +95,9 @@ export function advBuildMateSteps() {
   const sans = game.moves
     .map((move) => move.san || move.move?.san)
     .filter((san) => typeof san === 'string');
+  const colors = game.moves
+    .map((move) => move.color || move.move?.color)
+    .filter((color) => typeof color === 'string');
   let chess;
   try {
     chess = new Chess();
@@ -111,7 +120,7 @@ export function advBuildMateSteps() {
   const count = Math.min(playedSans.length, ucis.length);
   const steps = [];
   for (let idx = count - 1; idx >= 0 && steps.length < 2; idx -= 1) {
-    if (idx % 2 !== 0) continue;
+    if (colors[idx] !== humanPlayerColor()) continue;
     const options = advQuizOptions(playedSans.slice(0, idx), ucis[idx]);
     if (options.length >= 2) {
       steps.unshift({
@@ -216,8 +225,8 @@ export function advRevisionPlayStep() {
       clearInterval(timer);
       game.revision.phase = 'question';
       game.message = game.revision.keysRevealed
-        ? 'Quel est le bon coup des Blancs ? Réponds avec les touches du bas.'
-        : 'Joue le bon coup des Blancs directement sur l’échiquier.';
+        ? `Quel est le bon coup des ${humanPlayerColor() === 'w' ? 'Blancs' : 'Noirs'} ? Réponds avec les touches du bas.`
+        : `Joue le bon coup des ${humanPlayerColor() === 'w' ? 'Blancs' : 'Noirs'} directement sur l’échiquier.`;
       run.scoreMoveStart = Date.now();
       run.scoreMoveErrors = 0;
       setGameLocked(false);
