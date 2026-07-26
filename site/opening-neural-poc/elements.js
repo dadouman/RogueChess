@@ -34,6 +34,7 @@ export const elements = {
   moveInput: document.querySelector('#moveInput'),
   playMoveButton: document.querySelector('#playMoveButton'),
   gameMessage: document.querySelector('#gameMessage'),
+  advMoveInputLabel: document.querySelector('#advMoveInputLabel'),
   expectedMoveList: document.querySelector('#expectedMoveList'),
   opponentGraphMini: document.querySelector('#opponentGraphMini'),
   moveLogList: document.querySelector('#moveLogList'),

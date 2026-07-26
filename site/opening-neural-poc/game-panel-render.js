@@ -76,18 +76,24 @@ export function renderGameDetails() {
         : 'Niveau réussi'
       : game.status === 'lost'
         ? 'Partie perdue'
-        : game.chess.turn() === 'w'
-          ? 'Aux Blancs'
-          : 'Réponse noire';
+        : game.mateResolution?.active
+          ? game.chess.turn() === game.mateResolution.playerColor
+            ? 'À toi de mater'
+            : 'Stockfish défend'
+          : game.chess.turn() === 'w'
+            ? 'Aux Blancs'
+            : 'Réponse noire';
   elements.nodeSubtitle.textContent = reviewEntry
     ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
-    : game.phase === 'opening'
-      ? "Reste dans les coups d'ouverture attendus."
-      : isExplorationMode()
-        ? 'Exploration libre: teste la position contre Stockfish.'
-        : isMateObjective(game)
-          ? `Objectif final: mater sans passer sous ${formatEval(state.survivalLimitCp)}.`
-          : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
+    : game.mateResolution?.active
+      ? game.message
+      : game.phase === 'opening'
+        ? "Reste dans les coups d'ouverture attendus."
+        : isExplorationMode()
+          ? 'Exploration libre: teste la position contre Stockfish.'
+          : isMateObjective(game)
+            ? `Objectif final: mater sans passer sous ${formatEval(state.survivalLimitCp)}.`
+            : `Survie Stockfish: ${game.freeRemaining}/${game.objective.target} coups complets restants.`;
   elements.nodeEval.textContent = reviewEntry
     ? formatEval(reviewEntry.afterEvalCp)
     : formatEval(game.currentEvalCp);
@@ -239,10 +245,11 @@ function renderExpectedMoveList() {
     return;
   }
 
-  if (game.chess.turn() !== 'w') {
+  const playerColorForPanel = game.mateResolution?.active ? game.mateResolution.playerColor : 'w';
+  if (game.chess.turn() !== playerColorForPanel) {
     const pill = document.createElement('span');
     pill.className = 'expected-pill is-muted';
-    pill.textContent = 'Réponse noire';
+    pill.textContent = game.mateResolution?.active ? 'Défense de Stockfish' : 'Réponse noire';
     elements.expectedMoveList.append(pill);
     return;
   }

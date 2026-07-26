@@ -197,6 +197,8 @@ export function renderAdvMovesStrip() {
   }
   const reviewing = Boolean(game && game.historyView != null);
   const inPlay = Boolean(game && game.status === 'playing' && !reviewing);
+  const playerColor = game?.mateResolution?.active ? (game.mateResolution.playerColor ?? 'w') : 'w';
+  const opponentColor = playerColor === 'w' ? 'b' : 'w';
   const showChoices = advAids().moveChoices;
   const whitePlayable =
     inPlay && game.chess.turn() === 'w' && !game.locked && game.phase === 'opening';
@@ -244,12 +246,15 @@ export function renderAdvMovesStrip() {
     const ph = document.createElement('span');
     ph.className = 'adv-moves-placeholder';
     const yourTurnNoAid =
-      !showChoices && game?.status === 'playing' && game.chess.turn() === 'w' && !game.locked;
+      !showChoices &&
+      game?.status === 'playing' &&
+      game.chess.turn() === playerColor &&
+      !game.locked;
     ph.textContent = yourTurnNoAid
       ? 'À toi de jouer sur l’échiquier'
       : game?.victoryCinematic
         ? 'Conversion automatique en cours…'
-        : game?.status === 'playing' && game.chess.turn() === 'b'
+        : game?.status === 'playing' && game.chess.turn() === opponentColor
           ? 'Au tour de Stockfish…'
           : game?.status === 'playing' && game.phase !== 'opening'
             ? 'Hors du livre : joue ton coup sur l’échiquier'

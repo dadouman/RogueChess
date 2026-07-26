@@ -1,6 +1,6 @@
 import { Chess } from './vendor/chess.js';
 import { state } from './state.js';
-import { playUciOnChess, isMateScore, mateMovesFromCp, mirrorFen } from './chess-utils.js';
+import { playUciOnChess, isMateScore, mateMovesFromCp } from './chess-utils.js';
 import { formatEval } from './eval-commentary.js';
 import { advMateHandover, advMateTolerance } from './adventure-settings.js';
 import { advRefreshRecordedMoves } from './adventure-history.js';
@@ -140,7 +140,7 @@ function cloneMateResolutionData(value) {
     : JSON.parse(JSON.stringify(value));
 }
 
-function captureMateResolutionSnapshot(game) {
+export function captureMateResolutionSnapshot(game) {
   return {
     chess: game.chess,
     currentNodeId: game.currentNodeId,
@@ -234,27 +234,33 @@ export function beginMateResolution(
   clearGameCinematic();
   game.defeatCinematicPending = false;
   game.skipDefeatCinematic = false;
+  const playerColor = new Chess(handoverFen).turn();
   game.mateResolution = {
     active: true,
     expectedX,
     originalSnapshot,
     handoverFen,
-    handoverEvaluation: cloneMateResolutionData(handoverEvaluation)
+    handoverEvaluation: cloneMateResolutionData(handoverEvaluation),
+    playerColor
   };
   game.mateResolved = false;
   game.mateResolutionFailed = false;
   game.status = 'playing';
   game.phase = 'free';
   game.locked = false;
-  game.chess = new Chess(mirrorFen(handoverFen));
+  game.chess = new Chess(handoverFen);
   game.currentEvalCp = Number.isFinite(handoverEvaluation?.cpWhite)
-    ? -handoverEvaluation.cpWhite
+    ? handoverEvaluation.cpWhite
     : game.currentEvalCp;
   game.currentPv = '';
   game.currentDepth = 0;
   game.finalMateLives = 3;
-  game.mateExpected = expectedX;
-  game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
+  if (Number.isFinite(expectedX)) {
+    game.mateExpected = expectedX;
+    game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
+  } else {
+    game.message = "À toi de conclure côté Noir : porte l'estocade ! Stockfish défend.";
+  }
   setEngineThinking(false);
   document.body.classList.remove('is-game-lost', 'is-game-over');
   renderGameDetails();

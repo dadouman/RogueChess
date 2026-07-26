@@ -59,7 +59,9 @@ function renderBossDefeatResult(el, game, run) {
     el.hidden = false;
     heading.textContent = 'Résolution du mat…';
     const note = document.createElement('p');
-    note.textContent = `À toi de mater en ${game.mateResolution.expectedX}+${advMateTolerance()} — Stockfish défend.`;
+    note.textContent = Number.isFinite(game.mateResolution.expectedX)
+      ? `À toi de mater en ${game.mateResolution.expectedX}+${advMateTolerance()} — Stockfish défend.`
+      : 'À toi de conclure côté Noir : porte l’estocade ! Stockfish défend.';
     el.append(heading, note, actions);
     return;
   }
@@ -310,10 +312,18 @@ export function renderAdventureHud() {
   const message = document.querySelector('#advMessage');
   const expected = document.querySelector('#advExpected');
   const result = document.querySelector('#advResult');
+  const moveInputLabel = document.querySelector('#advMoveInputLabel');
   const moveInput = document.querySelector('#advMoveInput');
   const moveButton = document.querySelector('#advMoveButton');
 
   updateAdvMobileBar();
+  if (moveInputLabel) {
+    const playerColor = game?.mateResolution?.playerColor ?? 'w';
+    moveInputLabel.textContent =
+      game?.mateResolution?.active && playerColor === 'b'
+        ? 'Ton coup (Noirs)'
+        : 'Ton coup (Blancs)';
+  }
 
   if (starsEl) {
     starsEl.textContent = '';

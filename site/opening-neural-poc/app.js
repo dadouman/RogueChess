@@ -189,6 +189,7 @@ import {
 import {
   VICTORY_CINEMATIC_DEPTH,
   beginMateResolution,
+  captureMateResolutionSnapshot,
   finishMateResolution,
   startDeficitCinematic,
   initMateResolution
@@ -483,8 +484,9 @@ function renderBoard(node, container = elements.boardPreview) {
   container.classList.toggle('has-opening-arrows', openingArrows.length > 0);
   // L'échiquier qui affiche un mat porte la classe pour le flash de fin de partie.
   container.classList.toggle('is-checkmate-board', Boolean(matedSquare));
-  container.classList.toggle('is-mate-win', matedSide === 'b');
-  container.classList.toggle('is-mate-loss', matedSide === 'w');
+  const boardPlayerColor = humanPlayerColor();
+  container.classList.toggle('is-mate-win', Boolean(matedSide) && matedSide !== boardPlayerColor);
+  container.classList.toggle('is-mate-loss', Boolean(matedSide) && matedSide === boardPlayerColor);
 
   const squareOptions = {
     interactive,
@@ -502,21 +504,30 @@ function renderBoard(node, container = elements.boardPreview) {
     threatSquares,
     aids: advAids()
   };
+  const cells = [];
   rows.forEach((row, rankIndex) => {
     let fileIndex = 0;
     for (const char of row) {
       if (/\d/.test(char)) {
         const empty = Number(char);
         for (let index = 0; index < empty; index += 1) {
-          appendSquare(container, rankIndex, fileIndex, null, from, to, squareOptions);
+          cells.push({ rankIndex, fileIndex, piece: null });
           fileIndex += 1;
         }
       } else {
-        appendSquare(container, rankIndex, fileIndex, char, from, to, squareOptions);
+        cells.push({ rankIndex, fileIndex, piece: char });
         fileIndex += 1;
       }
     }
   });
+  const orientation =
+    container === elements.boardPreview && state.game?.mateResolution?.active
+      ? humanPlayerColor()
+      : 'w';
+  const ordered = orientation === 'b' ? cells.slice().reverse() : cells;
+  for (const c of ordered) {
+    appendSquare(container, c.rankIndex, c.fileIndex, c.piece, from, to, squareOptions);
+  }
 
   renderBoardArrows(container, openingArrows);
 
@@ -774,10 +785,19 @@ function getPlayableBoardColor() {
   if (isPostGameReviewPlayable() && reviewEntry) {
     return reviewEntry.afterFen.split(/\s+/)[1] ?? 'w';
   }
-  if (game.status === 'playing' && !game.locked && game.chess.turn() === 'w') {
-    return 'w';
+  const pc = humanPlayerColor();
+  if (game.status === 'playing' && !game.locked && game.chess.turn() === pc) {
+    return pc;
   }
   return null;
+}
+
+function humanPlayerColor() {
+  return state.game?.mateResolution?.active ? (state.game.mateResolution.playerColor ?? 'w') : 'w';
+}
+
+function opponentTurnColor() {
+  return humanPlayerColor() === 'w' ? 'b' : 'w';
 }
 
 function getLegalTargetsFromSquare(square) {
@@ -1825,6 +1845,13 @@ function finishSurvivalLevel() {
 // Nulle (le plus souvent un pat) : aucun camp n'est maté. L'objectif est de mater,
 // donc une nulle n'est PAS une victoire — on termine en demandant de refaire la partie.
 function finishGameByStalemate(chess) {
+  if (state.game?.mateResolution?.active) {
+    finishMateResolution(state.game, {
+      success: false,
+      message: `${drawKindLabel(chess)} : aucun camp n'est maté. La résolution du mat échoue.`
+    });
+    return;
+  }
   finishGame(
     'lost',
     `${drawKindLabel(chess)} : aucun camp n'est maté. Tu n'as pas réussi le mat, il faut refaire la partie.`
@@ -1834,6 +1861,13 @@ function finishGameByStalemate(chess) {
 function finishTerminalPosition(message = 'La partie est terminée.') {
   const game = state.game;
   if (!game) {
+    return;
+  }
+  if (game.mateResolution?.active) {
+    finishMateResolution(game, {
+      success: false,
+      message: `Stockfish a terminé la résolution : ${message}`
+    });
     return;
   }
   if (game.chess.isCheckmate()) {
@@ -1868,8 +1902,9 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
     return;
   }
 
-  if (game.chess.turn() !== 'w') {
-    game.message = 'Attends la réponse noire.';
+  const pc = humanPlayerColor();
+  if (game.chess.turn() !== pc) {
+    game.message = 'Attends la réponse de l’adversaire.';
     renderGamePanel();
     return;
   }
@@ -2015,7 +2050,11 @@ async function submitFreeMove(input) {
   state.game.currentDepth = evaluation.depth;
 
   const deficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
-  if (!isExplorationMode() && evaluation.cpWhite < deficitLimitCp) {
+  if (
+    !isExplorationMode() &&
+    !state.game.mateResolution?.active &&
+    evaluation.cpWhite < deficitLimitCp
+  ) {
     recordFreeReviewMove({
       move,
       label: 'Survie blanche',
@@ -2041,18 +2080,22 @@ async function submitFreeMove(input) {
   // ne doit pas faire grimper la distance au mat de plus de 2 par rapport à l'attendu
   // (X-1). Sinon : échec de la position → réessai en perdant une vie (jusqu'à 3).
   if (isAdventureRun() && !state.game.chess.isCheckmate() && !state.game.chess.isDraw()) {
-    const newMate =
-      isMateScore(evaluation.cpWhite) && evaluation.cpWhite > 0
+    const pc = humanPlayerColor();
+    const playerMateScore =
+      isMateScore(evaluation.cpWhite) &&
+      ((pc === 'w' && evaluation.cpWhite > 0) || (pc === 'b' && evaluation.cpWhite < 0))
         ? mateMovesFromCp(evaluation.cpWhite)
         : null;
     if (Number.isFinite(state.game.mateExpected)) {
       const expectedAfter = Math.max(1, state.game.mateExpected - 1);
-      const blewIt = newMate === null || newMate > expectedAfter + advMateTolerance();
+      const blewIt =
+        playerMateScore === null || playerMateScore > expectedAfter + advMateTolerance();
       if (blewIt) {
         if ((state.game.finalMateLives || 0) > 0) {
           state.game.finalMateLives -= 1;
           revertLastPlayerMove();
-          const gotTxt = newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`;
+          const gotTxt =
+            playerMateScore === null ? 'le mat forcé s’échappe' : `mat en ${playerMateScore}`;
           if (state.game.finalMateLives > 0) {
             // Les vies restantes sont affichées par l'indicateur de cœurs.
             state.game.message = `❌ ${gotTxt} (attendu : mat en ${expectedAfter}). Réessaie !`;
@@ -2070,7 +2113,9 @@ async function submitFreeMove(input) {
           finishGame(
             'lost',
             `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
-              newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+              playerMateScore === null
+                ? 'Tu as perdu le mat forcé.'
+                : `Dernier essai : mat en ${playerMateScore}.`
             }`
           );
           return;
@@ -2078,21 +2123,25 @@ async function submitFreeMove(input) {
         if (state.game.mateResolution?.active && state.game.mateResolution.originalSnapshot) {
           finishMateResolution(state.game, {
             success: false,
-            message: `Fin critique : ${newMate === null ? 'le mat forcé s’échappe' : `mat en ${newMate}`}.`
+            message: `Fin critique: ${
+              playerMateScore === null ? 'le mat forcé s’échappe' : `mat en ${playerMateScore}`
+            }.`
           });
           return;
         }
         finishGame(
           'lost',
           `Conversion du mat ratée : le mat s'éloignait trop (plus de vies). ${
-            newMate === null ? 'Tu as perdu le mat forcé.' : `Dernier essai : mat en ${newMate}.`
+            playerMateScore === null
+              ? 'Tu as perdu le mat forcé.'
+              : `Dernier essai : mat en ${playerMateScore}.`
           }`
         );
         return;
       }
-      state.game.mateExpected = newMate; // coup correct : on met à jour l'attente
-    } else if (newMate !== null) {
-      state.game.mateExpected = newMate; // entrée en phase mat (référence)
+      state.game.mateExpected = playerMateScore; // coup correct : on met à jour l'attente
+    } else if (playerMateScore !== null) {
+      state.game.mateExpected = playerMateScore; // entrée en phase mat (référence)
       if (!state.game.finalMateLives) {
         state.game.finalMateLives = 3; // 3 vies pour la conversion
       }
@@ -2150,7 +2199,7 @@ async function submitFreeMove(input) {
 
 async function advanceOpponentTurn() {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (!game || game.status !== 'playing' || game.chess.turn() !== opponentTurnColor()) {
     return;
   }
 
@@ -2198,7 +2247,7 @@ async function advanceOpponentTurn() {
 
 async function playStockfishBlackMove() {
   const game = state.game;
-  if (!game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (!game || game.status !== 'playing' || game.chess.turn() !== opponentTurnColor()) {
     return;
   }
 
@@ -2206,7 +2255,7 @@ async function playStockfishBlackMove() {
     ? { ...getStockfishLevelProfile(10), depth: 12, movetime: 800 }
     : getStockfishLevelProfile();
   const stockfishLabel = formatStockfishLevel(profile);
-  game.message = `Stockfish ${stockfishLabel} calcule la réponse noire...`;
+  game.message = `Stockfish ${stockfishLabel} calcule la réponse adverse...`;
   setEngineThinking(true);
   renderGamePanel();
   renderGameDetails();
@@ -2226,12 +2275,23 @@ async function playStockfishBlackMove() {
   // Complète le temps de calcul réel pour que la réponse arrive après la durée de réflexion.
   await pause(thinkTarget - (performance.now() - thinkStart));
   setEngineThinking(false);
-  if (state.game !== game || game.status !== 'playing' || game.chess.turn() !== 'b') {
+  if (
+    state.game !== game ||
+    game.status !== 'playing' ||
+    game.chess.turn() !== opponentTurnColor()
+  ) {
     return;
   }
 
   const move = playUciOnChess(game.chess, moveSearch.bestMove);
   if (!move) {
+    if (game.mateResolution?.active) {
+      finishMateResolution(game, {
+        success: false,
+        message: 'Stockfish ne trouve aucun coup légal.'
+      });
+      return;
+    }
     finishGame('won', 'Stockfish ne trouve aucun coup légal.');
     return;
   }
@@ -2257,6 +2317,13 @@ async function playStockfishBlackMove() {
   game.freeRoundPending = false;
 
   if (!isExplorationMode() && game.chess.isCheckmate()) {
+    if (game.mateResolution?.active) {
+      finishMateResolution(game, {
+        success: false,
+        message: 'Échec et mat subi : Stockfish a remporté la défense.'
+      });
+      return;
+    }
     finishGame('lost', 'Échec et mat: la survie s’arrête ici.', game.chess.fen(), afterEvaluation);
     return;
   }
@@ -2357,10 +2424,16 @@ function finishGame(result, message, failureFen = null, failureEvaluation = null
     game.freeReview.active = !startsCinematic;
   }
   if (startsCinematic) {
-    // K+B : la suite de défaite est déroulée jusqu'au mat réel (ou au plafond),
-    // enregistrée dans l'historique puis animée. Asynchrone car la prolongation
-    // peut interroger Stockfish.
-    startDeficitCinematic(failureFen, failureEvaluation, game.defeatComment);
+    const wantsDefeatConversion =
+      state.advRun?.kind === 'boss' && !state.advRun?.tournament && advInfluenceEnabled();
+    if (wantsDefeatConversion) {
+      runDefeatConversion(failureFen, failureEvaluation);
+    } else {
+      // K+B : la suite de défaite est déroulée jusqu'au mat réel (ou au plafond),
+      // enregistrée dans l'historique puis animée. Asynchrone car la prolongation
+      // peut interroger Stockfish.
+      startDeficitCinematic(failureFen, failureEvaluation, game.defeatComment);
+    }
   }
   if (state.screen === 'adventure') {
     adventureOnGameFinished(result);
@@ -2426,11 +2499,13 @@ async function runVictoryConversion() {
   renderGamePanel();
   renderGameDetails();
 
-  const evaluator = await ensureStockfishReady(false);
-  const profile = getStockfishLevelProfile();
+  let evaluator;
+  let profile;
   let mateFound = null;
 
   try {
+    evaluator = await ensureStockfishReady(false);
+    profile = getStockfishLevelProfile();
     for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply++) {
       if (state.game !== game || game.status !== 'playing') {
         return; // partie changée ou terminée ailleurs
@@ -2584,6 +2659,199 @@ async function runVictoryConversion() {
         }
       }
     }
+  }
+}
+
+async function runDefeatConversion(fen, evaluation) {
+  const game = state.game;
+  if (!game) {
+    return;
+  }
+  const originalSnapshot = captureMateResolutionSnapshot(game);
+  const cinematic = {
+    active: true,
+    defeatConversion: true,
+    chess: new Chess(fen),
+    lastMove: null
+  };
+  game.cinematic = cinematic;
+  game.locked = true;
+  game.defeatCinematicPending = true;
+  game.currentEvalCp = evaluation.cpWhite;
+  game.message = 'Défaite convertie : Stockfish prépare la position gagnante…';
+  renderGamePanel();
+  renderGameDetails();
+
+  let evaluator;
+  let profile;
+  let mateFound = null;
+  let terminal = false;
+  const canContinue = () =>
+    state.game === game &&
+    (game.status === 'lost' || game.status === 'playing') &&
+    game.cinematic?.defeatConversion;
+
+  const cloneData = (value) =>
+    value == null
+      ? value
+      : globalThis.structuredClone
+        ? globalThis.structuredClone(value)
+        : JSON.parse(JSON.stringify(value));
+
+  const handover = () => {
+    if (!canContinue() || terminal) {
+      return;
+    }
+    if (cinematic.chess.turn() !== 'b') {
+      return;
+    }
+    originalSnapshot.freeReviewMoves = cloneData(game.freeReviewMoves);
+    originalSnapshot.freeReview = cloneData(game.freeReview);
+    originalSnapshot.moveLog = cloneData(game.moveLog);
+    clearGameCinematic();
+    game.defeatCinematicPending = false;
+    beginMateResolution(
+      game,
+      cinematic.chess.fen(),
+      mateFound,
+      mateFound ? mateMovesFromCp(mateFound.cpWhite) : null,
+      originalSnapshot
+    );
+  };
+
+  try {
+    evaluator = await ensureStockfishReady(false);
+    profile = getStockfishLevelProfile();
+    for (let ply = 0; ply < VICTORY_CINEMATIC_MAX_PLIES; ply += 1) {
+      if (!canContinue()) {
+        return;
+      }
+
+      const skipAnimation = game.skipDefeatCinematic;
+      if (cinematic.chess.turn() === 'b') {
+        const evalNow = await evaluator.evaluate(cinematic.chess.fen(), VICTORY_CINEMATIC_DEPTH);
+        if (!canContinue()) {
+          return;
+        }
+        game.currentEvalCp = evalNow.cpWhite;
+        game.currentPv = evalNow.pv;
+        game.currentDepth = evalNow.depth;
+        if (
+          isMateScore(evalNow.cpWhite) &&
+          evalNow.cpWhite < 0 &&
+          mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()
+        ) {
+          mateFound = evalNow;
+          break;
+        }
+        if (evalNow.cpWhite > -VICTORY_CINEMATIC_KEEP_CP || !evalNow.bestMove) {
+          break;
+        }
+        const beforeFen = cinematic.chess.fen();
+        const move = playUciOnChess(cinematic.chess, evalNow.bestMove);
+        if (!move) {
+          break;
+        }
+        cinematic.lastMove = move;
+        recordAutoMove(move, 'Conversion auto noire', beforeFen, evalNow.cpWhite, evalNow.cpWhite);
+        game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
+        renderGamePanel();
+        renderGameDetails();
+        if (cinematic.chess.isCheckmate() || cinematic.chess.isDraw()) {
+          terminal = true;
+          break;
+        }
+        if (!skipAnimation) {
+          await pause(VICTORY_CINEMATIC_STEP_MS);
+        }
+      } else {
+        const beforeFen = cinematic.chess.fen();
+        const beforeEvalCp = game.currentEvalCp;
+        const stockfishLabel = formatStockfishLevel(profile);
+        game.message = `Stockfish ${stockfishLabel} cherche la défense blanche…`;
+        setEngineThinking(true);
+        renderGamePanel();
+        renderGameDetails();
+        const thinkStart = performance.now();
+        const thinkTarget = randomThinkMs(900, 2600);
+        const search = await evaluator.pickMove(cinematic.chess.fen(), profile);
+        if (!canContinue()) {
+          setEngineThinking(false);
+          return;
+        }
+        if (!search.bestMove) {
+          setEngineThinking(false);
+          terminal = true;
+          break;
+        }
+        if (!skipAnimation) {
+          await pause(thinkTarget - (performance.now() - thinkStart));
+        }
+        setEngineThinking(false);
+        if (!canContinue()) {
+          return;
+        }
+        const move = playUciOnChess(cinematic.chess, search.bestMove);
+        if (!move) {
+          terminal = true;
+          break;
+        }
+        cinematic.lastMove = move;
+        const afterEvaluation = await evaluator.evaluate(
+          cinematic.chess.fen(),
+          VICTORY_CINEMATIC_DEPTH
+        );
+        if (!canContinue()) {
+          return;
+        }
+        game.currentEvalCp = afterEvaluation.cpWhite;
+        game.currentPv = afterEvaluation.pv;
+        game.currentDepth = afterEvaluation.depth;
+        recordAutoMove(
+          move,
+          `Stockfish ${stockfishLabel}`,
+          beforeFen,
+          beforeEvalCp,
+          afterEvaluation.cpWhite
+        );
+        renderGamePanel();
+        renderGameDetails();
+        if (cinematic.chess.isCheckmate() || cinematic.chess.isDraw()) {
+          terminal = true;
+          break;
+        }
+      }
+    }
+
+    setEngineThinking(false);
+    if (state.game !== game) {
+      return;
+    }
+    if (terminal || cinematic.chess.turn() !== 'b') {
+      clearGameCinematic();
+      game.defeatCinematicPending = false;
+      game.status = 'lost';
+      game.locked = false;
+      renderGameDetails();
+      renderGamePanel();
+      return;
+    }
+    handover();
+  } catch {
+    setEngineThinking(false);
+    if (state.game !== game) {
+      return;
+    }
+    if (cinematic.chess.turn() === 'b' && !cinematic.chess.isGameOver()) {
+      handover();
+      return;
+    }
+    clearGameCinematic();
+    game.defeatCinematicPending = false;
+    game.status = 'lost';
+    game.locked = false;
+    renderGameDetails();
+    renderGamePanel();
   }
 }
 
@@ -2816,6 +3084,9 @@ function resetHighlight() {
 const ADV_XP_BOOK_MOVE = 4;
 function advTakeBack() {
   const game = state.game;
+  if (game?.mateResolution?.active) {
+    return;
+  }
   if (
     !game ||
     !advAids().takeback ||
@@ -2895,6 +3166,9 @@ function revertLastPlayerMove() {
 
 function advUndoDefeat() {
   const game = state.game;
+  if (game?.mateResolution?.active) {
+    return;
+  }
   if (!game || game.status === 'won') {
     return;
   }
@@ -3553,6 +3827,10 @@ function advSkipDefeatCinematic() {
   }
   const cin = game.cinematic;
   if (!cin) {
+    game.skipDefeatCinematic = true;
+    return;
+  }
+  if (cin.defeatConversion) {
     game.skipDefeatCinematic = true;
     return;
   }
