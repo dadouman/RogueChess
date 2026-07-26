@@ -140,7 +140,7 @@ function cloneMateResolutionData(value) {
     : JSON.parse(JSON.stringify(value));
 }
 
-function captureMateResolutionSnapshot(game) {
+export function captureMateResolutionSnapshot(game) {
   return {
     chess: game.chess,
     currentNodeId: game.currentNodeId,
@@ -255,8 +255,12 @@ export function beginMateResolution(
   game.currentPv = '';
   game.currentDepth = 0;
   game.finalMateLives = 3;
-  game.mateExpected = expectedX;
-  game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
+  if (Number.isFinite(expectedX)) {
+    game.mateExpected = expectedX;
+    game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
+  } else {
+    game.message = "À toi de conclure côté Noir : porte l'estocade ! Stockfish défend.";
+  }
   setEngineThinking(false);
   document.body.classList.remove('is-game-lost', 'is-game-over');
   renderGameDetails();

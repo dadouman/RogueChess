@@ -59,7 +59,9 @@ function renderBossDefeatResult(el, game, run) {
     el.hidden = false;
     heading.textContent = 'Résolution du mat…';
     const note = document.createElement('p');
-    note.textContent = `À toi de mater en ${game.mateResolution.expectedX}+${advMateTolerance()} — Stockfish défend.`;
+    note.textContent = Number.isFinite(game.mateResolution.expectedX)
+      ? `À toi de mater en ${game.mateResolution.expectedX}+${advMateTolerance()} — Stockfish défend.`
+      : 'À toi de conclure côté Noir : porte l’estocade ! Stockfish défend.';
     el.append(heading, note, actions);
     return;
   }
