@@ -36,6 +36,8 @@ let buildLiveBookEdgesForNode = () => [];
 let getOpponentBookEdgesForRun = () => [];
 let buildOpponentBookCandidates = () => [];
 let submitHumanMove = () => {};
+let humanPlayerColor = () => 'w';
+let opponentTurnColor = () => 'b';
 
 export function initGamePanelRender(deps = {}) {
   makeGameBoardNode = deps.makeGameBoardNode ?? makeGameBoardNode;
@@ -55,6 +57,8 @@ export function initGamePanelRender(deps = {}) {
   getOpponentBookEdgesForRun = deps.getOpponentBookEdgesForRun ?? getOpponentBookEdgesForRun;
   buildOpponentBookCandidates = deps.buildOpponentBookCandidates ?? buildOpponentBookCandidates;
   submitHumanMove = deps.submitHumanMove ?? submitHumanMove;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+  opponentTurnColor = deps.opponentTurnColor ?? opponentTurnColor;
 }
 
 export function renderGameDetails() {
@@ -80,9 +84,11 @@ export function renderGameDetails() {
           ? game.chess.turn() === game.mateResolution.playerColor
             ? 'À toi de mater'
             : 'Stockfish défend'
-          : game.chess.turn() === 'w'
-            ? 'Aux Blancs'
-            : 'Réponse noire';
+          : game.chess.turn() === humanPlayerColor()
+            ? humanPlayerColor() === 'w'
+              ? 'Aux Blancs'
+              : 'Aux Noirs'
+            : `Réponse ${humanPlayerColor() === 'w' ? 'noire' : 'blanche'}`;
   elements.nodeSubtitle.textContent = reviewEntry
     ? `${reviewEntry.text} · ${reviewEntry.label} · ${reviewEntry.index + 1}/${game.freeReviewMoves.length}`
     : game.mateResolution?.active
@@ -167,10 +173,17 @@ export function renderGamePanel(phaseLabel = null) {
   elements.gameMessage.textContent = formatGamePanelMessage(game, reviewEntry);
   const reviewPlayable = isPostGameReviewPlayable();
   elements.playMoveButton.disabled =
-    game.locked || !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === 'w'));
+    game.locked ||
+    !(reviewPlayable || (game.status === 'playing' && game.chess.turn() === humanPlayerColor()));
   elements.moveInput.disabled = elements.playMoveButton.disabled;
-  const inputSide = reviewPlayable ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1]) : 'Blancs';
-  elements.moveInputLabel.textContent = reviewPlayable ? `Coup des ${inputSide}` : 'Coup blanc';
+  const inputSide = reviewPlayable
+    ? sideLabel(reviewEntry.afterFen.split(/\s+/)[1])
+    : sideLabel(humanPlayerColor());
+  elements.moveInputLabel.textContent = reviewPlayable
+    ? `Coup des ${inputSide}`
+    : humanPlayerColor() === 'w'
+      ? 'Coup blanc'
+      : 'Coup noir';
   elements.moveInput.placeholder = reviewPlayable ? `${inputSide}: SAN ou UCI` : 'ex. Nf3 ou g1f3';
   elements.newGameButton.textContent =
     game.status === 'playing'
@@ -245,11 +258,15 @@ function renderExpectedMoveList() {
     return;
   }
 
-  const playerColorForPanel = game.mateResolution?.active ? game.mateResolution.playerColor : 'w';
+  const playerColorForPanel = game.mateResolution?.active
+    ? game.mateResolution.playerColor
+    : humanPlayerColor();
   if (game.chess.turn() !== playerColorForPanel) {
     const pill = document.createElement('span');
     pill.className = 'expected-pill is-muted';
-    pill.textContent = game.mateResolution?.active ? 'Défense de Stockfish' : 'Réponse noire';
+    pill.textContent = game.mateResolution?.active
+      ? 'Défense de Stockfish'
+      : `Réponse ${opponentTurnColor() === 'w' ? 'blanche' : 'noire'}`;
     elements.expectedMoveList.append(pill);
     return;
   }
@@ -303,21 +320,21 @@ function renderOpponentGraphMini() {
   elements.opponentGraphMini.append(title);
 
   let rows = [];
-  if (game.phase === 'opening' && game.chess.turn() === 'b') {
+  if (game.phase === 'opening' && game.chess.turn() === opponentTurnColor()) {
     rows = buildOpponentBookCandidates(getOpponentBookEdgesForRun()).map((candidate) => ({
       label: candidate.type === 'free' ? candidate.label : candidate.edge.san,
       value: formatPercent(candidate.probability)
     }));
   } else if (game.phase === 'opening') {
     rows = getExpectedWhiteBookEdges()
-      .flatMap((whiteEdge) => {
-        const childEdges = buildLiveBookEdgesForNode(whiteEdge.to, 'b');
+      .flatMap((playerEdge) => {
+        const childEdges = buildLiveBookEdgesForNode(playerEdge.to, opponentTurnColor());
         const childPly = game.chess.history().length + 1;
         return buildOpponentBookCandidates(childEdges, childPly).map((candidate) => ({
           label:
             candidate.type === 'free'
-              ? `${whiteEdge.san} → Stockfish`
-              : `${whiteEdge.san} → ${candidate.edge.san}`,
+              ? `${playerEdge.san} → Stockfish`
+              : `${playerEdge.san} → ${candidate.edge.san}`,
           value: formatPercent(candidate.probability)
         }));
       })
@@ -423,9 +440,9 @@ function renderGameChoices() {
     return;
   }
 
-  if (game.chess.turn() !== 'w' || game.locked) {
+  if (game.chess.turn() !== humanPlayerColor() || game.locked) {
     const waiting = document.createElement('p');
-    waiting.textContent = 'Les Noirs réfléchissent.';
+    waiting.textContent = `Les ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'} réfléchissent.`;
     elements.choiceList.append(waiting);
     return;
   }

@@ -17,7 +17,8 @@ import {
   advStoredVerdict,
   advGameAccuracy,
   buildMoveStatsRow,
-  buildStoredMoveComment
+  buildStoredMoveComment,
+  initMoveVerdict
 } from './move-verdict.js';
 
 // Injectés par app.js (cf. initGameReview) : rendu de l'échiquier partagé et moteur
@@ -28,6 +29,7 @@ let ensureStockfishReady = async () => null;
 export function initGameReview(deps) {
   renderBoard = deps.renderBoard ?? renderBoard;
   ensureStockfishReady = deps.ensureStockfishReady ?? ensureStockfishReady;
+  initMoveVerdict({ humanPlayerColor: deps.humanPlayerColor });
 }
 
 function openGameReview(game) {

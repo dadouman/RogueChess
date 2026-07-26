@@ -131,7 +131,8 @@ import {
   ADV_SCORE_MOVE_COUNT,
   advScoreInit,
   advScoreRegisterMove,
-  advScoreKey
+  advScoreKey,
+  initAdventureScoring
 } from './adventure-scoring.js';
 import { advWinCoinReward, advAwardCoins, advThreatsActive } from './adventure-shop.js';
 import { initAdventureHistory, advRecordGame } from './adventure-history.js';
@@ -520,10 +521,7 @@ function renderBoard(node, container = elements.boardPreview) {
       }
     }
   });
-  const orientation =
-    container === elements.boardPreview && state.game?.mateResolution?.active
-      ? humanPlayerColor()
-      : 'w';
+  const orientation = container === elements.boardPreview && state.game ? humanPlayerColor() : 'w';
   const ordered = orientation === 'b' ? cells.slice().reverse() : cells;
   for (const c of ordered) {
     appendSquare(container, c.rankIndex, c.fileIndex, c.piece, from, to, squareOptions);
@@ -793,7 +791,9 @@ function getPlayableBoardColor() {
 }
 
 function humanPlayerColor() {
-  return state.game?.mateResolution?.active ? (state.game.mateResolution.playerColor ?? 'w') : 'w';
+  return state.game?.mateResolution?.active
+    ? (state.game.mateResolution.playerColor ?? 'w')
+    : (state.game?.playerColor ?? 'w');
 }
 
 function opponentTurnColor() {
@@ -981,7 +981,7 @@ function applyAdvBoardHints() {
     game &&
     !game.revision &&
     game.status === 'playing' &&
-    game.chess.turn() === 'w' &&
+    game.chess.turn() === humanPlayerColor() &&
     game.phase === 'opening';
   // L'indice n'apparaît que si l'aide « point vert » est active (révélée).
   const edges = inOpening && advAids().legalDots ? getExpectedWhiteBookEdges() : [];
@@ -1036,7 +1036,8 @@ function updateAdvBoardFeedback() {
     return;
   }
   if (game.phase === 'opening') {
-    caption.textContent = game.chess.turn() === 'w' ? '⬜ Ton coup' : '⬛ Stockfish réfléchit…';
+    caption.textContent =
+      game.chess.turn() === humanPlayerColor() ? '⬜ Ton coup' : '⬛ Stockfish réfléchit…';
   } else {
     // Phase libre : objectif visuel
     const isMate = isAdventureRun() && state.advRun?.kind === 'boss';
@@ -1089,8 +1090,8 @@ function advBoardTopText() {
       return '✓ Pondération réglée pour la revanche';
     }
     return advInfluenceViewedNode()
-      ? '🎚️ Choisis le coup des Noirs à pousser (+5 %)'
-      : '🎚️ Reviens avec ‹ › sur un choix des Noirs';
+      ? `🎚️ Choisis le coup des ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'} à pousser (+5 %)`
+      : `🎚️ Reviens avec ‹ › sur un choix des ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'}`;
   }
   if (game.status !== 'playing') {
     return '';
@@ -1102,7 +1103,7 @@ function advBoardTopText() {
       ? '⏩ Révision · rejeu accéléré de la ligne…'
       : rev.phase === 'question'
         ? rev.keysRevealed
-          ? '🧠 Quel est le bon coup des Blancs ?'
+          ? `🧠 Quel est le bon coup des ${humanPlayerColor() === 'w' ? 'Blancs' : 'Noirs'} ?`
           : '🧠 Joue le bon coup sur l’échiquier'
         : rev.phase === 'feedback'
           ? rev.answerUci === rev.step?.correctUci
@@ -1198,6 +1199,7 @@ function createInitialGameState(level = state.campaignLevel) {
   return {
     active: true,
     mode: state.playMode,
+    playerColor: 'w',
     level: exploration ? FIRST_LEVEL_NUMBER : level,
     objective,
     nextLevel: null,
@@ -1458,7 +1460,9 @@ function getExpectedWhiteBookEdges() {
   if (!state.game || state.game.phase !== 'opening') {
     return [];
   }
-  const edges = getRawOutgoingEdges(state.game.currentNodeId, 'w').filter(isEdgeLegalInGame);
+  const edges = getRawOutgoingEdges(state.game.currentNodeId, humanPlayerColor()).filter(
+    isEdgeLegalInGame
+  );
   // Mode Pièges : on guide le joueur vers les coups qui mènent au mat.
   if (state.advRun?.trapsMode && edges.length > 1) {
     const trapEdges = edges.filter((edge) => bookNodeReachesMate(edge.to));
@@ -1481,7 +1485,9 @@ function getBlackBookEdges() {
   if (!state.game || state.game.phase !== 'opening') {
     return [];
   }
-  return buildLiveBookEdgesForNode(state.game.currentNodeId, 'b', { legalInCurrentGame: true });
+  return buildLiveBookEdgesForNode(state.game.currentNodeId, opponentTurnColor(), {
+    legalInCurrentGame: true
+  });
 }
 
 /**
@@ -1615,7 +1621,7 @@ function getKnownWhiteBookMoveHint(move) {
   const expectedIds = new Set(getExpectedWhiteBookEdges().map((edge) => edge.id));
   const matches = state.data.edges.filter(
     (edge) =>
-      edge.color === 'w' &&
+      edge.color === humanPlayerColor() &&
       !expectedIds.has(edge.id) &&
       (edge.uci === uci || normalizeSanForCompare(edge.san) === san)
   );
@@ -1712,10 +1718,11 @@ function applyGameEdge(edge) {
   state.game.currentEvalCp = evaluation.cpWhite ?? state.game.currentEvalCp;
   state.game.currentPv = evaluation.pv ?? '';
   state.game.currentDepth = evaluation.depth ?? state.game.currentDepth;
-  appendGameMove(move, edge.color === 'b' ? 'Livre adverse' : 'Livre blanc');
+  const edgeLabel = edge.color === opponentTurnColor() ? 'Livre adverse' : 'Livre blanc';
+  appendGameMove(move, edgeLabel);
   recordFreeReviewMove({
     move,
-    label: edge.color === 'b' ? 'Livre adverse' : 'Livre blanc',
+    label: edgeLabel,
     phase: 'opening',
     beforeFen,
     beforeEvalCp,
@@ -1738,13 +1745,13 @@ function applyFreeMove(move, label) {
 }
 
 function appendGameMove(move, label) {
-  // Temps de jeu : on ne compte que les coups BLANCS réellement joués par le
+  // Temps de jeu : on ne compte que les coups du joueur réellement joués par le
   // joueur. La conversion automatique vers le mat (coups générés par le moteur)
   // ne doit pas gonfler le compteur.
   if (
     state.screen === 'adventure' &&
     state.adventure &&
-    move.color === 'w' &&
+    move.color === humanPlayerColor() &&
     label !== 'Conversion auto'
   ) {
     state.adventure.movesPlayed = (state.adventure.movesPlayed || 0) + 1;
@@ -1792,6 +1799,7 @@ function startNewGame(level = state.campaignLevel) {
       ? 'Exploration: livre italien actif'
       : `Niveau ${state.game.level}: ${formatLevelObjective(state.game.level)}`;
   renderGraph();
+  void maybeStartOpponentOpeningTurn();
   ensureStockfishReady(false).catch((error) => {
     if (!state.game || state.game.status !== 'playing') {
       return;
@@ -1799,6 +1807,29 @@ function startNewGame(level = state.campaignLevel) {
     state.game.message = `Stockfish indisponible pour l'instant: ${error.message}`;
     renderGamePanel();
   });
+}
+
+async function maybeStartOpponentOpeningTurn() {
+  const game = state.game;
+  if (
+    !game ||
+    game.status !== 'playing' ||
+    game.phase !== 'opening' ||
+    game.chess.turn() !== opponentTurnColor()
+  ) {
+    return;
+  }
+  setGameLocked(true);
+  renderGameDetails();
+  try {
+    await advanceOpponentTurn();
+  } finally {
+    if (state.game === game && game.status === 'playing') {
+      setGameLocked(false);
+      renderGameDetails();
+      renderGamePanel();
+    }
+  }
 }
 
 function handleNewGameAction() {
@@ -1871,7 +1902,7 @@ function finishTerminalPosition(message = 'La partie est terminée.') {
     return;
   }
   if (game.chess.isCheckmate()) {
-    if (game.chess.turn() === 'b') {
+    if (game.chess.turn() === opponentTurnColor()) {
       finishCampaignByMate(`Échec et mat: campagne terminée au niveau ${game.level}.`);
     } else {
       finishGame('lost', message);
@@ -1911,7 +1942,7 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
 
   const input = String(rawInput ?? '').trim();
   if (!input) {
-    game.message = 'Entre un coup blanc en SAN ou en UCI.';
+    game.message = `Entre un coup ${humanPlayerColor() === 'w' ? 'blanc' : 'noir'} en SAN ou en UCI.`;
     renderGamePanel();
     return;
   }
@@ -1936,8 +1967,8 @@ async function submitHumanMove(rawInput = elements.moveInput.value) {
       if (game.phase === 'opening') {
         enterFreePhase(
           isExplorationMode()
-            ? "Le livre blanc est terminé: l'exploration continue en libre."
-            : 'Le livre blanc est terminé: survie libre.'
+            ? `Le livre ${humanPlayerColor() === 'w' ? 'blanc' : 'noir'} est terminé: l'exploration continue en libre.`
+            : `Le livre ${humanPlayerColor() === 'w' ? 'blanc' : 'noir'} est terminé: survie libre.`
         );
       }
       await submitFreeMove(input);
@@ -2014,13 +2045,13 @@ async function submitExplorationMove(input, message) {
     return;
   }
 
-  applyFreeMove(move, 'Exploration blanche');
+  applyFreeMove(move, `Exploration ${humanPlayerColor() === 'w' ? 'blanche' : 'noire'}`);
   const node = getGameNodeByFen();
   if (node) {
     state.game.currentNodeId = node.id;
   }
   enterFreePhase(message);
-  if (state.game.chess.turn() === 'b') {
+  if (state.game.chess.turn() === opponentTurnColor()) {
     await advanceOpponentTurn();
   }
 }
@@ -2038,7 +2069,8 @@ async function submitFreeMove(input) {
     return;
   }
 
-  applyFreeMove(move, isExplorationMode() ? 'Exploration blanche' : 'Survie blanche');
+  const playerSide = humanPlayerColor() === 'w' ? 'blanche' : 'noire';
+  applyFreeMove(move, isExplorationMode() ? `Exploration ${playerSide}` : `Survie ${playerSide}`);
   resetLegalDotsReveal(); // Q : coup joué → on remasque pour le tour suivant
   state.game.message = 'Stockfish évalue ton coup libre...';
   renderGamePanel();
@@ -2057,7 +2089,7 @@ async function submitFreeMove(input) {
   ) {
     recordFreeReviewMove({
       move,
-      label: 'Survie blanche',
+      label: `Survie ${playerSide}`,
       beforeFen,
       beforeEvalCp,
       evaluation,
@@ -2150,7 +2182,7 @@ async function submitFreeMove(input) {
 
   recordFreeReviewMove({
     move,
-    label: isExplorationMode() ? 'Exploration blanche' : 'Survie blanche',
+    label: isExplorationMode() ? `Exploration ${playerSide}` : `Survie ${playerSide}`,
     beforeFen,
     beforeEvalCp,
     evaluation
@@ -2204,16 +2236,17 @@ async function advanceOpponentTurn() {
   }
 
   if (game.phase === 'opening') {
-    const blackBookEdges = getOpponentBookEdgesForRun();
-    const decision = blackBookEdges.length
-      ? pickWeightedCandidate(buildOpponentBookCandidates(blackBookEdges))
+    const opponentBookEdges = getOpponentBookEdgesForRun();
+    const decision = opponentBookEdges.length
+      ? pickWeightedCandidate(buildOpponentBookCandidates(opponentBookEdges))
       : null;
 
     if (decision?.type === 'book') {
       const edge = decision.edge;
       // Coup de livre : petite réflexion (pas trop) avant de répondre, le temps aussi
       // que l'animation du coup blanc se termine.
-      game.message = 'Les Noirs consultent le livre…';
+      const opponentLabel = opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs';
+      game.message = `Les ${opponentLabel} consultent le livre…`;
       renderGamePanel();
       await pause(randomThinkMs(350, 850));
       if (state.game !== game || game.status !== 'playing') {
@@ -2224,7 +2257,7 @@ async function advanceOpponentTurn() {
       if (deductStockfishClock(game)) {
         return; // U : Stockfish tombe au temps
       }
-      game.message = `Les Noirs suivent le livre: ${edge.san} (${formatPercent(edge.probability)}).`;
+      game.message = `Les ${opponentLabel} suivent le livre: ${edge.san} (${formatPercent(edge.probability)}).`;
       if (!getExpectedWhiteBookEdges().length) {
         enterFreePhase(
           isExplorationMode()
@@ -2237,8 +2270,8 @@ async function advanceOpponentTurn() {
 
     enterFreePhase(
       decision?.type === 'free'
-        ? 'Les Noirs cassent le livre et passent aux coups Stockfish.'
-        : "La branche d'ouverture est terminée: les Noirs passent à Stockfish."
+        ? `Les ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'} cassent le livre et passent aux coups Stockfish.`
+        : `La branche d'ouverture est terminée: les ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'} passent à Stockfish.`
     );
   }
 
@@ -3009,7 +3042,9 @@ function getGameInfoAnalysis(game, currentNode = null) {
   }
 
   if (game.phase === 'opening') {
-    return 'Position de livre: choisis un coup blanc attendu pour rester dans le répertoire.';
+    return `Position de livre: choisis un coup ${
+      humanPlayerColor() === 'w' ? 'blanc' : 'noir'
+    } attendu pour rester dans le répertoire.`;
   }
 
   if (isExplorationMode()) {
@@ -3096,7 +3131,7 @@ function advTakeBack() {
   ) {
     return;
   }
-  if (game.chess.turn() !== 'w' || game.chess.history().length < 2) {
+  if (game.chess.turn() !== humanPlayerColor() || game.chess.history().length < 2) {
     return;
   }
   game.chess.undo(); // réponse de l'adversaire
@@ -3193,7 +3228,7 @@ function advUndoDefeat() {
   // Annule jusqu'au trait des Blancs (au moins un demi-coup) : on retire le coup
   // perdant (et la réponse adverse si c'est elle qui a scellé la défaite).
   let undone = 0;
-  while (chess.history().length > 0 && (undone === 0 || chess.turn() !== 'w')) {
+  while (chess.history().length > 0 && (undone === 0 || chess.turn() !== humanPlayerColor())) {
     chess.undo();
     undone += 1;
   }
@@ -3381,7 +3416,7 @@ function openAdvInfluence() {
       showAdventureToast({
         icon: '🎚️',
         title: 'Aucun choix',
-        text: 'Le livre ne laisse pas de choix aux Noirs.',
+        text: `Le livre ne laisse pas de choix aux ${opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'}.`,
         kind: null
       });
       return;
@@ -3418,7 +3453,9 @@ function openAdvInfluence() {
     showAdventureToast({
       icon: '🎚️',
       title: 'Aucun embranchement',
-      text: 'Cette partie n’a pas traversé de choix des Noirs à influencer.',
+      text: `Cette partie n’a pas traversé de choix des ${
+        opponentTurnColor() === 'w' ? 'Blancs' : 'Noirs'
+      } à influencer.`,
       kind: null
     });
     return;
@@ -4073,6 +4110,8 @@ function bindEvents() {
     getBookTargetsFromSquare,
     isOpeningBookChoiceActive,
     submitHumanMove,
+    humanPlayerColor,
+    opponentTurnColor,
     renderGameDetails,
     isBoardInteractive,
     getActiveFreeReviewEntry
@@ -4104,7 +4143,9 @@ function bindEvents() {
     buildLiveBookEdgesForNode,
     getOpponentBookEdgesForRun,
     buildOpponentBookCandidates,
-    submitHumanMove
+    submitHumanMove,
+    humanPlayerColor,
+    opponentTurnColor
   });
   initPgnGraphIo({
     ensureStockfishReady,
@@ -4117,7 +4158,9 @@ function bindEvents() {
     getExpectedWhiteBookEdges,
     buildOpponentBookCandidates,
     getOpponentBookEdgesForRun,
-    influenceArrowColors: INFLUENCE_ARROW_COLORS
+    influenceArrowColors: INFLUENCE_ARROW_COLORS,
+    humanPlayerColor,
+    opponentTurnColor
   });
   initAdventureRevision({
     advXpBookMove: ADV_XP_BOOK_MOVE,
@@ -4130,13 +4173,15 @@ function bindEvents() {
     renderGamePanel,
     flashAdvBoard,
     tryMoveInput,
-    finishGame
+    finishGame,
+    humanPlayerColor
   });
-  initAdventureHistory({ getReviewParent }); // injection : parent d'un coup dans l'arbre de revue
+  initAdventureHistory({ getReviewParent, humanPlayerColor }); // injection : parent d'un coup dans l'arbre de revue
   initAdventureProgressHud({
     isExplorationMode,
     flashAdvBoard,
-    updateHomeProgress
+    updateHomeProgress,
+    humanPlayerColor
   });
   initMateResolution({
     ensureStockfishReady,
@@ -4156,7 +4201,9 @@ function bindEvents() {
     renderGraph,
     setGameLocked,
     advanceOpponentTurn,
-    tryMoveInput
+    tryMoveInput,
+    humanPlayerColor,
+    opponentTurnColor
   });
   initAdventureSettings({ renderGameDetails, advHistoryGoto });
   initAdventureMap({
@@ -4190,11 +4237,13 @@ function bindEvents() {
     launchTrapsLesson,
     launchLesson,
     updateAdvMobileBar,
-    getExpectedWhiteBookEdges
+    getExpectedWhiteBookEdges,
+    humanPlayerColor
   });
-  initAdventureAids({ renderGameDetails });
+  initAdventureAids({ renderGameDetails, humanPlayerColor });
+  initAdventureScoring({ humanPlayerColor });
   initOpeningViewer({ renderAdvShop }); // injection : re-rendu du carrousel boutique (HUD)
-  initGameReview({ renderBoard, ensureStockfishReady }); // injection : échiquier + moteur
+  initGameReview({ renderBoard, ensureStockfishReady, humanPlayerColor }); // injection : échiquier + moteur
   bindBrainScrubEvents();
 
   elements.temperatureRange.addEventListener('input', () => {
@@ -4304,7 +4353,7 @@ async function init() {
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
-  initClocks({ finishGame }); // injection : fin de partie au temps
+  initClocks({ finishGame, humanPlayerColor, opponentTurnColor }); // injection : fin de partie au temps
   startClockTicker(); // U : démarre le décompte de la pendule
 }
 

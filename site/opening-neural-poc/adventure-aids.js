@@ -3,9 +3,11 @@ import { advCurrentDifficulty } from './adventure-progress.js';
 
 // Injecté par app.js (cf. initAdventureAids) : re-rendu des détails de partie.
 let renderGameDetails = () => {};
+let humanPlayerColor = () => 'w';
 
 export function initAdventureAids(deps) {
   renderGameDetails = deps.renderGameDetails ?? renderGameDetails;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
 }
 
 // Niveaux de difficulté Aventure : chaque niveau active un sous-ensemble d'aides.
@@ -74,7 +76,7 @@ function maybeArmLegalDotsTimer() {
     state.game.status !== 'playing' ||
     state.game.locked ||
     state.game.historyView != null ||
-    state.game.chess.turn() !== 'w'
+    state.game.chess.turn() !== humanPlayerColor()
   ) {
     return;
   }

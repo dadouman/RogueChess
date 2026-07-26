@@ -17,9 +17,14 @@ const MOVE_VERDICTS = {
 const MOVE_VERDICT_LOSS = { inaccuracy: 50, mistake: 100, blunder: 200 };
 const MOVE_BRILLIANT_GAIN = 200; // gain d'éval (cp) pour un coup « brillant »
 const MOVE_BRILLIANT_MIN_CP = 300; // position nettement gagnante après le coup
+let humanPlayerColor = () => 'w';
+
+export function initMoveVerdict(deps = {}) {
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
+}
 
 function advMoveVerdict(entry) {
-  if (!entry || entry.color !== 'w') {
+  if (!entry || entry.color !== humanPlayerColor()) {
     return null;
   }
   if (entry.phase === 'opening') {
@@ -31,8 +36,9 @@ function advMoveVerdict(entry) {
   if (!Number.isFinite(entry.beforeEvalCp) || !Number.isFinite(entry.afterEvalCp)) {
     return null;
   }
-  const before = entry.beforeEvalCp;
-  const after = entry.afterEvalCp;
+  const perspective = humanPlayerColor() === 'w' ? 1 : -1;
+  const before = entry.beforeEvalCp * perspective;
+  const after = entry.afterEvalCp * perspective;
   // Coup brillant : ton coup crée un mat forcé, ou gagne décisivement (gros gain
   // d'éval vers une position nettement gagnante).
   const createsMate = isMateScore(after) && after > 0 && !(isMateScore(before) && before > 0);

@@ -11,11 +11,13 @@ import { ADV_ACT2_UNLOCK } from './adventure-config.js';
 let isExplorationMode = () => false;
 let flashAdvBoard = () => {};
 let updateHomeProgress = () => {};
+let humanPlayerColor = () => 'w';
 
 export function initAdventureProgressHud(deps) {
   isExplorationMode = deps.isExplorationMode ?? isExplorationMode;
   flashAdvBoard = deps.flashAdvBoard ?? flashAdvBoard;
   updateHomeProgress = deps.updateHomeProgress ?? updateHomeProgress;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
 }
 
 const ADV_LESSONS = [
@@ -84,7 +86,7 @@ export function renderAdvTakeBack() {
     game.status === 'playing' &&
     !game.locked &&
     game.historyView == null &&
-    game.chess.turn() === 'w' &&
+    game.chess.turn() === humanPlayerColor() &&
     game.chess.history().length >= 2
   );
   btn.disabled = !canUndo;

@@ -31,6 +31,7 @@ let launchTrapsLesson = () => {};
 let launchLesson = () => {};
 let updateAdvMobileBar = () => {};
 let getExpectedWhiteBookEdges = () => [];
+let humanPlayerColor = () => 'w';
 
 export function initAdventureHud(deps) {
   advResultButton = deps.advResultButton ?? advResultButton;
@@ -44,6 +45,7 @@ export function initAdventureHud(deps) {
   launchLesson = deps.launchLesson ?? launchLesson;
   updateAdvMobileBar = deps.updateAdvMobileBar ?? updateAdvMobileBar;
   getExpectedWhiteBookEdges = deps.getExpectedWhiteBookEdges ?? getExpectedWhiteBookEdges;
+  humanPlayerColor = deps.humanPlayerColor ?? humanPlayerColor;
 }
 
 function renderBossDefeatResult(el, game, run) {
@@ -318,11 +320,10 @@ export function renderAdventureHud() {
 
   updateAdvMobileBar();
   if (moveInputLabel) {
-    const playerColor = game?.mateResolution?.playerColor ?? 'w';
-    moveInputLabel.textContent =
-      game?.mateResolution?.active && playerColor === 'b'
-        ? 'Ton coup (Noirs)'
-        : 'Ton coup (Blancs)';
+    const playerColor = game?.mateResolution?.active
+      ? (game.mateResolution.playerColor ?? 'w')
+      : humanPlayerColor();
+    moveInputLabel.textContent = playerColor === 'b' ? 'Ton coup (Noirs)' : 'Ton coup (Blancs)';
   }
 
   if (starsEl) {
@@ -352,7 +353,11 @@ export function renderAdventureHud() {
           : 'Révision · Quiz';
     if (title)
       title.textContent = `Coup ${Math.min(run.stepIndex + 1, total)} / ${total} · ⚡ ${Math.round(run.scoreTotal || 0)}`;
-    if (objective) objective.textContent = 'Trouve le bon coup des Blancs pour recharger tes vies.';
+    if (objective) {
+      objective.textContent = `Trouve le bon coup des ${
+        humanPlayerColor() === 'w' ? 'Blancs' : 'Noirs'
+      } pour recharger tes vies.`;
+    }
   } else if (run.kind === 'lesson') {
     if (kicker) kicker.textContent = 'Acte 1 · Apprentissage';
     if (title)
@@ -409,7 +414,8 @@ export function renderAdventureHud() {
     }
   }
 
-  const canMove = game.status === 'playing' && game.chess.turn() === 'w' && !game.locked;
+  const canMove =
+    game.status === 'playing' && game.chess.turn() === humanPlayerColor() && !game.locked;
   if (moveInput) moveInput.disabled = !canMove;
   if (moveButton) moveButton.disabled = !canMove;
 }
