@@ -259,7 +259,9 @@ export function beginMateResolution(
     game.mateExpected = expectedX;
     game.message = `À toi de mater en ${expectedX}+${advMateTolerance()} — Stockfish défend.`;
   } else {
-    game.message = "À toi de conclure côté Noir : porte l'estocade ! Stockfish défend.";
+    game.message = `À toi de conclure côté ${
+      playerColor === 'w' ? 'Blanc' : 'Noir'
+    } : porte l'estocade ! Stockfish défend.`;
   }
   setEngineThinking(false);
   document.body.classList.remove('is-game-lost', 'is-game-over');

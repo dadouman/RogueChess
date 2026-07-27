@@ -499,6 +499,26 @@
       </div>
     </div>
 
+    <div
+      id="adventureBookChooser"
+      class="adventure-book-chooser"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="adventureBookChooserTitle"
+    >
+      <div class="adventure-book-chooser-panel">
+        <span class="kicker">Mode Aventure</span>
+        <h2 id="adventureBookChooserTitle">Choisis ton répertoire</h2>
+        <p>Apprends une ouverture et joue toute l’aventure avec les pièces indiquées.</p>
+        <div id="adventureBookChoices" class="adventure-book-choices"></div>
+        <button id="adventureBookChooserCancel" class="adv-bottom-btn" type="button">
+          Annuler
+        </button>
+        <p id="adventureBookChooserStatus" class="adventure-book-chooser-status" role="status"></p>
+      </div>
+    </div>
+
     <div id="adventureMap" class="adventure-map" hidden aria-label="Carte du cerveau">
       <div class="adv-map-panel" data-view="main">
         <header class="adv-map-header">

@@ -41,7 +41,18 @@ import {
   pickWeightedCandidate
 } from './graph.js';
 import { DEFAULT_MATE_TOLERANCE } from './adventure-config.js';
-import { createAdventureState, loadAdventure, saveAdventure } from './adventure-state.js';
+import {
+  activateAdventureProfile,
+  createAdventureState,
+  loadAdventure,
+  saveAdventure
+} from './adventure-state.js';
+import {
+  cacheRepertoireData,
+  getRepertoire,
+  listRepertoires,
+  loadRepertoireData
+} from './repertoires.js';
 import { showAdventureToast } from './toast.js';
 import { clampPanelWidths, bindPanelResizeHandles } from './panels.js';
 import { initClocks, makeInitialClock, startClockTicker, deductStockfishClock } from './clocks.js';
@@ -1199,7 +1210,7 @@ function createInitialGameState(level = state.campaignLevel) {
   return {
     active: true,
     mode: state.playMode,
-    playerColor: 'w',
+    playerColor: getRepertoire(state.activeBook).playerColor,
     level: exploration ? FIRST_LEVEL_NUMBER : level,
     objective,
     nextLevel: null,
@@ -2213,7 +2224,7 @@ async function submitFreeMove(input) {
     !isExplorationMode() &&
     state.game.phase === 'free' &&
     !state.game.victoryConverted &&
-    evaluation.cpWhite >= VICTORY_CINEMATIC_TRIGGER_CP &&
+    scoreForSide(evaluation.cpWhite, humanPlayerColor()) >= VICTORY_CINEMATIC_TRIGGER_CP &&
     !isMateScore(evaluation.cpWhite)
   ) {
     await runVictoryConversion();
@@ -2535,6 +2546,8 @@ async function runVictoryConversion() {
   let evaluator;
   let profile;
   let mateFound = null;
+  const winningColor = humanPlayerColor();
+  const winningScore = (cp) => scoreForSide(cp, winningColor);
 
   try {
     evaluator = await ensureStockfishReady(false);
@@ -2544,8 +2557,8 @@ async function runVictoryConversion() {
         return; // partie changée ou terminée ailleurs
       }
 
-      if (game.chess.turn() === 'w') {
-        // Trait aux Blancs (le joueur) : un mat est-il déjà forcé ?
+      if (game.chess.turn() === winningColor) {
+        // Trait au camp gagnant (le joueur) : un mat est-il déjà forcé ?
         const evalNow = await evaluator.evaluate(game.chess.fen(), VICTORY_CINEMATIC_DEPTH);
         if (state.game !== game || game.status !== 'playing') {
           return;
@@ -2553,28 +2566,34 @@ async function runVictoryConversion() {
         game.currentEvalCp = evalNow.cpWhite;
         game.currentPv = evalNow.pv;
         game.currentDepth = evalNow.depth;
-        if (isMateScore(evalNow.cpWhite) && evalNow.cpWhite > 0) {
+        if (isMateScore(winningScore(evalNow.cpWhite)) && winningScore(evalNow.cpWhite) > 0) {
           // Réglage « mat en X » : on ne rend la main que lorsque le mat est assez
           // proche (≤ seuil) ; sinon la conversion continue automatiquement.
-          if (mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()) {
+          if (mateMovesFromCp(winningScore(evalNow.cpWhite)) <= advMateHandover()) {
             mateFound = evalNow;
             break;
           }
         }
-        if (evalNow.cpWhite < VICTORY_CINEMATIC_KEEP_CP) {
+        if (winningScore(evalNow.cpWhite) < VICTORY_CINEMATIC_KEEP_CP) {
           break; // l'avantage s'est évaporé → on rend la main
         }
         if (!evalNow.bestMove) {
           break;
         }
-        const wBeforeFen = game.chess.fen();
-        const wmove = playUciOnChess(game.chess, evalNow.bestMove);
-        if (!wmove) {
+        const winningBeforeFen = game.chess.fen();
+        const winningMove = playUciOnChess(game.chess, evalNow.bestMove);
+        if (!winningMove) {
           break;
         }
-        applyFreeMove(wmove, 'Conversion auto');
-        recordAutoMove(wmove, 'Conversion auto', wBeforeFen, evalNow.cpWhite, evalNow.cpWhite);
-        game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
+        applyFreeMove(winningMove, 'Conversion auto');
+        recordAutoMove(
+          winningMove,
+          'Conversion auto',
+          winningBeforeFen,
+          evalNow.cpWhite,
+          evalNow.cpWhite
+        );
+        game.message = `Conversion automatique… (${formatEval(winningScore(evalNow.cpWhite))})`;
         renderGamePanel();
         renderGameDetails();
         if (game.chess.isCheckmate()) {
@@ -2587,7 +2606,7 @@ async function runVictoryConversion() {
         }
         await pause(VICTORY_CINEMATIC_STEP_MS);
       } else {
-        // Trait aux Noirs : défense de Stockfish. On montre une VRAIE réflexion
+        // Trait au camp perdant : défense de Stockfish. On montre une VRAIE réflexion
         // (badge « réfléchit » + délai) pour que les Noirs ne répondent pas
         // instantanément pendant la phase de mat (la position reste affichée
         // pendant que Stockfish « réfléchit », puis le coup apparaît).
@@ -2658,10 +2677,9 @@ async function runVictoryConversion() {
       return;
     }
 
-    // Filet anti-softlock : si la séquence s'arrête alors que c'est aux Noirs (cap
-    // atteint, coup introuvable…), Stockfish joue sa défense pour rendre la main aux
-    // Blancs au lieu de laisser le joueur bloqué.
-    if (game.chess.turn() === 'b') {
+    // Filet anti-softlock : si la séquence s'arrête alors que le camp perdant a le
+    // trait, Stockfish joue sa défense pour rendre la main au camp gagnant.
+    if (game.chess.turn() !== winningColor) {
       game.message = 'À toi de conclure : Stockfish défend, puis tu joues le mat.';
       renderGamePanel();
       renderGameDetails();
@@ -2670,7 +2688,7 @@ async function runVictoryConversion() {
     }
 
     if (mateFound) {
-      const x = mateMovesFromCp(mateFound.cpWhite);
+      const x = mateMovesFromCp(winningScore(mateFound.cpWhite));
       game.mateExpected = x; // référence pour détecter un mat qui s'éloigne (> 2)
       game.message = `Position gagnante : mat en ${x}. À toi de conclure (sans laisser le mat s'éloigner) !`;
     } else {
@@ -2687,7 +2705,7 @@ async function runVictoryConversion() {
         game.message = 'Conversion interrompue. À toi de jouer.';
         renderGamePanel();
         renderGameDetails();
-        if (game.chess.turn() === 'b') {
+        if (game.chess.turn() !== winningColor) {
           await advanceOpponentTurn();
         }
       }
@@ -2719,6 +2737,9 @@ async function runDefeatConversion(fen, evaluation) {
   let profile;
   let mateFound = null;
   let terminal = false;
+  const winningColor = opponentTurnColor();
+  const winningScore = (cp) => scoreForSide(cp, winningColor);
+  const winningSideLabel = winningColor === 'w' ? 'blanche' : 'noire';
   const canContinue = () =>
     state.game === game &&
     (game.status === 'lost' || game.status === 'playing') &&
@@ -2735,7 +2756,7 @@ async function runDefeatConversion(fen, evaluation) {
     if (!canContinue() || terminal) {
       return;
     }
-    if (cinematic.chess.turn() !== 'b') {
+    if (cinematic.chess.turn() !== winningColor) {
       return;
     }
     originalSnapshot.freeReviewMoves = cloneData(game.freeReviewMoves);
@@ -2747,7 +2768,7 @@ async function runDefeatConversion(fen, evaluation) {
       game,
       cinematic.chess.fen(),
       mateFound,
-      mateFound ? mateMovesFromCp(mateFound.cpWhite) : null,
+      mateFound ? mateMovesFromCp(winningScore(mateFound.cpWhite)) : null,
       originalSnapshot
     );
   };
@@ -2761,7 +2782,7 @@ async function runDefeatConversion(fen, evaluation) {
       }
 
       const skipAnimation = game.skipDefeatCinematic;
-      if (cinematic.chess.turn() === 'b') {
+      if (cinematic.chess.turn() === winningColor) {
         const evalNow = await evaluator.evaluate(cinematic.chess.fen(), VICTORY_CINEMATIC_DEPTH);
         if (!canContinue()) {
           return;
@@ -2770,14 +2791,14 @@ async function runDefeatConversion(fen, evaluation) {
         game.currentPv = evalNow.pv;
         game.currentDepth = evalNow.depth;
         if (
-          isMateScore(evalNow.cpWhite) &&
-          evalNow.cpWhite < 0 &&
-          mateMovesFromCp(evalNow.cpWhite) <= advMateHandover()
+          isMateScore(winningScore(evalNow.cpWhite)) &&
+          winningScore(evalNow.cpWhite) > 0 &&
+          mateMovesFromCp(winningScore(evalNow.cpWhite)) <= advMateHandover()
         ) {
           mateFound = evalNow;
           break;
         }
-        if (evalNow.cpWhite > -VICTORY_CINEMATIC_KEEP_CP || !evalNow.bestMove) {
+        if (winningScore(evalNow.cpWhite) < VICTORY_CINEMATIC_KEEP_CP || !evalNow.bestMove) {
           break;
         }
         const beforeFen = cinematic.chess.fen();
@@ -2786,7 +2807,13 @@ async function runDefeatConversion(fen, evaluation) {
           break;
         }
         cinematic.lastMove = move;
-        recordAutoMove(move, 'Conversion auto noire', beforeFen, evalNow.cpWhite, evalNow.cpWhite);
+        recordAutoMove(
+          move,
+          `Conversion auto ${winningSideLabel}`,
+          beforeFen,
+          evalNow.cpWhite,
+          evalNow.cpWhite
+        );
         game.message = `Conversion automatique… (${formatEval(evalNow.cpWhite)})`;
         renderGamePanel();
         renderGameDetails();
@@ -2801,7 +2828,9 @@ async function runDefeatConversion(fen, evaluation) {
         const beforeFen = cinematic.chess.fen();
         const beforeEvalCp = game.currentEvalCp;
         const stockfishLabel = formatStockfishLevel(profile);
-        game.message = `Stockfish ${stockfishLabel} cherche la défense blanche…`;
+        game.message = `Stockfish ${stockfishLabel} cherche la défense ${
+          winningColor === 'w' ? 'noire' : 'blanche'
+        }…`;
         setEngineThinking(true);
         renderGamePanel();
         renderGameDetails();
@@ -2860,7 +2889,7 @@ async function runDefeatConversion(fen, evaluation) {
     if (state.game !== game) {
       return;
     }
-    if (terminal || cinematic.chess.turn() !== 'b') {
+    if (terminal || cinematic.chess.turn() !== winningColor) {
       clearGameCinematic();
       game.defeatCinematicPending = false;
       game.status = 'lost';
@@ -2875,7 +2904,7 @@ async function runDefeatConversion(fen, evaluation) {
     if (state.game !== game) {
       return;
     }
-    if (cinematic.chess.turn() === 'b' && !cinematic.chess.isGameOver()) {
+    if (cinematic.chess.turn() === winningColor && !cinematic.chess.isGameOver()) {
       handover();
       return;
     }
@@ -3694,19 +3723,83 @@ function setScreen(screen) {
   renderGraph();
 }
 
+function closeAdventureBookChooser() {
+  if (elements.adventureBookChooser) {
+    elements.adventureBookChooser.hidden = true;
+  }
+  if (elements.adventureBookChooserStatus) {
+    elements.adventureBookChooserStatus.textContent = '';
+  }
+}
+
+function renderAdventureBookChooser() {
+  const host = elements.adventureBookChoices;
+  if (!host) {
+    return;
+  }
+  host.replaceChildren();
+  for (const repertoire of listRepertoires()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'adventure-book-choice';
+    button.dataset.repertoireId = repertoire.id;
+    const title = document.createElement('strong');
+    title.textContent = repertoire.label;
+    const description = document.createElement('span');
+    description.textContent = repertoire.description;
+    button.append(title, description);
+    button.addEventListener('click', () => chooseAdventureRepertoire(repertoire.id));
+    host.append(button);
+  }
+}
+
+async function chooseAdventureRepertoire(id) {
+  const repertoire = getRepertoire(id);
+  const host = elements.adventureBookChoices;
+  const status = elements.adventureBookChooserStatus;
+  if (host) {
+    host.querySelectorAll('button').forEach((button) => {
+      button.disabled = true;
+    });
+  }
+  if (status) {
+    status.textContent = `Chargement du livre ${repertoire.label}…`;
+  }
+  try {
+    saveAdventure();
+    const data = await loadRepertoireData(repertoire.id);
+    state.repertoireData[repertoire.id] = data;
+    state.activeBook = repertoire.id;
+    activateAdventureProfile(repertoire.id);
+    setGraphData(cloneGraphData(data), `Livre ${repertoire.label} actif`);
+    elements.pgnImportStatus.textContent = 'Livre actif';
+    state.advRun = null;
+    state.playMode = 'challenge';
+    syncPlayModeButtons();
+    setViewMode('brain');
+    setAdvViewMode(state.advViewMode);
+    closeAdventureBookChooser();
+    setScreen('adventure');
+    openAdventureMap();
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message;
+    }
+    if (host) {
+      host.querySelectorAll('button').forEach((button) => {
+        button.disabled = false;
+      });
+    }
+  }
+}
+
 function enterAdventure() {
   state.advRun = null;
-  if (state.activeBook !== 'default' && state.defaultData) {
-    setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
-    state.activeBook = 'default';
-    elements.pgnImportStatus.textContent = 'Livre actif';
+  saveAdventure();
+  renderAdventureBookChooser();
+  if (elements.adventureBookChooser) {
+    elements.adventureBookChooser.hidden = false;
   }
-  state.playMode = 'challenge';
-  syncPlayModeButtons();
-  setViewMode('brain');
-  setAdvViewMode(state.advViewMode); // applique la vue par défaut (joueur) dès l'entrée
-  setScreen('adventure');
-  openAdventureMap();
 }
 
 function enterCreative() {
@@ -3726,7 +3819,10 @@ function enterCreative() {
 }
 
 function resetAdventureProgress() {
-  state.adventure = createAdventureState();
+  state.adventureProfiles = Object.fromEntries(
+    listRepertoires().map((repertoire) => [repertoire.id, createAdventureState(repertoire.id)])
+  );
+  state.adventure = state.adventureProfiles[state.activeBook] || state.adventureProfiles.italian;
   saveAdventure();
   updateHomeProgress();
   if (state.screen === 'adventure') {
@@ -3917,6 +4013,7 @@ function bindAdventureEvents() {
     }
   };
   bind('#homeAdventureButton', enterAdventure);
+  bind('#adventureBookChooserCancel', closeAdventureBookChooser);
   bind('#homeCreativeButton', enterCreative);
   bind('#homeResetAdventure', () => {
     if (window.confirm('Réinitialiser toute la progression Aventure ?')) {
@@ -4342,6 +4439,9 @@ async function init() {
     throw new Error(`Impossible de charger opening-graph.json (${response.status})`);
   }
   state.defaultData = await response.json();
+  cacheRepertoireData('italian', state.defaultData);
+  state.repertoireData.italian = state.defaultData;
+  state.activeBook = 'italian';
   state.adventure = loadAdventure();
   bindEvents();
   bindAdventureEvents();
@@ -4349,7 +4449,6 @@ async function init() {
   updateSurvivalLimitUi();
   setViewMode('human');
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
-  state.activeBook = 'default';
   elements.pgnImportStatus.textContent = 'Livre actif';
   setScreen('home');
   updateHomeProgress();
