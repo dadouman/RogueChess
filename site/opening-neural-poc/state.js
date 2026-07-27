@@ -34,6 +34,7 @@ export const state = {
   floorMass: DISPLAY_DEFAULT_FLOOR_MASS,
   stockfish: null,
   defaultData: null,
+  repertoireData: {},
   isImportingPgn: false,
   activeResize: null,
   suppressNextGraphClick: false,
@@ -46,7 +47,8 @@ export const state = {
     right: 340
   },
   screen: 'home',
-  activeBook: 'default',
+  activeBook: 'italian',
+  adventureProfiles: {},
   adventure: null,
   advRun: null,
   advViewMode: 'board',

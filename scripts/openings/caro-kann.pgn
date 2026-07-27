@@ -1,0 +1,87 @@
+[Event "Caro-Kann - Introduction"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense"]
+[ECO "B10"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 *
+
+[Event "Caro-Kann - Classique, ligne principale"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Classical Variation"]
+[ECO "B18"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Bf5 5. Ng3 Bg6 6. h4 h6 7. Nf3 Nd7 8. h5 Bh7 9. Bd3 Bxd3 10. Qxd3 e6 11. Bd2 Ngf6 12. O-O-O Be7 13. Kb1 O-O *
+
+[Event "Caro-Kann - Classique, Dame c7"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Classical Variation"]
+[ECO "B19"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Bf5 5. Ng3 Bg6 6. h4 h6 7. Nf3 Nd7 8. h5 Bh7 9. Bd3 Bxd3 10. Qxd3 Qc7 11. Bd2 e6 12. O-O-O Ngf6 *
+
+[Event "Caro-Kann - Avance, Fou f5"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Advance Variation"]
+[ECO "B12"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. e5 Bf5 4. Nf3 e6 5. Be2 Nd7 6. O-O Ne7 7. Nbd2 h6 *
+
+[Event "Caro-Kann - Avance, rupture c5"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Advance Variation"]
+[ECO "B12"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. e5 Bf5 4. Nf3 e6 5. Be2 c5 6. Be3 cxd4 7. Nxd4 Ne7 8. O-O Nbc6 *
+
+[Event "Caro-Kann - Echange"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Exchange Variation"]
+[ECO "B13"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. exd5 cxd5 4. Bd3 Nc6 5. c3 Nf6 6. Bf4 Bg4 7. Qb3 Na5 8. Qa4+ Bd7 9. Qc2 e6 *
+
+[Event "Caro-Kann - Panov, Fe7"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Panov-Botvinnik Attack"]
+[ECO "B14"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. exd5 cxd5 4. c4 Nf6 5. Nc3 e6 6. Nf3 Be7 7. cxd5 Nxd5 8. Bd3 Nc6 9. O-O O-O *
+
+[Event "Caro-Kann - Panov, Fb4"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Panov-Botvinnik Attack"]
+[ECO "B14"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. exd5 cxd5 4. c4 Nf6 5. Nc3 e6 6. Nf3 Bb4 7. cxd5 Nxd5 8. Bd2 Nc6 *
+
+[Event "Caro-Kann - Fantaisie"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Fantasy Variation"]
+[ECO "B12"]
+[Result "*"]
+
+1. e4 c6 2. d4 d5 3. f3 dxe4 4. fxe4 e5 5. Nf3 Bg4 6. Bc4 exd4 *
+
+[Event "Caro-Kann - Deux Cavaliers"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Two Knights Attack"]
+[ECO "B11"]
+[Result "*"]
+
+1. e4 c6 2. Nc3 d5 3. Nf3 Bg4 4. h3 Bxf3 5. Qxf3 e6 6. d4 dxe4 7. Nxe4 Nd7 *
+
+[Event "Caro-Kann - Systeme d3 (KIA)"]
+[Site "roguechess"]
+[Opening "Caro-Kann Defense: Breyer Variation"]
+[ECO "B10"]
+[Result "*"]
+
+1. e4 c6 2. d3 d5 3. Nd2 e5 4. Ngf3 Bd6 5. g3 Nf6 6. Bg2 O-O *

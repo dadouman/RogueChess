@@ -1,24 +1,19 @@
 // Persistance du mode Aventure : création de l'état initial, chargement et
-// sauvegarde (localStorage). S'appuie sur l'état partagé, un util (clamp) et
-// la configuration aventure (validation des champs).
+// sauvegarde (localStorage). S'appuie sur l'état partagé et la configuration
+// aventure.
 import { state } from './state.js';
-import { clamp } from './utils.js';
 import {
-  ADV_DIFFICULTIES,
   DEFAULT_ADV_DIFFICULTY,
-  TIME_CONTROLS,
   DEFAULT_TIME_CONTROL,
   ADV_STORAGE_KEY,
   ADV_MAX_GAMES,
-  ADV_GLOBAL_LIVES_MAX,
-  MATE_HANDOVER_OPTIONS,
   DEFAULT_MATE_HANDOVER,
-  MATE_TOLERANCE_OPTIONS,
   DEFAULT_MATE_TOLERANCE
 } from './adventure-config.js';
 
-export function createAdventureState() {
+export function createAdventureState(bookId = 'italian') {
   return {
+    bookId,
     xp: 0,
     nodes: new Set(),
     lessons: {},
@@ -59,50 +54,46 @@ export function loadAdventure() {
   try {
     const raw = localStorage.getItem(ADV_STORAGE_KEY);
     if (!raw) {
+      state.adventureProfiles = { italian: base };
+      state.adventure = base;
       return base;
     }
     const data = JSON.parse(raw);
-    base.xp = Number(data.xp) || 0;
-    base.nodes = new Set(Array.isArray(data.nodes) ? data.nodes : []);
-    base.lessons = data.lessons && typeof data.lessons === 'object' ? data.lessons : {};
-    base.bosses = data.bosses && typeof data.bosses === 'object' ? data.bosses : {};
-    base.bossStreaks =
-      data.bossStreaks && typeof data.bossStreaks === 'object' ? data.bossStreaks : {};
-    base.highestBoss = Number(data.highestBoss) || 0;
-    base.act2Announced = Boolean(data.act2Announced);
-    base.movesPlayed = Number(data.movesPlayed) || 0;
-    base.playerXp = Number(data.playerXp) || 0;
-    base.games = Array.isArray(data.games) ? data.games.slice(0, ADV_MAX_GAMES) : [];
-    base.difficulty = ADV_DIFFICULTIES.some((d) => d.id === data.difficulty)
-      ? data.difficulty
-      : DEFAULT_ADV_DIFFICULTY;
-    base.timeControl = TIME_CONTROLS.some((t) => t.id === data.timeControl)
-      ? data.timeControl
-      : DEFAULT_TIME_CONTROL;
-    base.customClockMinutes = clamp(Number(data.customClockMinutes) || 10, 0.5, 180);
-    base.coins = Math.max(0, Number(data.coins) || 0);
-    base.boostedLines = Array.isArray(data.boostedLines) ? data.boostedLines.slice(0, 30) : [];
-    base.openingWeights =
-      data.openingWeights && typeof data.openingWeights === 'object' ? data.openingWeights : {};
-    base.openingDeck = Array.isArray(data.openingDeck) ? data.openingDeck.slice(0, 40) : null;
-    base.openingLocks = Array.isArray(data.openingLocks) ? data.openingLocks.slice(0, 40) : [];
-    base.threatsEnabled = Boolean(data.threatsEnabled);
-    base.mateHandover = MATE_HANDOVER_OPTIONS.some((o) => o.id === Number(data.mateHandover))
-      ? Number(data.mateHandover)
-      : DEFAULT_MATE_HANDOVER;
-    base.mateTolerance = MATE_TOLERANCE_OPTIONS.some((o) => o.id === Number(data.mateTolerance))
-      ? Number(data.mateTolerance)
-      : DEFAULT_MATE_TOLERANCE;
-    base.influenceDisabled = Boolean(data.influenceDisabled);
-    base.influenceMode = data.influenceMode === 'game' ? 'game' : 'random';
-    base.globalLives = clamp(Number(data.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX);
-    base.livesUnlocked = Boolean(data.livesUnlocked);
-    base.livesDate = typeof data.livesDate === 'string' ? data.livesDate : null;
-    base.bestScores = data.bestScores && typeof data.bestScores === 'object' ? data.bestScores : {};
+    const storedProfiles =
+      data.books && typeof data.books === 'object' ? data.books : { italian: data };
+    state.adventureProfiles = {};
+    for (const [bookId, profile] of Object.entries(storedProfiles)) {
+      if (profile && typeof profile === 'object') {
+        state.adventureProfiles[bookId] = {
+          ...createAdventureState(bookId),
+          ...profile,
+          nodes: new Set(Array.isArray(profile.nodes) ? profile.nodes : []),
+          games: Array.isArray(profile.games) ? profile.games.slice(0, ADV_MAX_GAMES) : [],
+          bookId
+        };
+      }
+    }
+    if (!state.adventureProfiles.italian) {
+      state.adventureProfiles.italian = base;
+    }
+    const activeProfile =
+      state.adventureProfiles[state.activeBook] || state.adventureProfiles.italian;
+    state.adventure = activeProfile;
+    return activeProfile;
   } catch {
-    return createAdventureState();
+    state.adventureProfiles = { italian: base };
+    state.adventure = base;
+    return base;
   }
-  return base;
+}
+
+export function activateAdventureProfile(bookId) {
+  const profile = state.adventureProfiles?.[bookId] || createAdventureState(bookId);
+  profile.bookId = bookId;
+  state.adventureProfiles = state.adventureProfiles || {};
+  state.adventureProfiles[bookId] = profile;
+  state.adventure = profile;
+  return profile;
 }
 
 export function saveAdventure() {
@@ -110,38 +101,22 @@ export function saveAdventure() {
     return;
   }
   try {
+    state.adventureProfiles = state.adventureProfiles || {};
+    state.adventureProfiles[state.activeBook || state.adventure.bookId || 'italian'] =
+      state.adventure;
     localStorage.setItem(
       ADV_STORAGE_KEY,
       JSON.stringify({
-        xp: state.adventure.xp,
-        nodes: [...state.adventure.nodes],
-        lessons: state.adventure.lessons,
-        bosses: state.adventure.bosses,
-        bossStreaks: state.adventure.bossStreaks || {},
-        highestBoss: state.adventure.highestBoss,
-        act2Announced: state.adventure.act2Announced,
-        movesPlayed: state.adventure.movesPlayed || 0,
-        playerXp: state.adventure.playerXp || 0,
-        games: (state.adventure.games || []).slice(0, ADV_MAX_GAMES),
-        difficulty: state.adventure.difficulty || DEFAULT_ADV_DIFFICULTY,
-        timeControl: state.adventure.timeControl || DEFAULT_TIME_CONTROL,
-        customClockMinutes: state.adventure.customClockMinutes || 10,
-        coins: state.adventure.coins || 0,
-        boostedLines: (state.adventure.boostedLines || []).slice(0, 30),
-        openingWeights: state.adventure.openingWeights || {},
-        openingDeck: Array.isArray(state.adventure.openingDeck)
-          ? state.adventure.openingDeck.slice(0, 40)
-          : null,
-        openingLocks: (state.adventure.openingLocks || []).slice(0, 40),
-        threatsEnabled: Boolean(state.adventure.threatsEnabled),
-        mateHandover: state.adventure.mateHandover || DEFAULT_MATE_HANDOVER,
-        mateTolerance: state.adventure.mateTolerance ?? DEFAULT_MATE_TOLERANCE,
-        influenceDisabled: Boolean(state.adventure.influenceDisabled),
-        influenceMode: state.adventure.influenceMode === 'game' ? 'game' : 'random',
-        globalLives: clamp(Number(state.adventure.globalLives) || 0, 0, ADV_GLOBAL_LIVES_MAX),
-        livesUnlocked: Boolean(state.adventure.livesUnlocked),
-        livesDate: state.adventure.livesDate || null,
-        bestScores: state.adventure.bestScores || {}
+        books: Object.fromEntries(
+          Object.entries(state.adventureProfiles).map(([bookId, profile]) => [
+            bookId,
+            {
+              ...profile,
+              nodes: [...(profile.nodes || [])],
+              games: (profile.games || []).slice(0, ADV_MAX_GAMES)
+            }
+          ])
+        )
       })
     );
   } catch {

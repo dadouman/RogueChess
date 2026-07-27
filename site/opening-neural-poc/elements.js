@@ -77,5 +77,9 @@ export const elements = {
   liveEvalBar: document.querySelector('#liveEvalBar'),
   liveEvalBarFill: document.querySelector('#liveEvalBarFill'),
   liveMoveLog: document.querySelector('#liveMoveLog'),
-  advBrainThinking: document.querySelector('#advBrainThinking')
+  advBrainThinking: document.querySelector('#advBrainThinking'),
+  adventureBookChooser: document.querySelector('#adventureBookChooser'),
+  adventureBookChoices: document.querySelector('#adventureBookChoices'),
+  adventureBookChooserCancel: document.querySelector('#adventureBookChooserCancel'),
+  adventureBookChooserStatus: document.querySelector('#adventureBookChooserStatus')
 };

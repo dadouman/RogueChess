@@ -109,8 +109,8 @@ export async function importPgnFromInput() {
   setImportBusy(true, 'Lecture PGN');
   try {
     const data = await buildGraphDataFromPgn(pgn, 'PGN importé');
-    setGraphData(data, 'PGN importé: graphe prêt');
     state.activeBook = 'custom';
+    setGraphData(data, 'PGN importé: graphe prêt');
     elements.pgnImportStatus.textContent = `Prêt d${IMPORT_STOCKFISH_DEPTH}`;
   } catch (error) {
     elements.pgnImportStatus.textContent = 'Erreur PGN';
@@ -125,8 +125,8 @@ export async function restoreDefaultGraph() {
     return;
   }
   setImportBusy(true, 'Livre italien');
+  state.activeBook = 'italian';
   setGraphData(cloneGraphData(state.defaultData), 'Livre italien actif');
-  state.activeBook = 'default';
   elements.pgnImportStatus.textContent = 'Livre actif';
   setImportBusy(false);
 }
