@@ -1501,13 +1501,41 @@ function getBlackBookEdges() {
   });
 }
 
+const opponentBranchLog = new Map();
+
+function recordOpponentBranch(edge) {
+  if (!edge?.from || !edge.id) {
+    return;
+  }
+  const log = opponentBranchLog.get(edge.from) || [];
+  log.push(edge.id);
+  opponentBranchLog.set(edge.from, log.slice(-10));
+}
+
+function leastRecentlyPlayedBranches(edges) {
+  if (!edges.length) {
+    return edges;
+  }
+  const log = opponentBranchLog.get(edges[0].from) || [];
+  if (!log.length) {
+    return edges;
+  }
+  const neverPlayed = edges.filter((edge) => !log.includes(edge.id));
+  if (neverPlayed.length) {
+    return neverPlayed;
+  }
+  const lastIndexes = edges.map((edge) => log.lastIndexOf(edge.id));
+  const oldestIndex = Math.min(...lastIndexes);
+  return edges.filter((_, index) => lastIndexes[index] === oldestIndex);
+}
+
 /**
  * Réponses du livre que l'adversaire peut réellement jouer pour le run en cours.
  * En mode apprentissage, on retire les lignes déjà découvertes (« tombées ») afin de
  * pousser le joueur vers du neuf. On ne touche pas aux poids relatifs des autres :
  * comme les lignes tombées ne peuvent plus sortir, les restantes se renormalisent
  * naturellement (elles deviennent plus probables). Quand tout est découvert à ce
- * nœud, on relâche le filtre : tout peut de nouveau tomber.
+ * nœud, on privilégie les branches qui viennent de tomber le moins récemment.
  */
 function getOpponentBookEdgesForRun() {
   const edges = getBlackBookEdges();
@@ -1536,7 +1564,7 @@ function getOpponentBookEdgesForRun() {
     return freshTraps.length ? freshTraps : pool;
   }
   const fresh = edges.filter((edge) => !isAdventureEdgeMastered(edge));
-  return fresh.length ? fresh : edges;
+  return fresh.length ? fresh : leastRecentlyPlayedBranches(edges);
 }
 
 // N — Lignes d'ouverture déjà gagnées contre un boss (suite complète de SAN).
@@ -2263,6 +2291,7 @@ async function advanceOpponentTurn() {
       if (state.game !== game || game.status !== 'playing') {
         return;
       }
+      recordOpponentBranch(edge);
       applyGameEdge(edge);
       game.openingBlackMoves += 1;
       if (deductStockfishClock(game)) {
