@@ -14,6 +14,8 @@ import {
 import { advScoreResultLine } from './adventure-scoring.js';
 import { advRefreshRecordedMoves, buildGameReviewMoves } from './adventure-history.js';
 import { advInfluenceEnabled } from './opening-weight.js';
+import { advAntiPleutreEnabled } from './adventure-settings.js';
+import { ADV_COWARD_STAR_LIMIT } from './adventure-config.js';
 import { buildMoveStatsRow } from './move-verdict.js';
 import { openAdventureMap } from './adventure-map.js';
 import { TOURNAMENT_ROUND_LABELS, advTournamentResolveMatch } from './adventure-tournament.js';
@@ -183,7 +185,11 @@ function renderAdventureResult(el, game, run) {
     const streak = advBossStreakCount(level);
     const conquered = advBossConquered(level);
     stars.innerHTML = advBossStarsMarkup(level);
-    if (conquered) {
+    if (win && run.cowardBlockedStar) {
+      // BAP — victoire trop pleutre : la 3e étoile est refusée, série bloquée à 2/3.
+      heading.textContent = 'Nullos, tu as été trop pleutre !';
+      note.textContent = `👮 ${run.cowardMoves || 0} coups pleutres (maximum toléré : ${ADV_COWARD_STAR_LIMIT - 1}) — la BAP refuse la 3e étoile. Tu repars de 2 victoires : rejoue le boss N${level} avec du courage.`;
+    } else if (conquered) {
       heading.textContent = `Boss N${level} maîtrisé !`;
       note.textContent = "Trois victoires d'affilée — le cortex gagne en puissance.";
     } else {
@@ -311,6 +317,7 @@ export function renderAdventureHud() {
   const starsEl = document.querySelector('#advStars');
   const objective = document.querySelector('#advObjective');
   const streak = document.querySelector('#advStreak');
+  const cowardCounter = document.querySelector('#advCowardCounter');
   const message = document.querySelector('#advMessage');
   const expected = document.querySelector('#advExpected');
   const result = document.querySelector('#advResult');
@@ -336,6 +343,7 @@ export function renderAdventureHud() {
     if (objective)
       objective.textContent = 'Ouvre la carte du cerveau pour lancer une leçon ou un boss.';
     if (streak) streak.hidden = true;
+    if (cowardCounter) cowardCounter.hidden = true;
     if (expected) expected.replaceChildren();
     if (result) result.hidden = true;
     if (message) message.textContent = 'Bienvenue, cerveau. Ouvre la carte pour commencer.';
@@ -387,6 +395,20 @@ export function renderAdventureHud() {
       }
     } else {
       streak.hidden = true;
+    }
+  }
+
+  // BAP — compteur de coups pleutres : visible pendant la partie dès que le mode
+  // anti-pleutre est activé (0 inclus : la brigade veille), en alerte à partir du
+  // seuil qui invalide la 3e étoile.
+  if (cowardCounter) {
+    if (advAntiPleutreEnabled() && game.status === 'playing') {
+      const count = run.cowardMoves || 0;
+      cowardCounter.hidden = false;
+      cowardCounter.textContent = `👮 BAP · ${count} coup${count > 1 ? 's' : ''} pleutre${count > 1 ? 's' : ''}`;
+      cowardCounter.classList.toggle('is-alert', count >= ADV_COWARD_STAR_LIMIT);
+    } else {
+      cowardCounter.hidden = true;
     }
   }
 

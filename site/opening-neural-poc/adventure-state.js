@@ -38,6 +38,7 @@ export function createAdventureState(bookId = 'italian') {
     mateHandover: DEFAULT_MATE_HANDOVER, // « mat en X » : seuil de fin de conversion
     mateTolerance: DEFAULT_MATE_TOLERANCE, // tolérance « mat qui s'éloigne »
     influenceDisabled: false, // surpondération d'ouverture désactivée par le joueur
+    antiPleutreEnabled: false, // BAP : traque des coups pleutres (opt-in, réglages)
     influenceMode: 'random', // 'random' = nœud tiré au hasard ; 'game' = nœuds de la partie jouée
     // Vies globales : nombre de défaites possibles contre les bots. 0 au départ ;
     // 3 débloquées à 50 % d'apprentissage ; -1 par défaite ; rechargées par la
