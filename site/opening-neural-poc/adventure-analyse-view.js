@@ -219,9 +219,9 @@ export function renderAdvMovesStrip() {
     btn.className = 'adv-move-key';
     btn.dataset.uci = edge.uci;
     btn.innerHTML =
-          // FIX côté Noir : utiliser la couleur réelle du joueur pour les coups d'ouverture.
-          `<img class="adv-move-key-piece" src="/pieces/merida/${playerColor}${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
-          `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
+      // FIX côté Noir : utiliser la couleur réelle du joueur pour les coups d'ouverture.
+      `<img class="adv-move-key-piece" src="/pieces/merida/${playerColor}${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
+      `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
     host.append(btn);
   }
   let ghosts = [];
@@ -246,10 +246,10 @@ export function renderAdvMovesStrip() {
       btn.innerHTML = `<span class="adv-move-key-san">Imprevu</span>${probability}`;
     } else {
       const san = candidate.edge.san;
-        btn.innerHTML =
-            // FIX côté Noir : utiliser la couleur réelle de l'adversaire pour les coups fantômes.
-            `<img class="adv-move-key-piece" src="/pieces/merida/${opponentColor}${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
-            `<span class="adv-move-key-san">${escapeHtml(san)}</span>${probability}`;
+      btn.innerHTML =
+        // FIX côté Noir : utiliser la couleur réelle de l'adversaire pour les coups fantômes.
+        `<img class="adv-move-key-piece" src="/pieces/merida/${opponentColor}${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
+        `<span class="adv-move-key-san">${escapeHtml(san)}</span>${probability}`;
     }
     host.append(btn);
   }

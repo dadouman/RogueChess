@@ -49,10 +49,7 @@ async function buildDefeatLineUci(fen, evaluation, stopAtMateX = null) {
       sideToMove === 'w'
         ? isMateScore(handoverEval.cpWhite) && handoverEval.cpWhite > 0
         : isMateScore(handoverEval.cpWhite) && handoverEval.cpWhite < 0;
-    if (
-      mateIsForCurrentSide &&
-      mateMovesFromCp(handoverEval.cpWhite) <= stopAtMateX
-    ) {
+    if (mateIsForCurrentSide && mateMovesFromCp(handoverEval.cpWhite) <= stopAtMateX) {
       return handoverEval;
     }
     return null;

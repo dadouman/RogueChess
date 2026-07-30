@@ -121,8 +121,8 @@
           </dl>
 
           <form id="moveForm" class="move-form">
-            <label id="moveInputLabel" for="moveInput">Coup blanc</label>
             <!-- FIX côté Noir : le label est mis à jour dynamiquement par renderGamePanel() -->
+            <label id="moveInputLabel" for="moveInput">Coup blanc</label>
             <div>
               <input id="moveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
               <button id="playMoveButton" type="submit">Jouer</button>
@@ -130,11 +130,11 @@
           </form>
 
           <p id="gameMessage" class="game-message">Prépare le livre d'ouverture...</p>
+          <!-- FIX côté Noir : l'aria-label est mis à jour dynamiquement -->
           <div
             id="expectedMoveList"
             class="expected-move-list"
             aria-label="Coups blancs attendus"
-            <!-- FIX côté Noir : l'aria-label est mis à jour dynamiquement -->
           ></div>
           <div
             id="opponentGraphMini"
@@ -267,8 +267,8 @@
         </section>
 
         <form id="advMoveForm" class="adv-move-form">
+          <!-- FIX côté Noir : le label est mis à jour dynamiquement par renderAdventureHud() -->
           <label id="advMoveInputLabel" for="advMoveInput">Ton coup (Blancs)</label>
-            <!-- FIX côté Noir : le label est mis à jour dynamiquement par renderAdventureHud() -->
           <div>
             <input id="advMoveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
             <button id="advMoveButton" type="submit">Jouer</button>
