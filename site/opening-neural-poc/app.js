@@ -40,7 +40,7 @@ import {
   normalizeWeightedCandidates,
   pickWeightedCandidate
 } from './graph.js';
-import { DEFAULT_MATE_TOLERANCE } from './adventure-config.js';
+import { DEFAULT_MATE_TOLERANCE, ADV_COWARD_STAR_LIMIT } from './adventure-config.js';
 import {
   activateAdventureProfile,
   createAdventureState,
@@ -185,10 +185,14 @@ import {
   renderAdvShop,
   advToggleInfluenceFeature,
   advToggleThreats,
+  advAntiPleutreEnabled,
+  renderAdvAntiPleutreSetting,
+  advToggleAntiPleutre,
   advInfluenceMode,
   setAdvCustomClock,
   initAdventureSettings
 } from './adventure-settings.js';
+import { detectCowardMove } from './coward-move.js';
 import {
   createInitialReviewEntry,
   getActiveFreeReviewEntry,
@@ -2104,6 +2108,31 @@ async function submitExplorationMove(input, message) {
   }
 }
 
+// BAP — vérifie un coup libre du joueur et incrémente le compteur de coups
+// pleutres du run si le détecteur le juge pleutre. Affiche alors le carton
+// « BAP : Brigade Anti-Pleutre » (toast) avec le motif. Sans conséquence
+// immédiate sur la partie.
+function registerCowardMoveCheck(move, beforeFen, beforeEvalCp, afterEvalCp) {
+  if (!advAntiPleutreEnabled() || !isAdventureRun() || !state.advRun) {
+    return;
+  }
+  if (isExplorationMode() || move.color !== humanPlayerColor()) {
+    return;
+  }
+  const verdict = detectCowardMove({ beforeFen, move, beforeEvalCp, afterEvalCp });
+  if (!verdict) {
+    return;
+  }
+  state.advRun.cowardMoves = (state.advRun.cowardMoves || 0) + 1;
+  showAdventureToast({
+    icon: '👮',
+    title: 'BAP : Brigade Anti-Pleutre',
+    text: `${verdict.label} (${move.san}) — coup pleutre n°${state.advRun.cowardMoves}.`,
+    kind: 'bap'
+  });
+  renderAdventureHud();
+}
+
 async function submitFreeMove(input) {
   if (!state.game || state.game.status !== 'playing') {
     return;
@@ -2128,6 +2157,12 @@ async function submitFreeMove(input) {
   state.game.currentEvalCp = evaluation.cpWhite;
   state.game.currentPv = evaluation.pv;
   state.game.currentDepth = evaluation.depth;
+
+  // BAP — Brigade Anti-Pleutre : si le mode est activé, chaque coup libre du
+  // joueur passe au détecteur de coups pleutres. Le compteur vit sur le run
+  // (remis à zéro à chaque partie) ; aucune conséquence en cours de partie,
+  // seule la 3e étoile de boss est conditionnée (cf. adventureOnGameFinished).
+  registerCowardMoveCheck(move, beforeFen, beforeEvalCp, evaluation.cpWhite);
 
   const deficitLimitCp = isAdventureRun() ? advRunDeficitThresholdCp() : state.survivalLimitCp;
   if (
@@ -3674,6 +3709,28 @@ function adventureOnGameFinished(result) {
     if (result === 'won' && !run.resolved) {
       run.resolved = true;
       const prevStreak = advBossStreakCount(level);
+      // BAP — règle de la 3e étoile : la victoire qui complète la série (3/3)
+      // n'est validée que si la partie décisive compte moins de
+      // ADV_COWARD_STAR_LIMIT coups pleutres. Sinon la série reste à 2/3 et il
+      // faut rejouer la 3e partie (proprement).
+      const cowardCount = run.cowardMoves || 0;
+      const cowardBlocked =
+        advAntiPleutreEnabled() &&
+        prevStreak + 1 >= ADV_BOSS_STARS &&
+        cowardCount >= ADV_COWARD_STAR_LIMIT;
+      if (cowardBlocked) {
+        run.cowardBlockedStar = true; // pour l'écran de résultat (HUD)
+        state.adventure.bossStreaks[level] = ADV_BOSS_STARS - 1; // on reste à 2/3
+        showAdventureToast({
+          icon: '👮',
+          title: 'Nullos, tu as été trop pleutre !',
+          text: `${cowardCount} coups pleutres (max ${ADV_COWARD_STAR_LIMIT - 1}) : la BAP refuse la 3e étoile. Rejoue le boss N${level} pour la valider — tu repars de 2 victoires.`,
+          kind: 'bap'
+        });
+        saveAdventure();
+        updateHomeProgress();
+        return;
+      }
       const streak = Math.min(prevStreak + 1, ADV_BOSS_STARS);
       state.adventure.bossStreaks[level] = streak;
       const prevRecord = advBossRecord(level);
@@ -3942,7 +3999,14 @@ function launchBoss(level) {
     advNotifyNoLives();
     return;
   }
-  state.advRun = { kind: 'boss', bossLevel: level, streak: 0, wrongMoves: 0, resolved: false };
+  state.advRun = {
+    kind: 'boss',
+    bossLevel: level,
+    streak: 0,
+    wrongMoves: 0,
+    resolved: false,
+    cowardMoves: 0 // BAP : coups pleutres détectés dans CETTE partie
+  };
   state.playMode = 'challenge';
   state.stockfishLevel = level;
   updateStockfishLevelUi();
@@ -4082,6 +4146,7 @@ function bindAdventureEvents() {
   bind('#advBtnTournament', advOpenOrStartTournament); // Mode Tournoi
   bind('#advTournamentClose', closeAdvTournament);
   bind('#advInfluenceToggle', advToggleInfluenceFeature); // réglage activer/désactiver l'influence
+  bind('#advAntiPleutreToggle', advToggleAntiPleutre); // BAP : activer/désactiver le mode anti-pleutre
   bind('#advShopThreatsBtn', advToggleThreats); // Boutique R : voir les menaces
   // Revue d'une partie historique : navigation + fermeture.
   bind('#advReviewClose', closeGameReview);
@@ -4348,6 +4413,7 @@ function bindEvents() {
     renderAdvMateHandover,
     renderAdvMateTolerance,
     renderAdvInfluenceSetting,
+    renderAdvAntiPleutreSetting,
     renderAdvShop,
     advTrapsUnlocked,
     launchBoss

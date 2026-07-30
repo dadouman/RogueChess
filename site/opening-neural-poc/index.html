@@ -264,6 +264,12 @@
             Ouvre la carte du cerveau pour lancer une étape.
           </p>
           <div id="advStreak" class="adv-streak" hidden></div>
+          <div
+            id="advCowardCounter"
+            class="adv-coward-counter"
+            hidden
+            aria-label="Coups pleutres détectés"
+          ></div>
         </section>
 
         <form id="advMoveForm" class="adv-move-form">
@@ -772,6 +778,28 @@
                 aria-label="Mode de choix du nœud à influencer"
               ></div>
               <p id="advInfluenceModeDesc" class="adv-difficulty-desc"></p>
+            </section>
+            <section class="adv-difficulty">
+              <span class="kicker">BAP · Brigade Anti-Pleutre</span>
+              <div class="adv-shop-item">
+                <div class="adv-shop-item-info">
+                  <b>👮 Traquer les coups pleutres</b>
+                  <span
+                    >Retraites injustifiées, captures refusées et coups de crabe sont signalés et
+                    comptés. À 5 coups pleutres ou plus dans la partie décisive, la 3e étoile d'un
+                    boss est refusée.</span
+                  >
+                </div>
+                <button
+                  id="advAntiPleutreToggle"
+                  class="adv-ghost"
+                  type="button"
+                  aria-pressed="false"
+                >
+                  Désactivé
+                </button>
+              </div>
+              <p id="advAntiPleutreDesc" class="adv-difficulty-desc"></p>
             </section>
             <button id="advSettingsBack" class="adv-bottom-btn" type="button">← Retour</button>
           </section>

@@ -267,6 +267,40 @@ function setAdvMateTolerance(id) {
   renderAdvMateTolerance();
 }
 
+// === BAP — Brigade Anti-Pleutre ================================================
+// Mode opt-in : détection des coups pleutres (retraite injustifiée, refus de
+// capture favorable, coup de crabe) avec compteur en partie et sanction sur la
+// 3e étoile de boss (voir adventureOnGameFinished).
+function advAntiPleutreEnabled() {
+  return Boolean(state.adventure?.antiPleutreEnabled);
+}
+
+function renderAdvAntiPleutreSetting() {
+  const btn = document.querySelector('#advAntiPleutreToggle');
+  if (btn) {
+    const enabled = advAntiPleutreEnabled();
+    btn.textContent = enabled ? 'Activé' : 'Désactivé';
+    btn.classList.toggle('is-active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+  const desc = document.querySelector('#advAntiPleutreDesc');
+  if (desc) {
+    desc.textContent = advAntiPleutreEnabled()
+      ? 'La BAP surveille tes coups pleutres (retraites injustifiées, captures refusées, coups de crabe). À 5 coups pleutres ou plus, la 3e étoile d’un boss est refusée.'
+      : 'La BAP dort : aucun coup pleutre n’est signalé ni compté.';
+  }
+}
+
+function advToggleAntiPleutre() {
+  if (!state.adventure) {
+    return;
+  }
+  state.adventure.antiPleutreEnabled = !state.adventure.antiPleutreEnabled;
+  saveAdventure();
+  renderAdvAntiPleutreSetting();
+  renderGameDetails();
+}
+
 // === Boutique (rendu + achats) ===
 
 function renderAdvShop() {
@@ -370,6 +404,9 @@ export {
   setAdvMateTolerance,
   renderAdvShop,
   advToggleThreats,
+  advAntiPleutreEnabled,
+  renderAdvAntiPleutreSetting,
+  advToggleAntiPleutre,
   advInfluenceMode,
   renderAdvWeightRecap
 };

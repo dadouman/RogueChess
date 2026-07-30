@@ -76,3 +76,12 @@ export const MATE_TOLERANCE_OPTIONS = [
 export const DEFAULT_MATE_TOLERANCE = 2;
 
 export const ADV_MAX_REVIEW_MOVES = 160;
+
+// === BAP — Brigade Anti-Pleutre ================================================
+// Mode optionnel qui traque les coups passifs/craintifs (« coups pleutres »).
+// Seuil de coups pleutres tolérés dans la 3e partie d'une série de boss : à
+// partir de ce nombre, la 3e étoile est refusée et la série retombe à 2/3.
+export const ADV_COWARD_STAR_LIMIT = 5;
+// Perte d'évaluation (cp) à partir de laquelle un coup passif sans capture,
+// échec ni développement est classé « coup de crabe ».
+export const COWARD_CRAB_EVAL_LOSS_CP = 30;

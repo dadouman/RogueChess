@@ -23,6 +23,7 @@ let renderAdvTimeControl = () => {};
 let renderAdvMateHandover = () => {};
 let renderAdvMateTolerance = () => {};
 let renderAdvInfluenceSetting = () => {};
+let renderAdvAntiPleutreSetting = () => {};
 let renderAdvShop = () => {};
 let advTrapsUnlocked = () => false;
 let launchBoss = () => {};
@@ -34,6 +35,7 @@ export function initAdventureMap(deps) {
   renderAdvMateHandover = deps.renderAdvMateHandover ?? renderAdvMateHandover;
   renderAdvMateTolerance = deps.renderAdvMateTolerance ?? renderAdvMateTolerance;
   renderAdvInfluenceSetting = deps.renderAdvInfluenceSetting ?? renderAdvInfluenceSetting;
+  renderAdvAntiPleutreSetting = deps.renderAdvAntiPleutreSetting ?? renderAdvAntiPleutreSetting;
   renderAdvShop = deps.renderAdvShop ?? renderAdvShop;
   advTrapsUnlocked = deps.advTrapsUnlocked ?? advTrapsUnlocked;
   launchBoss = deps.launchBoss ?? launchBoss;
@@ -208,6 +210,7 @@ function renderAdventureMap() {
   renderAdvMateHandover();
   renderAdvMateTolerance();
   renderAdvInfluenceSetting();
+  renderAdvAntiPleutreSetting();
   renderAdvShop();
   renderAdvGameHistory();
   renderAdvMainActions();
