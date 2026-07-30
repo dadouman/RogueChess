@@ -122,7 +122,8 @@ export function renderAdvMovesStrip() {
         btn.className = 'adv-move-key';
         btn.dataset.revUci = opt.uci;
         btn.innerHTML =
-          `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
+          // FIX côté Noir : utiliser la couleur réelle du joueur pour l'icône de pièce en révision.
+          `<img class="adv-move-key-piece" src="/pieces/merida/${humanPlayerColor()}${sanPieceLetter(opt.san)}.svg" alt="" aria-hidden="true">` +
           `<span class="adv-move-key-san">${escapeHtml(opt.san)}</span>`;
         if (rev.phase === 'feedback') {
           btn.disabled = true;
@@ -170,7 +171,8 @@ export function renderAdvMovesStrip() {
               ? `${Math.round(weight)}%`
               : `${Math.round(move.baseProb * 100)}%`;
         btn.innerHTML =
-          `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(move.san)}.svg" alt="" aria-hidden="true">` +
+          // FIX côté Noir : utiliser la couleur réelle de l'adversaire pour l'icône d'influence.
+          `<img class="adv-move-key-piece" src="/pieces/merida/${opponentTurnColor()}${sanPieceLetter(move.san)}.svg" alt="" aria-hidden="true">` +
           `<span class="adv-move-key-san">${escapeHtml(move.san)}</span>` +
           `<span class="adv-move-key-prob">${escapeHtml(tag)}</span>`;
         host.append(btn);
@@ -217,8 +219,9 @@ export function renderAdvMovesStrip() {
     btn.className = 'adv-move-key';
     btn.dataset.uci = edge.uci;
     btn.innerHTML =
-      `<img class="adv-move-key-piece" src="/pieces/merida/w${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
-      `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
+          // FIX côté Noir : utiliser la couleur réelle du joueur pour les coups d'ouverture.
+          `<img class="adv-move-key-piece" src="/pieces/merida/${playerColor}${sanPieceLetter(edge.san)}.svg" alt="" aria-hidden="true">` +
+          `<span class="adv-move-key-san">${escapeHtml(edge.san)}</span>`;
     host.append(btn);
   }
   let ghosts = [];
@@ -243,9 +246,10 @@ export function renderAdvMovesStrip() {
       btn.innerHTML = `<span class="adv-move-key-san">Imprevu</span>${probability}`;
     } else {
       const san = candidate.edge.san;
-      btn.innerHTML =
-        `<img class="adv-move-key-piece" src="/pieces/merida/b${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
-        `<span class="adv-move-key-san">${escapeHtml(san)}</span>${probability}`;
+        btn.innerHTML =
+            // FIX côté Noir : utiliser la couleur réelle de l'adversaire pour les coups fantômes.
+            `<img class="adv-move-key-piece" src="/pieces/merida/${opponentColor}${sanPieceLetter(san)}.svg" alt="" aria-hidden="true">` +
+            `<span class="adv-move-key-san">${escapeHtml(san)}</span>${probability}`;
     }
     host.append(btn);
   }

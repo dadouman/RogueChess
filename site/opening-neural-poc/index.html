@@ -122,6 +122,7 @@
 
           <form id="moveForm" class="move-form">
             <label id="moveInputLabel" for="moveInput">Coup blanc</label>
+            <!-- FIX côté Noir : le label est mis à jour dynamiquement par renderGamePanel() -->
             <div>
               <input id="moveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
               <button id="playMoveButton" type="submit">Jouer</button>
@@ -133,6 +134,7 @@
             id="expectedMoveList"
             class="expected-move-list"
             aria-label="Coups blancs attendus"
+            <!-- FIX côté Noir : l'aria-label est mis à jour dynamiquement -->
           ></div>
           <div
             id="opponentGraphMini"
@@ -266,6 +268,7 @@
 
         <form id="advMoveForm" class="adv-move-form">
           <label id="advMoveInputLabel" for="advMoveInput">Ton coup (Blancs)</label>
+            <!-- FIX côté Noir : le label est mis à jour dynamiquement par renderAdventureHud() -->
           <div>
             <input id="advMoveInput" type="text" autocomplete="off" placeholder="ex. Nf3 ou g1f3" />
             <button id="advMoveButton" type="submit">Jouer</button>
@@ -828,7 +831,8 @@
         <header class="adv-tournament-head">
           <div>
             <span class="kicker">Tournoi · élimination directe</span>
-            <strong>Toi (Blancs) vs 7 bots — atteins la finale</strong>
+            <!-- FIX côté Noir : le titre est générique, le label de couleur est dans le corps du tournoi -->
+            <strong>Toi vs 7 bots — atteins la finale</strong>
           </div>
           <button id="advTournamentClose" class="adv-ghost adv-ghost-strong" type="button">
             Fermer ✕

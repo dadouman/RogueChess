@@ -32,16 +32,25 @@ async function buildDefeatLineUci(fen, evaluation, stopAtMateX = null) {
   const mateSearchDepth = Math.min(12, VICTORY_CINEMATIC_DEPTH);
 
   const checkHandover = async () => {
-    if (!wantsHandover || chess.turn() !== 'b' || chess.isGameOver()) {
+    // FIX côté Noir : la remise de main fonctionne quelle que soit la couleur du joueur.
+    // Avant : seul chess.turn() === 'b' avec cpWhite < 0 était géré (joueur Blanc uniquement).
+    // Maintenant : on détecte le mat forcé pour le camp qui a le trait, quelle que soit sa couleur.
+    if (!wantsHandover || chess.isGameOver()) {
       return null;
     }
     const handoverEval = await ensureStockfishReady(false).then((evaluator) =>
       evaluator.evaluate(chess.fen(), mateSearchDepth)
     );
+    const sideToMove = chess.turn(); // 'w' ou 'b'
+    // Le mat est forcé pour le camp qui a le trait si :
+    //   - Blancs au trait : cpWhite > 0 et score de mat (Blancs vont mater)
+    //   - Noirs au trait  : cpWhite < 0 et score de mat (les Noirs vont mater)
+    const mateIsForCurrentSide =
+      sideToMove === 'w'
+        ? isMateScore(handoverEval.cpWhite) && handoverEval.cpWhite > 0
+        : isMateScore(handoverEval.cpWhite) && handoverEval.cpWhite < 0;
     if (
-      chess.turn() === 'b' &&
-      isMateScore(handoverEval.cpWhite) &&
-      handoverEval.cpWhite < 0 &&
+      mateIsForCurrentSide &&
       mateMovesFromCp(handoverEval.cpWhite) <= stopAtMateX
     ) {
       return handoverEval;

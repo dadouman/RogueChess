@@ -67,22 +67,27 @@ function advStoredVerdict(move) {
   });
 }
 
-// Précision : part des coups BLANCS du joueur sans faute (bon / livre).
-function advGameAccuracy(moves) {
-  const whiteMoves = (moves || []).filter(
-    (m) => m.color === 'w' && (m.phase === 'free' || m.phase === 'opening')
+// Précision : part des coups du JOUEUR sans faute (bon / livre).
+// FIX côté Noir : généralisation pour les deux couleurs.
+// Avant : seuls les coups blancs (m.color === 'w') étaient comptés.
+// Maintenant : on filtre sur la couleur réelle du joueur humain.
+function advGameAccuracy(moves, playerColor = null) {
+  // Détection automatique de la couleur du joueur si non fournie.
+  const pc = playerColor ?? humanPlayerColor();
+  const playerMoves = (moves || []).filter(
+    (m) => m.color === pc && (m.phase === 'free' || m.phase === 'opening')
   );
-  if (!whiteMoves.length) {
+  if (!playerMoves.length) {
     return null;
   }
   let clean = 0;
-  for (const m of whiteMoves) {
+  for (const m of playerMoves) {
     const verdict = advStoredVerdict(m);
     if (verdict && ['good', 'book', 'brilliant'].includes(verdict.key)) {
       clean += 1;
     }
   }
-  return Math.round((clean / whiteMoves.length) * 100);
+  return Math.round((clean / playerMoves.length) * 100);
 }
 
 // L — Compte les coups BLANCS par verdict (brillant/bon/imprécision/erreur/gaffe).

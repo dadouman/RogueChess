@@ -272,18 +272,21 @@ export function matedKingSquare(fen) {
   return null;
 }
 
-// R (boutique) — Cases des pièces blanches attaquées par les Noirs (menaces),
+// R (boutique) — Cases des pièces du joueur attaquées par l'adversaire (menaces),
 // affichées seulement quand c'est au joueur de jouer.
+// FIX côté Noir : généralisation pour les deux couleurs.
+// Avant : retournait toujours vide si probe.turn() !== 'w' (joueur Blanc uniquement).
+// Maintenant : détecte les menaces pour le camp qui a le trait (Blancs ou Noirs).
 export function threatenedWhiteSquares(fen) {
   const set = new Set();
   try {
     const probe = new Chess(fen);
-    if (probe.turn() !== 'w') {
-      return set;
-    }
+    const playerColor = probe.turn(); // 'w' ou 'b' — couleur du joueur qui a le trait
+    const opponentColor = playerColor === 'w' ? 'b' : 'w';
     for (const row of probe.board()) {
       for (const cell of row) {
-        if (cell && cell.color === 'w' && probe.isAttacked(cell.square, 'b')) {
+        // On surligne les pièces du joueur qui a le trait si elles sont attaquées par l'adversaire
+        if (cell && cell.color === playerColor && probe.isAttacked(cell.square, opponentColor)) {
           set.add(cell.square);
         }
       }

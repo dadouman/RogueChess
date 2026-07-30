@@ -251,8 +251,11 @@ function onBoardPointerDown(event) {
     }
   } else {
     const piece = state.game?.chess?.get(from);
-    if (!piece || piece.color !== 'w') {
-      return; // prémouvement : on ne glisse que ses propres pièces (Blanches)
+    // FIX côté Noir : on ne glisse que les pièces du joueur humain (quelle que soit sa couleur).
+    // Avant : seul piece.color !== 'w' était vérifié, bloquant le drag des pièces noires.
+    const humanColor = humanPlayerColor();
+    if (!piece || piece.color !== humanColor) {
+      return; // prémouvement : on ne glisse que ses propres pièces
     }
   }
   boardDrag = {

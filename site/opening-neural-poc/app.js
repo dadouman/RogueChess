@@ -1419,9 +1419,18 @@ function buildLiveBookEdgesForNode(nodeId, color = null, { legalInCurrentGame = 
   return scored.map((item) => item.edge);
 }
 
-// Un nœud terminal sur un mat livré par les Blancs (cœur d'un piège d'ouverture).
+// Un nœud terminal sur un mat livré par le joueur (cœur d'un piège d'ouverture).
+// FIX côté Noir : généralisation pour les deux couleurs.
+// Avant : seul cpWhite >= MATE_SCORE_CP - 1000 (mat des Blancs) était détecté.
+// Maintenant : on détecte le mat du joueur humain, quelle que soit sa couleur.
 function isWhiteMateBookNode(node) {
-  return Boolean(node?.terminal) && (node?.evaluation?.cpWhite ?? 0) >= MATE_SCORE_CP - 1000;
+  if (!node?.terminal) {
+    return false;
+  }
+  const cp = node?.evaluation?.cpWhite ?? 0;
+  const pc = humanPlayerColor();
+  // Mat du joueur : cpWhite élevé si Blancs gagnent, cpWhite très négatif si Noirs gagnent
+  return pc === 'w' ? cp >= MATE_SCORE_CP - 1000 : cp <= -(MATE_SCORE_CP - 1000);
 }
 
 let trapReachCache = null;

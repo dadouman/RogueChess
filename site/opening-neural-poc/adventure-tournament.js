@@ -59,7 +59,12 @@ function advTournamentParticipantLabel(seed) {
   if (!p) {
     return '—';
   }
-  return p.isPlayer ? 'Toi (Blancs)' : `Bot N${p.level}`;
+  // FIX côté Noir : le label du joueur reflète sa couleur réelle (Blancs ou Noirs).
+  if (p.isPlayer) {
+    const playerColor = state.game?.playerColor ?? 'w';
+    return `Toi (${playerColor === 'b' ? 'Noirs' : 'Blancs'})`;
+  }
+  return `Bot N${p.level}`;
 }
 
 function advMatchIsPlayer(match) {
@@ -306,7 +311,9 @@ function advTournamentPlayMatch() {
   setAdvViewMode('board');
   startNewGame(FIRST_LEVEL_NUMBER);
   if (state.game) {
-    state.game.message = `${TOURNAMENT_ROUND_LABELS[match.round]} · Toi (Blancs) vs Bot N${oppLevel}. Sors du livre puis cherche le mat.`;
+    // FIX côté Noir : le message reflète la couleur réelle du joueur.
+    const playerColorLabel = state.game.playerColor === 'b' ? 'Noirs' : 'Blancs';
+    state.game.message = `${TOURNAMENT_ROUND_LABELS[match.round]} · Toi (${playerColorLabel}) vs Bot N${oppLevel}. Sors du livre puis cherche le mat.`;
   }
   renderAdventureHud();
   focusAdvInput();
